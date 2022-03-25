@@ -8,6 +8,8 @@ Snakemake workflows for Nanopore data analysis
 ### `genome_longread`
 1. Install
 ```bash
+git clone https://github.com/jmtsuji/nanopore-workflows.git
+cd nanopore-workflows
 conda env create -n genome_longread --file=envs/conda_requirements.yaml
 ```
 Also, you need to download the DFAST, EggNOG, and GTDB databases (TODO - not shown)
