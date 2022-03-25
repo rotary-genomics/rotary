@@ -39,5 +39,8 @@ snakemake --snakefile "${snakefile}" --configfile "${config}" --directory "${run
   --use-conda --conda-frontend mamba --conda-prefix "${conda_prefix}" --jobs "${jobs}" --rerun-incomplete \
   --reason --printshellcmds 2>&1 | tee genome_longread.log
 ```
+I recommend to check all log files after the run to confirm that nothing odd happened, given that this workflow is in its early development stages.
+
+Pay particularly careful attention to filtering of contigs and identifying the start marker / circularizing. These are not in the log folder at the moment... 
 
 Enjoy!
