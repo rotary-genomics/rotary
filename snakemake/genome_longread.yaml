@@ -1,0 +1,43 @@
+# Config file for running Nanopore genome assembly
+
+## Resources
+threads: 40
+# Memory in Gigabytes
+memory: 200
+
+## Nanopore data & sample names
+# TODO - make this more understandable
+genomes:
+  E_coli: "E_coli.fastq.gz"
+
+## QC - bbmap
+minlength: 1000
+minavgquality: 13
+
+## Long read assembly & polish
+# nano-hq (if <5% error) or nano-raw
+flye_mode: "nano-hq"
+# model supported by medaka
+medaka_model: "r941_min_sup_g507"
+
+## Short read polishing
+# QC'ed short reads
+# TODO - separate by genome
+qc_short_r1: "QC_R1.fastq.gz"
+qc_short_r1: "QC_R2.fastq.gz"
+# Only contigs with this or greater mean short read depth will be kept (e.g., 10x)
+meandepth_cutoff: 10
+# Only contigs with this or greater % of bases covered by short reads will be kept (e.g., 95%)
+evenness_cutoff: 95
+
+## Circularization
+# DnaA is PF00308
+start_hmm_pfam_id: "PF00308"
+hmmsearch_evalue: 1e-40
+circlator_min_id: 90
+
+## Annotation
+dfast_db: "/Data/jmtsuji/databases_211111_legacy/dfast"
+eggnog_db: "/Data/jmtsuji/databases_211111_legacy/atlas/2.8.x/EggNOG_V5"
+eggnog_sensmode: "ultra-sensitive"
+gtdbtk_db: "/home/jmtsuji/backup_211111/new_analysis/databases/atlas/2.8.x/GTDB_V06"
