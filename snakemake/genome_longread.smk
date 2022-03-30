@@ -773,21 +773,42 @@ rule calculate_final_long_read_coverage:
         """
 
 
+rule symlink_logs:
+    output:
+        logs=temp(directory("annotation/logs")),
+        stats=temp(directory("annotation/stats"))
+    params:
+        logs="logs",
+        stats="stats"
+    run:
+        source_relpath = os.path.relpath(str(params.logs),os.path.dirname(str(output.logs)))
+        os.symlink(source_relpath, str(output.logs))
+
+        source_relpath = os.path.relpath(str(params.stats),os.path.dirname(str(output.stats)))
+        os.symlink(source_relpath, str(output.stats))
+
+
+# TODO - can I remove the use of cd?
 rule summarize_annotation:
     input:
         "annotation/dfast/genome.fna",
         "annotation/eggnog/eggnog.emapper.annotations",
         "annotation/gtdbtk/gtdbtk.summary.tsv",
         "annotation/coverage/short_read_coverage.tsv",
-        "annotation/coverage/long_read_coverage.tsv"
+        "annotation/coverage/long_read_coverage.tsv",
+        "annotation/logs",
+        "annotation/stats"
     output:
         "summary.zip"
     params:
         zipdir="annotation"
     shell:
         """
-        zip -r {output} {params.zipdir} -x \*.bam\* \*/gtdbtk/run_files/\*
+        cd {params.zipdir}
+        zip -r ../{output} * -x \*.bam\* gtdbtk/run_files/\*
+        cd ..
         """
+
 
 rule annotation:
     input:
