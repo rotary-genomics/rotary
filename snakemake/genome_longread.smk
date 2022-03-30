@@ -172,7 +172,8 @@ rule polish_polypolish:
         mapping_clean_r1=temp("polish/polypolish/R1.clean.sam"),
         mapping_clean_r2=temp("polish/polypolish/R2.clean.sam"),
         polished="polish/polypolish/polypolish.fasta",
-        debug="polish/polypolish/polypolish.debug.log"
+        debug="polish/polypolish/polypolish.debug.log",
+        debug_stats="stats/polypolish_changes_round1.log"
     conda:
         "../envs/mapping.yaml"
     log:
@@ -207,8 +208,8 @@ rule polish_polypolish:
           awk \'{{ if ($0 ~ /^>/) {{ gsub("_polypolish", ""); print }} else {{ print }} }}\' | 
           seqtk seq -l 60 > {output.polished} 2>> {log}
           
-        printf "\n\n### Summary of polishing changes (if any) ###\n" >> {log}
-        (head -n 1 {output.debug} && grep changed {output.debug}) | column -t >> {log}
+        head -n 1 {output.debug} > {output.debug_stats}
+        grep changed {output.debug} >> {output.debug_stats}
         
         printf "\n\n### Done. ###\n"
         """
@@ -249,7 +250,7 @@ rule calculate_short_read_coverage:
         "polish/polca/polca.fasta"
     output:
         mapping=temp("polish/cov_filter/short_read.bam"),
-        mapping_index=temp("polish/cov_filter/short_read.bam.bai")
+        mapping_index=temp("polish/cov_filter/short_read.bam.bai"),
         coverage="polish/cov_filter/coverage.tsv"
     conda:
         "../envs/mapping.yaml"
@@ -301,13 +302,9 @@ rule filter_contigs_by_coverage:
         "polish/cov_filter/filtered_contigs.fasta"
     conda:
         "../envs/mapping.yaml"
-    log:
-        "logs/filter_contigs_by_coverage.log"
-    benchmark:
-        "benchmarks/filter_contigs_by_coverage.log"
     shell:
         """
-        seqtk subseq -l 60 {input.contigs} {input.filter_list} > {output} 2> {log}
+        seqtk subseq -l 60 {input.contigs} {input.filter_list} > {output}
         """
 
 
@@ -358,15 +355,11 @@ rule filter_circular_contigs:
         linear="circularize/filter/linear.fasta"
     conda:
         "../envs/mapping.yaml"
-    log:
-        "logs/filter_circular_contigs.log"
-    benchmark:
-        "benchmarks/filter_circular_contigs.log"
     shell:
         """
         # Note: command still works (and outputs an empty file) if the input list is empty
-        seqtk subseq -l 60 {input.contigs} {input.circular_list} > {output.circular} 2> {log}
-        seqtk subseq -l 60 {input.contigs} {input.linear_list} > {output.linear} 2>> {log}
+        seqtk subseq -l 60 {input.contigs} {input.circular_list} > {output.circular}
+        seqtk subseq -l 60 {input.contigs} {input.linear_list} > {output.linear}
         """
 
 
@@ -395,7 +388,8 @@ if circular_contig_count > 0:
 
     rule search_genome_start:
         input:
-            "circularize/filter/circular.fasta"
+            contigs="circularize/filter/circular.fasta",
+            hmm="circularize/identify/start.hmm"
         output:
             orf_predictions=temp("circularize/identify/circular.faa"),
             gene_predictions=temp("circularize/identify/circular.ffn"),
@@ -414,12 +408,12 @@ if circular_contig_count > 0:
         shell:
             """
             printf "\n\n### Predict genes ###\n" > {log}
-            prodigal -i {input} -a {output.orf_predictions} -d {output.gene_predictions} \
+            prodigal -i {input.contigs} -a {output.orf_predictions} -d {output.gene_predictions} \
               -f gff -o {output.annotation_gff} 2>> {log}
             
             printf "\n\n### Find HMM hits ###\n" >> {log}
             hmmsearch --cpu {threads} -E {params.hmmsearch_evalue} --tblout /dev/stdout -o /dev/stderr \
-              {output.hmm} {output.orf_predictions} > {output.search_hits} 2>> {log}
+              {input.hmm} {output.orf_predictions} > {output.search_hits} 2>> {log}
             
             printf "\n\n### Done. ###\n" >> {log}
             """
@@ -494,13 +488,9 @@ if circular_contig_count > 0:
             "circularize/identify/start_gene.ffn"
         conda:
             "../envs/mapping.yaml"
-        log:
-            "logs/find_genome_start.log"
-        benchmark:
-            "benchmarks/filter_start_genes.txt"
         shell:
             """
-            seqtk subseq {input.gene_predictions} {input.start_gene_list} > {output} 2> {log}
+            seqtk subseq {input.gene_predictions} {input.start_gene_list} > {output}
             """
 
 
@@ -523,6 +513,9 @@ if circular_contig_count > 0:
             """
             circlator fixstart --min_id {params.min_id} --genes_fa {input.start_gene}\
               {input.contigs} {params.run_name} > {log} 2>&1
+            
+            printf "\n\n### Circlator log output ###\n" >> {log}
+            cat "circularize/circlator/rotated.log" >> {log}
             """
 
 
@@ -538,7 +531,8 @@ if circular_contig_count > 0:
             mapping_clean_r1=temp("circularize/polypolish/R1.clean.sam"),
             mapping_clean_r2=temp("circularize/polypolish/R2.clean.sam"),
             polished="circularize/polypolish/polypolish.fasta",
-            debug="circularize/polypolish/polypolish.debug.log"
+            debug="circularize/polypolish/polypolish.debug.log",
+            debug_stats="stats/polypolish_changes_round2.log"
         conda:
             "../envs/mapping.yaml"
         log:
@@ -572,9 +566,9 @@ if circular_contig_count > 0:
               seqtk seq -A -l 0 | 
               awk \'{{ if ($0 ~ /^>/) {{ gsub("_polypolish", ""); print }} else {{ print }} }}\' | 
               seqtk seq -l 60 > {output.polished} 2>> {log}
-              
-            printf "\n\n### Summary of polishing changes (if any) ###\n" >> {log}
-            (head -n 1 {output.debug} && grep changed {output.debug}) | column -t >> {log}
+            
+            head -n 1 {output.debug} > {output.debug_stats}
+            grep changed {output.debug} >> {output.debug_stats}
             
             printf "\n\n### Done. ###\n"
             """
@@ -589,13 +583,9 @@ if circular_contig_count > 0:
             "circularize/combine/combined.fasta"
         conda:
             "../envs/mapping.yaml"
-        log:
-            "logs/combine_circular_and_linear_contigs.log"
-        benchmark:
-            "benchmarks/combine_circular_and_linear_contigs.log"
         shell:
             """
-            cat {input.circular_rotated} {input.linear} 2> {log} | seqtk seq -l 60 > {output} 2>> {log}
+            cat {input.circular_rotated} {input.linear} | seqtk seq -l 60 > {output}
             """
 
 
@@ -698,7 +688,7 @@ rule run_gtdbtk:
     input:
         "annotation/dfast/genome.fna"
     output:
-        batchfile="annotation/gtdbtk/batchfile.tsv",
+        batchfile=temp("annotation/gtdbtk/batchfile.tsv"),
         annotation="annotation/gtdbtk/gtdbtk.summary.tsv"
     conda:
         "../envs/gtdbtk.yaml"
@@ -793,12 +783,10 @@ rule summarize_annotation:
     output:
         "summary.zip"
     params:
-        zipdir="annotation",
-        bam_short="annotation/coverage/short_read.bam",
-        bam_long="annotation/coverage/long_read.bam"
+        zipdir="annotation"
     shell:
         """
-        zip -r -x {params.bam_short}* -x {params.bam_long}* {output} {params.zipdir}
+        zip -r {output} {params.zipdir} -x \*.bam\* \*/gtdbtk/run_files/\*
         """
 
 rule annotation:
