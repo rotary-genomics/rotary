@@ -9,8 +9,7 @@ Snakemake workflows for Nanopore data analysis
 1. Install
 ```bash
 git clone https://github.com/jmtsuji/nanopore-workflows.git
-cd nanopore-workflows
-conda env create -n genome_longread --file=envs/conda_requirements.yaml
+conda env create -n genome_longread --file=nanopore-workflows/envs/conda_requirements.yaml
 ```
 Also, you need to download the DFAST, EggNOG, and GTDB databases (TODO - not shown)
 
@@ -18,17 +17,30 @@ Also, you need to download the DFAST, EggNOG, and GTDB databases (TODO - not sho
 
 The key parameters to fill are the genome name and the paths to the long and (QC'ed) short reads.
 
+Save as something like `genome_longread_mycopy.yaml`
+
 3. Run
 ```bash
 conda activate genome_longread
 
-run_directory="." # Wherever you want to store the run files
-conda_prefix="conda" # Wherever you want to store the conda envs
+run_directory="E_coli" # Wherever you want to store the run files
+config="genome_longread_mycopy.yaml"
+conda_prefix="/Data/databases/nanopore-workflows/conda_envs" # Wherever you want to store the conda envs
+snakefile="nanopore-workflows/snakemake/genome_longread.smk"
 jobs=40
 
-snakemake --snakefile snakemake/genome_longread.smk --configfile config.yaml --directory "${run_directory}" \
+mkdir -p "${run_directory}"
+
+snakemake --dryrun --snakefile "${snakefile}" --configfile "${config}" --directory "${run_directory}" \
+  --use-conda --conda-frontend mamba --conda-prefix "${conda_prefix}" --jobs "${jobs}" --rerun-incomplete \
+  --reason --printshellcmds 2>&1 | tee genome_longread_steps.log
+
+snakemake --snakefile "${snakefile}" --configfile "${config}" --directory "${run_directory}" \
   --use-conda --conda-frontend mamba --conda-prefix "${conda_prefix}" --jobs "${jobs}" --rerun-incomplete \
   --reason --printshellcmds 2>&1 | tee genome_longread.log
 ```
+I recommend to check all log files after the run to confirm that nothing odd happened, given that this workflow is in its early development stages.
+
+Pay particularly careful attention to filtering of contigs and identifying the start marker / circularizing. These are not in the log folder at the moment... 
 
 Enjoy!
