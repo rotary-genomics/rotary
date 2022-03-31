@@ -331,14 +331,26 @@ rule filter_contigs_by_coverage:
         """
 
 
-rule symlink_polish:
-    input:
-        "polish/cov_filter/filtered_contigs.fasta"
-    output:
-        "polish/polish.fasta"
-    run:
-        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
-        os.symlink(source_relpath,str(output))
+if config.get("qc_short_r1") is None:
+    # TODO - filter by long read coverage (> 10) to keep
+    rule symlink_medaka_polish:
+        input:
+            "polish/medaka/consensus.fasta"
+        output:
+            "polish/polish.fasta"
+        run:
+            source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+            os.symlink(source_relpath,str(output))
+
+else:
+    rule symlink_polca_polish:
+        input:
+            "polish/cov_filter/filtered_contigs.fasta"
+        output:
+            "polish/polish.fasta"
+        run:
+            source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+            os.symlink(source_relpath,str(output))
 
 
 rule polish:
