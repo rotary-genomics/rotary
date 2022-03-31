@@ -16,8 +16,8 @@ shell.prefix("set -o pipefail; ")
 rule all:
     input:
         "checkpoints/qc_long",
-        "checkpoints/assembly_long",
-        "checkpoints/short_read_polish",
+        "checkpoints/assembly",
+        "checkpoints/polish",
         "checkpoints/circularize",
         "checkpoints/annotation"
 
@@ -132,10 +132,35 @@ rule assembly_flye:
         """
 
 
+# TODO - eventually make this rule more generic so that outputs from other assemblers can go to the same output files
+#        In particular, the format of assembly_info.txt will need to be standardized.
+rule finalize_assembly:
+    input:
+        assembly="assembly/flye/assembly.fasta",
+        info="assembly/flye/assembly_info.txt"
+    output:
+        assembly="assembly/assembly.fasta",
+        info="assembly/assembly_info.txt"
+    run:
+        source_relpath = os.path.relpath(str(input.assembly),os.path.dirname(str(output.assembly)))
+        os.symlink(source_relpath,str(output.assembly))
+
+        source_relpath = os.path.relpath(str(input.info),os.path.dirname(str(output.info)))
+        os.symlink(source_relpath,str(output.info))
+
+
+rule assembly:
+    input:
+        "assembly/assembly.fasta",
+        "assembly/assembly_info.txt"
+    output:
+        temp(touch("checkpoints/assembly"))
+
+
 rule polish_medaka:
     input:
         qc_long_reads="qc_long/nanopore_qc.fastq.gz",
-        contigs="assembly/flye/assembly.fasta"
+        contigs="assembly/assembly.fasta"
     output:
         "polish/medaka/consensus.fasta"
     conda:
@@ -154,13 +179,6 @@ rule polish_medaka:
         medaka_consensus -i {input.qc_long_reads} -d {input.contigs} -o {params.output_dir} \
           -m {params.medaka_model} -t {threads} > {log} 2>&1
         """
-
-
-rule assembly_long:
-    input:
-        "polish/medaka/consensus.fasta"
-    output:
-        temp(touch("checkpoints/assembly_long"))
 
 
 # TODO: consider moving polypolish download to separate rule at start of pipeline so internet is not needed in middle
@@ -313,7 +331,7 @@ rule filter_contigs_by_coverage:
         """
 
 
-rule symlink_short_read_polish:
+rule symlink_polish:
     input:
         "polish/cov_filter/filtered_contigs.fasta"
     output:
@@ -323,11 +341,11 @@ rule symlink_short_read_polish:
         os.symlink(source_relpath,str(output))
 
 
-rule short_read_polish:
+rule polish:
     input:
         "polish/polish.fasta"
     output:
-        temp(touch("checkpoints/short_read_polish"))
+        temp(touch("checkpoints/polish"))
 
 
 # Writes circular.list with the names of circular contigs if there are any circular contigs
@@ -336,7 +354,7 @@ rule short_read_polish:
 # Based on clustering tutorial at https://snakemake.readthedocs.io/en/stable/snakefiles/rules.html (accessed 2022.3.31)
 checkpoint split_circular_and_linear_contigs:
     input:
-        assembly_stats="assembly/flye/assembly_info.txt",
+        assembly_stats="assembly/assembly_info.txt",
         filter_list="polish/cov_filter/filtered_contigs.list"
     output:
         directory("circularize/filter/lists")
