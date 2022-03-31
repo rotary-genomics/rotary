@@ -2,6 +2,8 @@
 # Copyright Jackson M. Tsuji, ILTS, Hokkaido University, 2022
 
 import os
+import sys
+import shutil
 import pandas as pd
 import itertools
 from snakemake.utils import logger, min_version, update_config
@@ -267,115 +269,160 @@ rule polish_polca:
         """
 
 
-# TODO - consider mapping to medaka polished contigs instead
-rule calculate_short_read_coverage:
+# Conditional based on whether short read polishing was performed
+rule pre_coverage_filter:
     input:
-        "polish/polca/polca.fasta"
+        "polish/medaka/consensus.fasta" if config.get("qc_short_r1") is None else "polish/polca/polca.fasta"
     output:
-        mapping=temp("polish/cov_filter/short_read.bam"),
-        mapping_index=temp("polish/cov_filter/short_read.bam.bai"),
-        coverage="polish/cov_filter/short_read_coverage.tsv"
-    conda:
-        "../envs/mapping.yaml"
-    log:
-        "logs/calculate_short_read_coverage.log"
-    benchmark:
-        "benchmarks/calculate_short_read_coverage.txt"
-    params:
-        qc_short_r1=config.get("qc_short_r1"),
-        qc_short_r2=config.get("qc_short_r2")
-    threads:
-        config.get("threads",1)
-    resources:
-        mem=int(config.get("memory") / config.get("threads",1))
-    shell:
-        """
-        # Note that -F 4 removes unmapped reads
-        bwa index {input} 2> {log}
-        bwa mem -t {threads} {input} {params.qc_short_r1} {params.qc_short_r2} 2>> {log} | \
-          samtools view -b -F 4 -@ {threads} 2>> {log} | \
-          samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
-          > {output.mapping}
-        samtools index -@ {threads} {output.mapping}
-        samtools coverage {output.mapping} > {output.coverage}
-        """
+        "polish/cov_filter/pre_filtered.fasta"
+    run:
+        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+        os.symlink(source_relpath,str(output))
 
 
-# This rule is only run if short read aren't provided
-rule calculate_long_read_coverage:
-    input:
-        contigs="polish/medaka/consensus.fasta",
-        qc_long_reads="qc_long/nanopore_qc.fastq.gz"
-    output:
-        mapping=temp("polish/cov_filter/long_read.bam"),
-        mapping_index=temp("polish/cov_filter/long_read.bam.bai"),
-        coverage="polish/cov_filter/long_read_coverage.tsv"
-    conda:
-        "../envs/mapping.yaml"
-    log:
-        "logs/calculate_long_read_coverage.log"
-    benchmark:
-        "benchmarks/calculate_long_read_coverage.txt"
-    threads:
-        config.get("threads",1)
-    resources:
-        mem=int(config.get("memory") / config.get("threads",1))
-    shell:
-        """
-        # Note that -F 4 removes unmapped reads
-        minimap2 -t {threads} -ax map-ont {input.contigs} {input.qc_long_reads} 2> {log} | \
-          samtools view -b -F 4 -@ {threads} 2>> {log} | \
-          samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
-          > {output.mapping}
-        samtools index -@ {threads} {output.mapping}
-        samtools coverage {output.mapping} > {output.coverage}
-        """
+# Different coverage methods can be used for the filter: short, long, a combo, or neither (bypass)
+if (config.get("qc_short_r1") is not None) & \
+        ((config.get("meandepth_cutoff_short_read") is not None) | (config.get("evenness_cutoff_short_read") is not None)):
+
+    # TODO - consider mapping to medaka polished contigs instead
+    rule calculate_short_read_coverage:
+        input:
+            "polish/cov_filter/pre_filtered.fasta"
+        output:
+            mapping=temp("polish/cov_filter/short_read.bam"),
+            mapping_index=temp("polish/cov_filter/short_read.bam.bai"),
+            coverage="polish/cov_filter/short_read_coverage.tsv"
+        conda:
+            "../envs/mapping.yaml"
+        log:
+            "logs/calculate_short_read_coverage.log"
+        benchmark:
+            "benchmarks/calculate_short_read_coverage.txt"
+        params:
+            qc_short_r1=config.get("qc_short_r1"),
+            qc_short_r2=config.get("qc_short_r2")
+        threads:
+            config.get("threads",1)
+        resources:
+            mem=int(config.get("memory") / config.get("threads",1))
+        shell:
+            """
+            # Note that -F 4 removes unmapped reads
+            bwa index {input} 2> {log}
+            bwa mem -t {threads} {input} {params.qc_short_r1} {params.qc_short_r2} 2>> {log} | \
+              samtools view -b -F 4 -@ {threads} 2>> {log} | \
+              samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
+              > {output.mapping}
+            samtools index -@ {threads} {output.mapping}
+            samtools coverage {output.mapping} > {output.coverage}
+            """
+
+
+if (config.get("meandepth_cutoff_long_read") is not None) | (config.get("evenness_cutoff_long_read") is not None):
+
+    rule calculate_long_read_coverage:
+        input:
+            contigs="polish/cov_filter/pre_filtered.fasta",
+            qc_long_reads="qc_long/nanopore_qc.fastq.gz"
+        output:
+            mapping=temp("polish/cov_filter/long_read.bam"),
+            mapping_index=temp("polish/cov_filter/long_read.bam.bai"),
+            coverage="polish/cov_filter/long_read_coverage.tsv"
+        conda:
+            "../envs/mapping.yaml"
+        log:
+            "logs/calculate_long_read_coverage.log"
+        benchmark:
+            "benchmarks/calculate_long_read_coverage.txt"
+        threads:
+            config.get("threads",1)
+        resources:
+            mem=int(config.get("memory") / config.get("threads",1))
+        shell:
+            """
+            # Note that -F 4 removes unmapped reads
+            minimap2 -t {threads} -ax map-ont {input.contigs} {input.qc_long_reads} 2> {log} | \
+              samtools view -b -F 4 -@ {threads} 2>> {log} | \
+              samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
+              > {output.mapping}
+            samtools index -@ {threads} {output.mapping}
+            samtools coverage {output.mapping} > {output.coverage}
+            """
+
+
+if (config.get("meandepth_cutoff_short_read") is not None) & (config.get("evenness_cutoff_short_read") is not None) & \
+        (config.get("meandepth_cutoff_long_read") is not None) & (config.get("evenness_cutoff_long_read") is not None):
+
+    rule bypass_coverage_filter:
+        input:
+            "polish/cov_filter/pre_filtered.fasta"
+        output:
+            "polish/cov_filter/filtered_contigs.fasta"
+        run:
+            source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+            os.symlink(source_relpath,str(output))
 
 
 rule summarize_contigs_by_coverage:
     input:
-        "polish/cov_filter/{type}_coverage.tsv"
+        expand("polish/cov_filter/{type}_coverage.tsv",
+          type=glob_wildcards("polish/cov_filter/{type}_coverage.tsv".type))
     output:
-        "polish/cov_filter/contigs_filtered_by_{type}_coverage.list"
+        "polish/cov_filter/filtered_contigs.list"
     params:
-        meandepth_cutoff=config.get("meandepth_cutoff"),
-        evenness_cutoff=config.get("evenness_cutoff")
+        meandepth_short=config.get("meandepth_cutoff_short_read"),
+        evenness_short=config.get("evenness_cutoff_short_read"),
+        meandepth_long=config.get("meandepth_cutoff_long_read"),
+        evenness_long=config.get("evenness_cutoff_long_read")
     run:
-        coverage_data = pd.read_csv(input[0], sep='\t')
-        coverage_filtered = coverage_data[\
-            (coverage_data['meandepth'] >= params.meandepth_cutoff) & \
-            (coverage_data['coverage'] >= params.evenness_cutoff)]
-        coverage_filtered['#rname'].to_csv(output[0], header=None, index=False)
+        # Filter a samtools coverage file by meandepth and evenness. Returns a pandas series of the contig names.
+        def filter_coverage_data(coverage_file, meandepth, evenness):
+            coverage_data = pd.read_csv(coverage_file, sep='\t')
+
+            coverage_filtered = coverage_data[ \
+                (coverage_data['meandepth'] >= meandepth) & \
+                (coverage_data['coverage'] >= evenness)]
+
+            return(coverage_filtered['#rname'])
+
+        input_list = list(input)
+
+        if len(input_list) == 1:
+            if input_list[0] == "polish/cov_filter/short_read_coverage.tsv":
+                contigs = filter_coverage_data(input_list[0], params.meandepth_short, params.evenness_short)
+            elif input_list[0] == "polish/cov_filter/long_read_coverage.tsv":
+                contigs = filter_coverage_data(input_list[0], params.meandepth_long, params.evenness_long)
+            else:
+                sys.exit("One unexpected coverage file detected in 'polish/cov_filter'.")
+
+        elif len(input_list) == 2:
+            input_list.sort()
+
+            if (input_list[0] != "polish/cov_filter/long_read_coverage.tsv") |\
+                    (input_list[1] != "polish/cov_filter/short_read_coverage.tsv"):
+                sys.exit("At least one unexpected coverage file detected in 'polish/cov_filter'.")
+
+            set1 = set(filter_coverage_data(input_list[0], params.meandepth_long, params.evenness_long))
+            set2 = set(filter_coverage_data(input_list[1], params.meandepth_short, params.evenness_short)
+
+            pd.Series(set1.union(set2)).to_csv(output[0], header=None, index=False)
+
+        else:
+            sys.exit("More than 2 coverage files detected in 'polish/cov_filter'.")
 
 
-if config.get("qc_short_r1") is None:
-
-    rule filter_contigs_by_long_read_coverage:
-        input:
-            contigs="polish/medaka/consensus.fasta",
-            filter_list="polish/cov_filter/contigs_filtered_by_long_read_coverage.list"
-        output:
-            "polish/cov_filter/filtered_contigs.fasta"
-        conda:
-            "../envs/mapping.yaml"
-        shell:
-            """
-            seqtk subseq -l 60 {input.contigs} {input.filter_list} > {output}
-            """
-
-else:
-    rule filter_contigs_by_short_read_coverage:
-        input:
-            contigs="polish/polca/polca.fasta",
-            filter_list="polish/cov_filter/contigs_filtered_by_short_read_coverage.list"
-        output:
-            "polish/cov_filter/filtered_contigs.fasta"
-        conda:
-            "../envs/mapping.yaml"
-        shell:
-            """
-            seqtk subseq -l 60 {input.contigs} {input.filter_list} > {output}
-            """
+rule filter_contigs_by_coverage:
+    input:
+        contigs="polish/medaka/consensus.fasta" if config.get("qc_short_r1") is None else "polish/polca/polca.fasta",
+        filter_list="polish/cov_filter/filtered_contigs.list"
+    output:
+        "polish/cov_filter/filtered_contigs.fasta"
+    conda:
+        "../envs/mapping.yaml"
+    shell:
+        """
+        seqtk subseq -l 60 {input.contigs} {input.filter_list} > {output}
+        """
 
 
 rule symlink_polish:

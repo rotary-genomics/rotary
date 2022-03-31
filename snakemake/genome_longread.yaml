@@ -35,13 +35,13 @@ flye_polishing_rounds: 1
 medaka_model: "r941_min_sup_g507"
 
 ## Post-polishing contig filter
-# Note: Short reads are used for the filter if short reads are provided; otherwise long reads are used.
-#       The logic here is that long reads alone can't (currently) remove all errors from genomes, so short reads
-#       are preferred for the final polish if they are available.
+# My advice: only filter by short reads if you have short reads. If you have long reads, filter by long reads
 # Only contigs with this or greater mean read depth will be kept (e.g., 10x)
-meandepth_cutoff: 10
+meandepth_cutoff_short_read: 10
+meandepth_cutoff_long_read: None
 # Only contigs with this or greater % of bases covered by reads will be kept (e.g., 95%)
-evenness_cutoff: 95
+evenness_cutoff_short_read: 95
+evenness_cutoff_long_read: None
 
 ## Circularization
 # Download the following HMM from Pfam to look for a start gene
