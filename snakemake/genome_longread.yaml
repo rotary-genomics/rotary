@@ -17,7 +17,11 @@ minavgquality: 13
 
 ## Long read assembly & polish
 # nano-hq (if <5% error) or nano-raw
-flye_mode: "nano-hq"
+flye_input_mode: "nano-hq"
+# Run Flye in --meta mode?
+flye_meta_mode: False
+# By default, Flye performs one round of long read polishing after assembly
+flye_polishing_rounds=1
 # model supported by medaka
 medaka_model: "r941_min_sup_g507"
 

@@ -120,12 +120,15 @@ rule assembly_flye:
         "benchmarks/assembly_flye.benchmark.txt"
     params:
         output_dir="assembly/flye",
-        flye_mode=config.get("flye_mode")
+        input_mode=config.get("flye_input_mode"),
+        meta_mode="--meta" if config["flye_meta_mode"] is True else "",
+        polishing_rounds=config.get("flye_polishing_rounds")
     threads:
         config.get("threads",1)
     shell:
         """
-        flye --{params.flye_mode} {input} --out-dir {params.output_dir} -t {threads} > {log} 2>&1
+        flye --{params.input_mode} {input} --out-dir {params.output_dir} {params.meta_mode} \
+          --iterations {params.polishing_rounds} -t {threads} > {log} 2>&1
         """
 
 
