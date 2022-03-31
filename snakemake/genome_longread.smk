@@ -325,13 +325,16 @@ rule short_read_polish:
         temp(touch("checkpoints/short_read_polish"))
 
 
-rule find_circular_contigs:
+# Writes circular.list with the names of circular contigs if there are any circular contigs
+# Writes linear.list with the names of linear contigs if there are any linear contigs
+# Then, the DAG is re-evaluated. Circularization is only run if there are circular contigs.
+# Based on clustering tutorial at https://snakemake.readthedocs.io/en/stable/snakefiles/rules.html (accessed 2022.3.31)
+checkpoint split_circular_and_linear_contigs:
     input:
         assembly_stats="assembly/flye/assembly_info.txt",
         filter_list="polish/cov_filter/filtered_contigs.list"
     output:
-        circular_list="circularize/filter/circular.list",
-        linear_list="circularize/filter/linear.list"
+        directory("circularize/filter/lists")
     run:
         coverage_filtered_contigs = pd.read_csv(input.filter_list, header=None)[0]
 
@@ -341,272 +344,284 @@ rule find_circular_contigs:
         circular_contigs = assembly_info_filtered[assembly_info_filtered['circ.'] == 'Y']
         linear_contigs = assembly_info_filtered[assembly_info_filtered['circ.'] == 'N']
 
-        circular_contigs['#seq_name'].to_csv(output.circular_list, header=None, index=False)
-        linear_contigs['#seq_name'].to_csv(output.linear_list, header=None, index=False)
+        # Only output files if there is >1 entry
+        if circular_contigs.shape[0] > 1:
+            circular_contigs['#seq_name'].to_csv(os.path.join(output[0], 'circular.list'), header=None, index=False)
+
+        if linear_contigs.shape[0] > 1:
+            linear_contigs['#seq_name'].to_csv(os.path.join(output[0], 'linear.list'), header=None, index=False)
 
 
-rule filter_circular_contigs:
+# Makes separate files for circular and linear contigs as needed
+rule get_polished_contigs:
     input:
         contigs="polish/polish.fasta",
-        circular_list="circularize/filter/circular.list",
-        linear_list="circularize/filter/linear.list"
+        list="circularize/filter/lists/{status}.list"
     output:
-        circular="circularize/filter/circular.fasta",
-        linear="circularize/filter/linear.fasta"
+        "circularize/filter/{status}.fasta"
     conda:
         "../envs/mapping.yaml"
     shell:
         """
-        # Note: command still works (and outputs an empty file) if the input list is empty
-        seqtk subseq -l 60 {input.contigs} {input.circular_list} > {output.circular}
-        seqtk subseq -l 60 {input.contigs} {input.linear_list} > {output.linear}
+        seqtk subseq -l 60 {input.contigs} {input.list} > {output}
         """
 
 
-# Get number of circular contigs
-circular_contig_count = 0
-for line in open("circularize/filter/circular.list"):
-    circular_contig_count = circular_contig_count + 1
-
-if circular_contig_count > 0:
-
-    rule hmm_download:
-        output:
-            "circularize/identify/start.hmm"
-        log:
-            "logs/hmm_download.log"
-        benchmark:
-            "benchmarks/hmm_download.txt"
-        params:
-            pfam_id=config.get("start_hmm_pfam_id")
-        shell:
-            """
-            wget -O {output} --no-check-certificate \
-              https://pfam.xfam.org/family/{params.start_hmm_pfam_id}/hmm 2> {log}
-            """
+# TODO - move to download to a re-usable DB folder and then symlink the HMM (if needed) to this folder
+rule hmm_download:
+    output:
+        "circularize/identify/start.hmm"
+    log:
+        "logs/hmm_download.log"
+    benchmark:
+        "benchmarks/hmm_download.txt"
+    params:
+        pfam_id=config.get("start_hmm_pfam_id")
+    shell:
+        """
+        wget -O {output} --no-check-certificate \
+          https://pfam.xfam.org/family/{params.start_hmm_pfam_id}/hmm 2> {log}
+        """
 
 
-    rule search_genome_start:
-        input:
-            contigs="circularize/filter/circular.fasta",
-            hmm="circularize/identify/start.hmm"
-        output:
-            orf_predictions=temp("circularize/identify/circular.faa"),
-            gene_predictions=temp("circularize/identify/circular.ffn"),
-            annotation_gff=temp("circularize/identify/circular.gff"),
-            search_hits="circularize/identify/hmmsearch_hits.txt"
-        conda:
-            "../envs/mapping.yaml"
-        log:
-            "logs/search_genome_start.log"
-        benchmark:
-            "benchmarks/search_genome_start.txt"
-        params:
-            hmmsearch_evalue=config.get("hmmsearch_evalue")
-        threads:
-            config.get("threads",1)
-        shell:
-            """
-            printf "\n\n### Predict genes ###\n" > {log}
-            prodigal -i {input.contigs} -a {output.orf_predictions} -d {output.gene_predictions} \
-              -f gff -o {output.annotation_gff} 2>> {log}
-            
-            printf "\n\n### Find HMM hits ###\n" >> {log}
-            hmmsearch --cpu {threads} -E {params.hmmsearch_evalue} --tblout /dev/stdout -o /dev/stderr \
-              {input.hmm} {output.orf_predictions} > {output.search_hits} 2>> {log}
-            
-            printf "\n\n### Done. ###\n" >> {log}
-            """
+rule search_contig_start:
+    input:
+        contigs="circularize/filter/circular.fasta",
+        hmm="circularize/identify/start.hmm"
+    output:
+        orf_predictions=temp("circularize/identify/circular.faa"),
+        gene_predictions=temp("circularize/identify/circular.ffn"),
+        annotation_gff=temp("circularize/identify/circular.gff"),
+        search_hits="circularize/identify/hmmsearch_hits.txt"
+    conda:
+        "../envs/mapping.yaml"
+    log:
+        "logs/search_genome_start.log"
+    benchmark:
+        "benchmarks/search_genome_start.txt"
+    params:
+        hmmsearch_evalue=config.get("hmmsearch_evalue")
+    threads:
+        config.get("threads",1)
+    shell:
+        """
+        printf "\n\n### Predict genes ###\n" > {log}
+        prodigal -i {input.contigs} -a {output.orf_predictions} -d {output.gene_predictions} \
+          -f gff -o {output.annotation_gff} 2>> {log}
+        
+        printf "\n\n### Find HMM hits ###\n" >> {log}
+        hmmsearch --cpu {threads} -E {params.hmmsearch_evalue} --tblout /dev/stdout -o /dev/stderr \
+          {input.hmm} {output.orf_predictions} > {output.search_hits} 2>> {log}
+        
+        printf "\n\n### Done. ###\n" >> {log}
+        """
 
 
-    rule process_start_genes:
-        input:
-            "circularize/identify/hmmsearch_hits.txt"
-        output:
-            "circularize/identify/start_genes.list"
-        log:
-            "logs/process_start_genes.log"
-        run:
-            # Load HMM search results
-            hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None, comment='#')[[0, 2, 3, 4]]
-            hmmsearch_results.columns = ['orf', 'hmm_name', 'hmm_accession', 'evalue']
+rule process_start_genes:
+    input:
+        "circularize/identify/hmmsearch_hits.txt"
+    output:
+        "circularize/identify/start_genes.list"
+    log:
+        "logs/process_start_genes.log"
+    run:
+        # Load HMM search results
+        hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None, comment='#')[[0, 2, 3, 4]]
+        hmmsearch_results.columns = ['orf', 'hmm_name', 'hmm_accession', 'evalue']
 
-            hmmsearch_results['contig'] = hmmsearch_results['orf'] \
-                .str.split('_',expand=False) \
-                .apply(lambda x: x[:-1]) \
-                .str.join('_')
+        hmmsearch_results['contig'] = hmmsearch_results['orf'] \
+            .str.split('_',expand=False) \
+            .apply(lambda x: x[:-1]) \
+            .str.join('_')
 
-            contig_counts = pd.DataFrame(hmmsearch_results['contig'].value_counts()) \
-                .reset_index() \
-                .rename(columns={'index': 'contig', 'contig': 'count'})
+        contig_counts = pd.DataFrame(hmmsearch_results['contig'].value_counts()) \
+            .reset_index() \
+            .rename(columns={'index': 'contig', 'contig': 'count'})
 
-            # If one contig has multiple HMM hits, throw a warning and take the hit with lowest e-value
-            start_orf_ids = []
+        # If one contig has multiple HMM hits, throw a warning and take the hit with lowest e-value
+        start_orf_ids = []
 
-            for index, row in contig_counts.iterrows():
-                contig, count = row
+        for index, row in contig_counts.iterrows():
+            contig, count = row
 
-                if count == 1:
-                    start_id = hmmsearch_results[hmmsearch_results['contig'] == contig]['orf'].to_list()[0]
-                    start_orf_ids.append(start_id)
+            if count == 1:
+                start_id = hmmsearch_results[hmmsearch_results['contig'] == contig]['orf'].to_list()[0]
+                start_orf_ids.append(start_id)
 
-                elif count > 1:
-                    multistart_orfs = hmmsearch_results[hmmsearch_results['contig'] == contig] \
-                        .sort_values(by='evalue',ascending=True) \
-                        .reset_index(drop=True)
+            elif count > 1:
+                multistart_orfs = hmmsearch_results[hmmsearch_results['contig'] == contig] \
+                    .sort_values(by='evalue',ascending=True) \
+                    .reset_index(drop=True)
 
-                    multistart_orf_ids = multistart_orfs['orf'].to_list()
+                multistart_orf_ids = multistart_orfs['orf'].to_list()
 
-                    print("WARNING: More than one possible start gene on contig '" + str(contig) + "': '" + \
-                          ', '.join(multistart_orf_ids) + "'. Will take the hit with lowest e-value.")
+                print("WARNING: More than one possible start gene on contig '" + str(contig) + "': '" + \
+                      ', '.join(multistart_orf_ids) + "'. Will take the hit with lowest e-value.")
 
-                    # Warn if there are ties
-                    if multistart_orfs['evalue'][0] == multistart_orfs['evalue'][1]:
+                # Warn if there are ties
+                if multistart_orfs['evalue'][0] == multistart_orfs['evalue'][1]:
 
-                        tie_orf_ids = multistart_orfs[multistart_orfs['evalue'] == multistart_orfs['evalue'][0]][
-                            'orf'].to_list()
+                    tie_orf_ids = multistart_orfs[multistart_orfs['evalue'] == multistart_orfs['evalue'][0]][
+                        'orf'].to_list()
 
-                        print('WARNING: Two or more genes tied for the lowest e-value for this contig. ' + \
-                              'This implies there could be something unusual going on with your data.')
-                        print('         All genes with lowest evalue will be output for use by circlator for this contig.')
-                        print('         Gene IDs: ' + ', '.join(tie_orf_ids))
+                    print('WARNING: Two or more genes tied for the lowest e-value for this contig. ' + \
+                          'This implies there could be something unusual going on with your data.')
+                    print('         All genes with lowest evalue will be output for use by circlator for this contig.')
+                    print('         Gene IDs: ' + ', '.join(tie_orf_ids))
 
-                        start_orf_ids = start_orf_ids + tie_orf_ids
+                    start_orf_ids = start_orf_ids + tie_orf_ids
 
-                    else:
-                        # Relies on the dataframe having already been sorted by e-value above
-                        start_orf_ids.append(multistart_orf_ids[0])
+                else:
+                    # Relies on the dataframe having already been sorted by e-value above
+                    start_orf_ids.append(multistart_orf_ids[0])
 
-            pd.Series(start_orf_ids).to_csv(output[0], header=None, index=False)
-
-
-    rule filter_start_genes:
-        input:
-            gene_predictions="circularize/identify/circular.ffn",
-            start_gene_list="circularize/identify/start_genes.list"
-        output:
-            "circularize/identify/start_gene.ffn"
-        conda:
-            "../envs/mapping.yaml"
-        shell:
-            """
-            seqtk subseq {input.gene_predictions} {input.start_gene_list} > {output}
-            """
+        pd.Series(start_orf_ids).to_csv(output[0], header=None, index=False)
 
 
-    rule run_circlator:
-        input:
-            contigs="circularize/filter/circular.fasta",
-            start_gene="circularize/identify/start_gene.ffn"
-        output:
-            "circularize/circlator/rotated.fasta"
-        conda:
-            "../envs/circlator.yaml"
-        log:
-            "logs/circlator.log"
-        benchmark:
-            "benchmarks/circlator.txt"
-        params:
-            min_id=config.get("circlator_min_id"),
-            run_name="circularize/circlator/rotated"
-        shell:
-            """
-            circlator fixstart --min_id {params.min_id} --genes_fa {input.start_gene}\
-              {input.contigs} {params.run_name} > {log} 2>&1
-            
-            printf "\n\n### Circlator log output ###\n" >> {log}
-            cat "circularize/circlator/rotated.log" >> {log}
-            """
+rule get_start_genes:
+    input:
+        gene_predictions="circularize/identify/circular.ffn",
+        start_gene_list="circularize/identify/start_genes.list"
+    output:
+        "circularize/identify/start_gene.ffn"
+    conda:
+        "../envs/mapping.yaml"
+    shell:
+        """
+        seqtk subseq {input.gene_predictions} {input.start_gene_list} > {output}
+        """
 
 
-    # TODO: can I merge this code with the first run of polypolish? The only difference is to change the input/output names and to add the summarizer code at the end
-    rule repolish_polypolish:
-        input:
-            "circularize/circlator/rotated.fasta"
-        output:
-            polypolish_filter="circularize/polypolish/polypolish_insert_filter.py",
-            polypolish="circularize/polypolish/polypolish",
-            mapping_r1=temp("circularize/polypolish/R1.sam"),
-            mapping_r2=temp("circularize/polypolish/R2.sam"),
-            mapping_clean_r1=temp("circularize/polypolish/R1.clean.sam"),
-            mapping_clean_r2=temp("circularize/polypolish/R2.clean.sam"),
-            polished="circularize/polypolish/polypolish.fasta",
-            debug="circularize/polypolish/polypolish.debug.log",
-            debug_stats="stats/polypolish_changes_round2.log"
-        conda:
-            "../envs/mapping.yaml"
-        log:
-            "logs/repolypolish.log"
-        benchmark:
-            "benchmarks/repolypolish.txt"
-        params:
-            polypolish_url="https://github.com/rrwick/Polypolish/releases/download/v0.5.0/polypolish-linux-x86_64-musl-v0.5.0.tar.gz",
-            output_dir="circularize/polypolish",
-            qc_short_r1=config.get("qc_short_r1"),
-            qc_short_r2=config.get("qc_short_r2")
-        threads:
-            config.get("threads",1)
-        shell:
-            """
-            printf "### File download ###\n" > {log}
-            wget -O - {params.polypolish_url} 2>> {log} | tar -C {params.output_dir} -xvzf - >> {log} 2>&1
-            
-            printf "\n\n### Read mapping ###\n" >> {log}
-            bwa index {input} 2>> {log}
-            bwa mem -t {threads} -a {input} {params.qc_short_r1} > {output.mapping_r1} 2>> {log}
-            bwa mem -t {threads} -a {input} {params.qc_short_r2} > {output.mapping_r2} 2>> {log}
-            
-            printf "\n\n### Polypolish insert filter ###\n" >> {log}
-            {output.polypolish_filter} --in1 {output.mapping_r1} --in2 {output.mapping_r2} \
-              --out1 {output.mapping_clean_r1} --out2 {output.mapping_clean_r2} 2>> {log}
-              
-            printf "\n\n### Polypolish ###\n" >> {log}
-            {output.polypolish} {input} --debug {output.debug} \
-              {output.mapping_clean_r1} {output.mapping_clean_r2} 2>> {log} | 
-              seqtk seq -A -l 0 | 
-              awk \'{{ if ($0 ~ /^>/) {{ gsub("_polypolish", ""); print }} else {{ print }} }}\' | 
-              seqtk seq -l 60 > {output.polished} 2>> {log}
-            
-            head -n 1 {output.debug} > {output.debug_stats}
-            grep changed {output.debug} >> {output.debug_stats}
-            
-            printf "\n\n### Done. ###\n"
-            """
+rule run_circlator:
+    input:
+        contigs="circularize/filter/circular.fasta",
+        start_gene="circularize/identify/start_gene.ffn"
+    output:
+        "circularize/circlator/rotated.fasta"
+    conda:
+        "../envs/circlator.yaml"
+    log:
+        "logs/circlator.log"
+    benchmark:
+        "benchmarks/circlator.txt"
+    params:
+        min_id=config.get("circlator_min_id"),
+        run_name="circularize/circlator/rotated"
+    shell:
+        """
+        circlator fixstart --min_id {params.min_id} --genes_fa {input.start_gene}\
+          {input.contigs} {params.run_name} > {log} 2>&1
+        
+        printf "\n\n### Circlator log output ###\n" >> {log}
+        cat "circularize/circlator/rotated.log" >> {log}
+        """
 
 
-    # TODO - consider sorting contigs by length (or by circular and then by length)
-    rule combine_circular_and_linear_contigs:
-        input:
-            circular_rotated="circularize/polypolish/polypolish.fasta",
-            linear="circularize/filter/linear.fasta"
-        output:
-            "circularize/combine/combined.fasta"
-        conda:
-            "../envs/mapping.yaml"
-        shell:
-            """
-            cat {input.circular_rotated} {input.linear} | seqtk seq -l 60 > {output}
-            """
+# TODO: can I merge this code with the first run of polypolish? The only difference is to change the input/output names and to add the summarizer code at the end
+rule repolish_polypolish:
+    input:
+        "circularize/circlator/rotated.fasta"
+    output:
+        polypolish_filter="circularize/polypolish/polypolish_insert_filter.py",
+        polypolish="circularize/polypolish/polypolish",
+        mapping_r1=temp("circularize/polypolish/R1.sam"),
+        mapping_r2=temp("circularize/polypolish/R2.sam"),
+        mapping_clean_r1=temp("circularize/polypolish/R1.clean.sam"),
+        mapping_clean_r2=temp("circularize/polypolish/R2.clean.sam"),
+        polished="circularize/polypolish/polypolish.fasta",
+        debug="circularize/polypolish/polypolish.debug.log",
+        debug_stats="stats/polypolish_changes_round2.log"
+    conda:
+        "../envs/mapping.yaml"
+    log:
+        "logs/repolypolish.log"
+    benchmark:
+        "benchmarks/repolypolish.txt"
+    params:
+        polypolish_url="https://github.com/rrwick/Polypolish/releases/download/v0.5.0/polypolish-linux-x86_64-musl-v0.5.0.tar.gz",
+        output_dir="circularize/polypolish",
+        qc_short_r1=config.get("qc_short_r1"),
+        qc_short_r2=config.get("qc_short_r2")
+    threads:
+        config.get("threads",1)
+    shell:
+        """
+        printf "### File download ###\n" > {log}
+        wget -O - {params.polypolish_url} 2>> {log} | tar -C {params.output_dir} -xvzf - >> {log} 2>&1
+        
+        printf "\n\n### Read mapping ###\n" >> {log}
+        bwa index {input} 2>> {log}
+        bwa mem -t {threads} -a {input} {params.qc_short_r1} > {output.mapping_r1} 2>> {log}
+        bwa mem -t {threads} -a {input} {params.qc_short_r2} > {output.mapping_r2} 2>> {log}
+        
+        printf "\n\n### Polypolish insert filter ###\n" >> {log}
+        {output.polypolish_filter} --in1 {output.mapping_r1} --in2 {output.mapping_r2} \
+          --out1 {output.mapping_clean_r1} --out2 {output.mapping_clean_r2} 2>> {log}
+          
+        printf "\n\n### Polypolish ###\n" >> {log}
+        {output.polypolish} {input} --debug {output.debug} \
+          {output.mapping_clean_r1} {output.mapping_clean_r2} 2>> {log} | 
+          seqtk seq -A -l 0 | 
+          awk \'{{ if ($0 ~ /^>/) {{ gsub("_polypolish", ""); print }} else {{ print }} }}\' | 
+          seqtk seq -l 60 > {output.polished} 2>> {log}
+        
+        head -n 1 {output.debug} > {output.debug_stats}
+        grep changed {output.debug} >> {output.debug_stats}
+        
+        printf "\n\n### Done. ###\n"
+        """
 
 
-    rule symlink_circularization:
+rule finalize_circular_contig_rotation:
+    input:
+        "circularize/polypolish/polypolish.fasta"
+    output:
+        "circularization/combine/circular.fasta"
+    run:
+        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+        os.symlink(source_relpath,str(output))
+
+
+rule bypass_circularization:
+    input:
+        "circularization/filter/linear.fasta"
+    output:
+        "circularization/combine/linear.fasta"
+    run:
+        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+        os.symlink(source_relpath,str(output))
+
+
+# Gets the names of all lists in circularize/filter/lists (should be either circular.list or linear.list or both)
+# Then outputs the expected paths of the finalized circular and linear FastA files
+# This function allows the DAG to figure out whether to run the circular / linear specific processing steps
+#   based on the split_circular_and_linear_contigs checkpoint made earlier.
+def aggregate_contigs(wildcards):
+
+    return expand("circularization/combine/{circular_or_linear}.fasta",
+                  circular_or_linear=glob_wildcards(os.path.join("circularize/filter/lists", "{i}.list")).i)
+
+
+# TODO - consider sorting contigs by length (or by circular and then by length)
+rule combine_circular_and_linear_contigs:
+    input:
+        aggregate_contigs
+    output:
+        "circularize/combine/combined.fasta"
+    conda:
+        "../envs/mapping.yaml"
+    shell:
+        """
+        cat {input} | seqtk seq -l 60 > {output}
+        """
+
+
+rule symlink_circularization:
         input:
             "circularize/combine/combined.fasta"
         output:
             "circularize/circularize.fasta"
         run:
-            source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
-            os.symlink(source_relpath,str(output))
-
-else:
-
-    rule bypass_circularization:
-        input:
-            "circularize/filter/linear.fasta"
-        output:
-            "circularize/circularize.fasta"
-        run:
-            print('No circular contigs, so will bypass circularization.')
             source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
             os.symlink(source_relpath,str(output))
 
