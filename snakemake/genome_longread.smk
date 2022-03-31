@@ -220,7 +220,9 @@ rule polish_polca:
     input:
         "polish/polypolish/polypolish.fasta"
     output:
-        "polish/polca/polca.fasta"
+        "polish/polca/polca.fasta",
+        temp("polish/polca/polypolish.fasta.unSorted.sam"),
+        temp("polish/polca/polypolish.fasta.alignSorted.bam")
     conda:
         "../envs/masurca.yaml"
     log:
