@@ -344,6 +344,8 @@ checkpoint split_circular_and_linear_contigs:
         circular_contigs = assembly_info_filtered[assembly_info_filtered['circ.'] == 'Y']
         linear_contigs = assembly_info_filtered[assembly_info_filtered['circ.'] == 'N']
 
+        os.makedirs(output[0], exist_ok=True)
+
         # Only output files if there is >1 entry
         if circular_contigs.shape[0] > 1:
             circular_contigs['#seq_name'].to_csv(os.path.join(output[0], 'circular.list'), header=None, index=False)
@@ -380,7 +382,7 @@ rule hmm_download:
     shell:
         """
         wget -O {output} --no-check-certificate \
-          https://pfam.xfam.org/family/{params.start_hmm_pfam_id}/hmm 2> {log}
+          https://pfam.xfam.org/family/{params.pfam_id}/hmm 2> {log}
         """
 
 
@@ -396,22 +398,22 @@ rule search_contig_start:
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/search_genome_start.log"
+        "logs/search_contig_start.log"
     benchmark:
-        "benchmarks/search_genome_start.txt"
+        "benchmarks/search_contig_start.txt"
     params:
         hmmsearch_evalue=config.get("hmmsearch_evalue")
     threads:
         config.get("threads",1)
     shell:
         """
-        printf "\n\n### Predict genes ###\n" > {log}
+        printf "### Predict genes ###\n" > {log}
         prodigal -i {input.contigs} -a {output.orf_predictions} -d {output.gene_predictions} \
           -f gff -o {output.annotation_gff} 2>> {log}
         
-        printf "\n\n### Find HMM hits ###\n" >> {log}
-        hmmsearch --cpu {threads} -E {params.hmmsearch_evalue} --tblout /dev/stdout -o /dev/stderr \
-          {input.hmm} {output.orf_predictions} > {output.search_hits} 2>> {log}
+        printf "\n\n### Find HMM hits ###\n\n" >> {log}
+        hmmsearch --cpu {threads} -E {params.hmmsearch_evalue} --tblout {output.search_hits} -o /dev/stdout \
+          {input.hmm} {output.orf_predictions} >> {log} 2>&1
         
         printf "\n\n### Done. ###\n" >> {log}
         """
@@ -512,7 +514,7 @@ rule run_circlator:
         circlator fixstart --min_id {params.min_id} --genes_fa {input.start_gene}\
           {input.contigs} {params.run_name} > {log} 2>&1
         
-        printf "\n\n### Circlator log output ###\n" >> {log}
+        printf "### Circlator log output ###\n" >> {log}
         cat "circularize/circlator/rotated.log" >> {log}
         """
 
@@ -576,7 +578,7 @@ rule finalize_circular_contig_rotation:
     input:
         "circularize/polypolish/polypolish.fasta"
     output:
-        "circularization/combine/circular.fasta"
+        "circularize/combine/circular.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -584,9 +586,9 @@ rule finalize_circular_contig_rotation:
 
 rule bypass_circularization:
     input:
-        "circularization/filter/linear.fasta"
+        "circularize/filter/linear.fasta"
     output:
-        "circularization/combine/linear.fasta"
+        "circularize/combine/linear.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -597,8 +599,10 @@ rule bypass_circularization:
 # This function allows the DAG to figure out whether to run the circular / linear specific processing steps
 #   based on the split_circular_and_linear_contigs checkpoint made earlier.
 def aggregate_contigs(wildcards):
+    # TODO - I do not further use this variable, but checkpoints needs to be called to trigger the checkpoint. Am I doing something wrong?
+    checkpoint_output = checkpoints.split_circular_and_linear_contigs.get(**wildcards).output[0]
 
-    return expand("circularization/combine/{circular_or_linear}.fasta",
+    return expand("circularize/combine/{circular_or_linear}.fasta",
                   circular_or_linear=glob_wildcards(os.path.join("circularize/filter/lists", "{i}.list")).i)
 
 
@@ -789,6 +793,8 @@ rule calculate_final_long_read_coverage:
 
 
 rule symlink_logs:
+    input:
+        "annotation/coverage/short_read_coverage.tsv"
     output:
         logs=temp(directory("annotation/logs")),
         stats=temp(directory("annotation/stats"))
