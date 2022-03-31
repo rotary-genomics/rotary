@@ -802,36 +802,39 @@ rule run_gtdbtk:
         """
 
 
-# TODO - clarify name compared to previous mapping step
-rule calculate_final_short_read_coverage:
-    input:
-        "annotation/dfast/genome.fna"
-    output:
-        mapping="annotation/coverage/short_read.bam",
-        coverage="annotation/coverage/short_read_coverage.tsv"
-    conda:
-        "../envs/mapping.yaml"
-    log:
-        "logs/calculate_final_short_read_coverage.log"
-    benchmark:
-        "benchmarks/calculate_final_short_read_coverage.txt"
-    params:
-        qc_short_r1=config.get("qc_short_r1"),
-        qc_short_r2=config.get("qc_short_r2")
-    threads:
-        config.get("threads",1)
-    resources:
-        mem=int(config.get("memory") / config.get("threads",1))
-    shell:
-        """
-        bwa index {input} 2> {log}
-        bwa mem -t {threads} {input} {params.qc_short_r1} {params.qc_short_r2} 2>> {log} | \
-          samtools view -b -@ {threads} 2>> {log} | \
-          samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
-          > {output.mapping}
-        samtools index -@ {threads} {output.mapping}
-        samtools coverage {output.mapping} > {output.coverage}
-        """
+if config.get("qc_short_r1") is not None:
+
+    # TODO - clarify name compared to previous mapping step
+    rule calculate_final_short_read_coverage:
+        input:
+            "annotation/dfast/genome.fna"
+        output:
+            mapping="annotation/coverage/short_read.bam",
+            index="annotation/coverage/short_read.bam.bai",
+            coverage="annotation/coverage/short_read_coverage.tsv"
+        conda:
+            "../envs/mapping.yaml"
+        log:
+            "logs/calculate_final_short_read_coverage.log"
+        benchmark:
+            "benchmarks/calculate_final_short_read_coverage.txt"
+        params:
+            qc_short_r1=config.get("qc_short_r1"),
+            qc_short_r2=config.get("qc_short_r2")
+        threads:
+            config.get("threads",1)
+        resources:
+            mem=int(config.get("memory") / config.get("threads",1))
+        shell:
+            """
+            bwa index {input} 2> {log}
+            bwa mem -t {threads} {input} {params.qc_short_r1} {params.qc_short_r2} 2>> {log} | \
+              samtools view -b -@ {threads} 2>> {log} | \
+              samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
+              > {output.mapping}
+            samtools index -@ {threads} {output.mapping}
+            samtools coverage {output.mapping} > {output.coverage}
+            """
 
 
 rule calculate_final_long_read_coverage:
@@ -840,6 +843,7 @@ rule calculate_final_long_read_coverage:
         qc_long_reads="qc_long/nanopore_qc.fastq.gz"
     output:
         mapping="annotation/coverage/long_read.bam",
+        index="annotation/coverage/long_read.bam.bai",
         coverage="annotation/coverage/long_read_coverage.tsv"
     conda:
         "../envs/mapping.yaml"
@@ -864,7 +868,7 @@ rule calculate_final_long_read_coverage:
 
 rule symlink_logs:
     input:
-        "annotation/coverage/short_read_coverage.tsv"
+        "annotation/coverage/long_read_coverage.tsv"
     output:
         logs=temp(directory("annotation/logs")),
         stats=temp(directory("annotation/stats"))
@@ -880,24 +884,29 @@ rule symlink_logs:
 
 
 # TODO - can I remove the use of cd?
+# TODO - I currently avoid writing to the log directory during zip because the folder is being zipped,
+#        but the resulting code seems a bit unnatural
 rule summarize_annotation:
     input:
         "annotation/dfast/genome.fna",
         "annotation/eggnog/eggnog.emapper.annotations",
         "annotation/gtdbtk/gtdbtk.summary.tsv",
-        "annotation/coverage/short_read_coverage.tsv",
-        "annotation/coverage/long_read_coverage.tsv",
+        expand("annotation/coverage/{type}_coverage.tsv",
+            type=glob_wildcards("annotation/coverage/{type}_coverage.tsv").type),
         "annotation/logs",
         "annotation/stats"
     output:
         "summary.zip"
+    log:
+        "logs/summarize_annotation.log"
     params:
         zipdir="annotation"
     shell:
         """
         cd {params.zipdir}
-        zip -r ../{output} * -x \*.bam\* gtdbtk/run_files/\*
+        zip -r ../{output} * -x \*.bam\* gtdbtk/run_files/\* 2> "../summarize_annotation.log"
         cd ..
+        mv "summarize_annotation.log" {log}
         """
 
 
