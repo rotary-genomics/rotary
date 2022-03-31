@@ -121,7 +121,7 @@ rule assembly_flye:
     params:
         output_dir="assembly/flye",
         input_mode=config.get("flye_input_mode"),
-        meta_mode="--meta" if config["flye_meta_mode"] is True else "",
+        meta_mode="--meta" if config.get("flye_meta_mode") is True else "",
         polishing_rounds=config.get("flye_polishing_rounds")
     threads:
         config.get("threads",1)
@@ -274,7 +274,7 @@ rule calculate_short_read_coverage:
     output:
         mapping=temp("polish/cov_filter/short_read.bam"),
         mapping_index=temp("polish/cov_filter/short_read.bam.bai"),
-        coverage="polish/cov_filter/coverage.tsv"
+        coverage="polish/cov_filter/short_read_coverage.tsv"
     conda:
         "../envs/mapping.yaml"
     log:
@@ -301,11 +301,42 @@ rule calculate_short_read_coverage:
         """
 
 
+# This rule is only run if short read aren't provided
+rule calculate_long_read_coverage:
+    input:
+        contigs="polish/medaka/consensus.fasta",
+        qc_long_reads="qc_long/nanopore_qc.fastq.gz"
+    output:
+        mapping=temp("polish/cov_filter/long_read.bam"),
+        mapping_index=temp("polish/cov_filter/long_read.bam.bai"),
+        coverage="polish/cov_filter/long_read_coverage.tsv"
+    conda:
+        "../envs/mapping.yaml"
+    log:
+        "logs/calculate_long_read_coverage.log"
+    benchmark:
+        "benchmarks/calculate_long_read_coverage.txt"
+    threads:
+        config.get("threads",1)
+    resources:
+        mem=int(config.get("memory") / config.get("threads",1))
+    shell:
+        """
+        # Note that -F 4 removes unmapped reads
+        minimap2 -t {threads} -ax map-ont {input.contigs} {input.qc_long_reads} 2> {log} | \
+          samtools view -b -F 4 -@ {threads} 2>> {log} | \
+          samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
+          > {output.mapping}
+        samtools index -@ {threads} {output.mapping}
+        samtools coverage {output.mapping} > {output.coverage}
+        """
+
+
 rule summarize_contigs_by_coverage:
     input:
-        "polish/cov_filter/coverage.tsv"
+        "polish/cov_filter/{type}_coverage.tsv"
     output:
-        "polish/cov_filter/filtered_contigs.list"
+        "polish/cov_filter/contigs_filtered_by_{type}_coverage.list"
     params:
         meandepth_cutoff=config.get("meandepth_cutoff"),
         evenness_cutoff=config.get("evenness_cutoff")
@@ -317,33 +348,37 @@ rule summarize_contigs_by_coverage:
         coverage_filtered['#rname'].to_csv(output[0], header=None, index=False)
 
 
-rule filter_contigs_by_coverage:
-    input:
-        contigs="polish/polca/polca.fasta",
-        filter_list="polish/cov_filter/filtered_contigs.list"
-    output:
-        "polish/cov_filter/filtered_contigs.fasta"
-    conda:
-        "../envs/mapping.yaml"
-    shell:
-        """
-        seqtk subseq -l 60 {input.contigs} {input.filter_list} > {output}
-        """
-
-
 if config.get("qc_short_r1") is None:
-    # TODO - filter by long read coverage (> 10) to keep
-    rule symlink_medaka_polish:
+
+    rule filter_contigs_by_long_read_coverage:
         input:
-            "polish/medaka/consensus.fasta"
+            contigs="polish/medaka/consensus.fasta",
+            filter_list="polish/cov_filter/contigs_filtered_by_long_read_coverage.list"
         output:
-            "polish/polish.fasta"
-        run:
-            source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
-            os.symlink(source_relpath,str(output))
+            "polish/cov_filter/filtered_contigs.fasta"
+        conda:
+            "../envs/mapping.yaml"
+        shell:
+            """
+            seqtk subseq -l 60 {input.contigs} {input.filter_list} > {output}
+            """
 
 else:
-    rule symlink_polca_polish:
+    rule filter_contigs_by_short_read_coverage:
+        input:
+            contigs="polish/polca/polca.fasta",
+            filter_list="polish/cov_filter/contigs_filtered_by_short_read_coverage.list"
+        output:
+            "polish/cov_filter/filtered_contigs.fasta"
+        conda:
+            "../envs/mapping.yaml"
+        shell:
+            """
+            seqtk subseq -l 60 {input.contigs} {input.filter_list} > {output}
+            """
+
+
+rule symlink_polish:
         input:
             "polish/cov_filter/filtered_contigs.fasta"
         output:
@@ -542,7 +577,7 @@ rule run_circlator:
     benchmark:
         "benchmarks/circlator.txt"
     params:
-        min_id=config.get("circlator_min_id"),
+        min_id=90,
         run_name="circularize/circlator/rotated"
     shell:
         """

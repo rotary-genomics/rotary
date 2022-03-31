@@ -1,45 +1,53 @@
 # Config file for running Nanopore genome assembly
 
+#####################
+## Sample information
+sample_id: "E_coli"
+# Nanopore data
+longreads: "E_coli.fastq.gz"
+# QC'ed short reads
+# Set qc_short_r1 (and qc_short_r1) to None (no quotes) to skip short read polishing
+qc_short_r1: "QC_R1.fastq.gz"
+qc_short_r2: "QC_R2.fastq.gz"
+#####################
+
 ## Resources
 threads: 40
 # Memory in Gigabytes
 memory: 200
 
-# Sample ID
-sample_id: "E_coli"
-
-## Nanopore data
-longreads: "E_coli.fastq.gz"
-
-## QC - bbmap
+## Long read QC
+# Minimum read length
 minlength: 1000
+# Minimum average quality (PHRED) score. Q13 is ~5% expected error rate.
 minavgquality: 13
 
-## Long read assembly & polish
+## Assembly
 # nano-hq (if <5% error) or nano-raw
 flye_input_mode: "nano-hq"
-# Run Flye in --meta mode?
+# Run Flye in --meta mode? (True or False, no quotation marks)
 flye_meta_mode: False
 # By default, Flye performs one round of long read polishing after assembly
-flye_polishing_rounds=1
-# model supported by medaka
+flye_polishing_rounds: 1
+
+## Polishing
+# Can set to any model supported by medaka
 medaka_model: "r941_min_sup_g507"
 
-## Short read polishing
-# QC'ed short reads
-# Set qc_short_r1 (and qc_short_r1) to None to skip short read polishing
-qc_short_r1: "QC_R1.fastq.gz"
-qc_short_r2: "QC_R2.fastq.gz"
-# Only contigs with this or greater mean short read depth will be kept (e.g., 10x)
+## Post-polishing contig filter
+# Note: Short reads are used for the filter if short reads are provided; otherwise long reads are used.
+#       The logic here is that long reads alone can't (currently) remove all errors from genomes, so short reads
+#       are preferred for the final polish if they are available.
+# Only contigs with this or greater mean read depth will be kept (e.g., 10x)
 meandepth_cutoff: 10
-# Only contigs with this or greater % of bases covered by short reads will be kept (e.g., 95%)
+# Only contigs with this or greater % of bases covered by reads will be kept (e.g., 95%)
 evenness_cutoff: 95
 
 ## Circularization
+# Download the following HMM from Pfam to look for a start gene
 # DnaA is PF00308
 start_hmm_pfam_id: "PF00308"
 hmmsearch_evalue: 1e-40
-circlator_min_id: 90
 
 ## Annotation
 dfast_db: "/Data/jmtsuji/databases_211111_legacy/dfast"
