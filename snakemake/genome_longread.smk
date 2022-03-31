@@ -123,7 +123,7 @@ rule assembly_flye:
     params:
         output_dir="assembly/flye",
         input_mode=config.get("flye_input_mode"),
-        meta_mode="--meta" if config.get("flye_meta_mode") is True else "",
+        meta_mode="--meta" if config.get("flye_meta_mode") == "True" else "",
         polishing_rounds=config.get("flye_polishing_rounds")
     threads:
         config.get("threads",1)
@@ -272,7 +272,7 @@ rule polish_polca:
 # Conditional based on whether short read polishing was performed
 rule pre_coverage_filter:
     input:
-        "polish/medaka/consensus.fasta" if config.get("qc_short_r1") is None else "polish/polca/polca.fasta"
+        "polish/medaka/consensus.fasta" if config.get("qc_short_r1") == "None" else "polish/polca/polca.fasta"
     output:
         "polish/cov_filter/pre_filtered.fasta"
     run:
@@ -281,8 +281,11 @@ rule pre_coverage_filter:
 
 
 # Different coverage methods can be used for the filter: short, long, a combo, or neither (bypass)
-if (config.get("qc_short_r1") is not None) & \
-        ((config.get("meandepth_cutoff_short_read") is not None) | (config.get("evenness_cutoff_short_read") is not None)):
+filtration_method = []
+
+if (config.get("qc_short_r1") != "None") & \
+        ((config.get("meandepth_cutoff_short_read") != "None") | (config.get("evenness_cutoff_short_read") != "None")):
+    filtration_method.append("short_read")
 
     # TODO - consider mapping to medaka polished contigs instead
     rule calculate_short_read_coverage:
@@ -318,7 +321,8 @@ if (config.get("qc_short_r1") is not None) & \
             """
 
 
-if (config.get("meandepth_cutoff_long_read") is not None) | (config.get("evenness_cutoff_long_read") is not None):
+if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_cutoff_long_read") != "None"):
+    filtration_method.append("long_read")
 
     rule calculate_long_read_coverage:
         input:
@@ -350,23 +354,10 @@ if (config.get("meandepth_cutoff_long_read") is not None) | (config.get("evennes
             """
 
 
-if (config.get("meandepth_cutoff_short_read") is not None) & (config.get("evenness_cutoff_short_read") is not None) & \
-        (config.get("meandepth_cutoff_long_read") is not None) & (config.get("evenness_cutoff_long_read") is not None):
-
-    rule bypass_coverage_filter:
-        input:
-            "polish/cov_filter/pre_filtered.fasta"
-        output:
-            "polish/cov_filter/filtered_contigs.fasta"
-        run:
-            source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
-            os.symlink(source_relpath,str(output))
-
-
 rule summarize_contigs_by_coverage:
     input:
         expand("polish/cov_filter/{type}_coverage.tsv",
-          type=glob_wildcards("polish/cov_filter/{type}_coverage.tsv".type))
+          type=filtration_method)
     output:
         "polish/cov_filter/filtered_contigs.list"
     params:
@@ -403,7 +394,7 @@ rule summarize_contigs_by_coverage:
                 sys.exit("At least one unexpected coverage file detected in 'polish/cov_filter'.")
 
             set1 = set(filter_coverage_data(input_list[0], params.meandepth_long, params.evenness_long))
-            set2 = set(filter_coverage_data(input_list[1], params.meandepth_short, params.evenness_short)
+            set2 = set(filter_coverage_data(input_list[1], params.meandepth_short, params.evenness_short))
 
             pd.Series(set1.union(set2)).to_csv(output[0], header=None, index=False)
 
@@ -411,18 +402,32 @@ rule summarize_contigs_by_coverage:
             sys.exit("More than 2 coverage files detected in 'polish/cov_filter'.")
 
 
-rule filter_contigs_by_coverage:
-    input:
-        contigs="polish/medaka/consensus.fasta" if config.get("qc_short_r1") is None else "polish/polca/polca.fasta",
-        filter_list="polish/cov_filter/filtered_contigs.list"
-    output:
-        "polish/cov_filter/filtered_contigs.fasta"
-    conda:
-        "../envs/mapping.yaml"
-    shell:
-        """
-        seqtk subseq -l 60 {input.contigs} {input.filter_list} > {output}
-        """
+if (config.get("meandepth_cutoff_short_read") == "None") & (config.get("evenness_cutoff_short_read") == "None") & \
+        (config.get("meandepth_cutoff_long_read") == "None") & (config.get("evenness_cutoff_long_read") == "None"):
+
+    rule bypass_coverage_filter:
+        input:
+            "polish/cov_filter/pre_filtered.fasta"
+        output:
+            "polish/cov_filter/filtered_contigs.fasta"
+        run:
+            source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+            os.symlink(source_relpath,str(output))
+
+else:
+
+    rule filter_contigs_by_coverage:
+        input:
+            contigs="polish/medaka/consensus.fasta" if config.get("qc_short_r1") == "None" else "polish/polca/polca.fasta",
+            filter_list="polish/cov_filter/filtered_contigs.list"
+        output:
+            "polish/cov_filter/filtered_contigs.fasta"
+        conda:
+            "../envs/mapping.yaml"
+        shell:
+            """
+            seqtk subseq -l 60 {input.contigs} {input.filter_list} > {output}
+            """
 
 
 rule symlink_polish:
@@ -849,7 +854,7 @@ rule run_gtdbtk:
         """
 
 
-if config.get("qc_short_r1") is not None:
+if config.get("qc_short_r1") != "None":
 
     # TODO - clarify name compared to previous mapping step
     rule calculate_final_short_read_coverage:
@@ -939,7 +944,7 @@ rule summarize_annotation:
         "annotation/eggnog/eggnog.emapper.annotations",
         "annotation/gtdbtk/gtdbtk.summary.tsv",
         expand("annotation/coverage/{type}_coverage.tsv",
-            type=glob_wildcards("annotation/coverage/{type}_coverage.tsv").type),
+            type=["short_read", "long_read"] if config.get("qc_short_r1") != "None" else ["long_read"]),
         "annotation/logs",
         "annotation/stats"
     output:
