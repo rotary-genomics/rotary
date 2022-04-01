@@ -381,8 +381,10 @@ rule summarize_contigs_by_coverage:
         if len(input_list) == 1:
             if input_list[0] == "polish/cov_filter/short_read_coverage.tsv":
                 contigs = filter_coverage_data(input_list[0], params.meandepth_short, params.evenness_short)
+
             elif input_list[0] == "polish/cov_filter/long_read_coverage.tsv":
                 contigs = filter_coverage_data(input_list[0], params.meandepth_long, params.evenness_long)
+
             else:
                 sys.exit("One unexpected coverage file detected in 'polish/cov_filter'.")
 
@@ -396,10 +398,12 @@ rule summarize_contigs_by_coverage:
             set1 = set(filter_coverage_data(input_list[0], params.meandepth_long, params.evenness_long))
             set2 = set(filter_coverage_data(input_list[1], params.meandepth_short, params.evenness_short))
 
-            pd.Series(set1.union(set2)).to_csv(output[0], header=None, index=False)
+            contigs = pd.Series(set1.union(set2))
 
         else:
             sys.exit("More than 2 coverage files detected in 'polish/cov_filter'.")
+
+        contigs.to_csv(output[0],header=None,index=False)
 
 
 if (config.get("meandepth_cutoff_short_read") == "None") & (config.get("evenness_cutoff_short_read") == "None") & \
