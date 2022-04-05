@@ -9,140 +9,18 @@ readonly VERSION="0.1.0"
 readonly SCRIPT_NAME="${0##*/}"
 readonly SCRIPT_DIR=$(realpath "${0%/*}")
 
-
-readonly bam_file="${outdir}/long_read.bam"
-readonly end_repaired_contigs="${outdir}/repaired.fasta"
-readonly log="${outdir}/end_repair.log"
-readonly verbose="${outdir}/end_repair_verbose.log"
-
-# Initialize log files
-mkdir "${outdir}"
-printf "" > "${log}"
-printf "" > "${verbose}"
-
-echo "[ $(date -u) ]: Starting Flye-nano end repair pipeline" | tee -a "${log}" | tee -a "${verbose}"
-echo "[ $(date -u) ]: Mapping reads to all contigs" | tee -a "${log}" | tee -a "${verbose}"
-
-# Map reads
-# TODO - add support for different flags like -ax for pacbio
-minimap2 -t "${threads}" -ax map-ont "${all_contigs}" "${qc_long}" 2>> "${verbose}" | \
-  samtools view -b -@ "${threads}" 2>> "${verbose}" | \
-  samtools sort -@ "${threads}" -m "${thread_mem}G" 2>> "${verbose}" \
-  > "${bam_file}"
-samtools index -@ "${threads}" "${bam_file}" 2>> "${log}"
-
-# Get a list of circular contigs
-"${SCRIPT_DIR}/circular_contig_toolkit.py" -i "${circular_info}" -a "${outdir}/circular_contigs.list" 2>> "${verbose}"
-
-if [[ $(cat "${outdir}/circular_contigs.list" | wc -l) == 0 ]]; then
-
-  echo "[ $(date -u) ]: No circular contigs, so making a copy of the input file and finishing early." | \
-    tee -a "${log}" | tee -a "${verbose}"
-
-  cp "${all_contigs}" "${end_repaired_contigs}"
-  exit 0
-
-fi
-
-circular_contigs=($(cat "${outdir}/circular_contigs.list"))
-failed_contigs=0
-
-mkdir -p "${outdir}/circlator_logs"
-printf "" > "${end_repaired_contigs}"
-
-for contig in "${circular_contigs[@]}"; do
-
-  mkdir -p "${outdir}/${contig}"
-  echo "[ $(date -u) ]: End repair: '${contig}'" | tee -a "${log}" | tee -a "${verbose}"
-  
-  assembly="${outdir}/${contig}/${contig}.fasta"
-  
-  echo "${contig}" > "${outdir}/${contig}/${contig}.list"
-  seqtk subseq -l 60 "${all_contigs}" "${outdir}/${contig}/${contig}.list" > "${assembly}" 2>> "${verbose}"
-
-  # TODO - allow user to set the length cutoff range
-  for length_cutoff in 100000 90000 80000 70000 60000 50000; do
-  
-    lenout="${outdir}/${contig}/L${length_cutoff}"
-    regions="${lenout}/ends.bed"
-    fastq="${lenout}/ends.fastq.gz"
-    reassembly_dir="${lenout}/assembly"
-    merge_dir="${lenout}/merge"
-    
-    mdkir -p "${lenout}"
-
-    echo "[ $(date -u) ]: End repair: '${contig}': attempting at ${length_cutoff} bp from ends"\
-      | tee -a "${log}" | tee -a "${verbose}"
-    "${SCRIPT_DIR}/circular_contig_toolkit.py" -i "${circular_info}" -n "${contig}" -l "${length_cutoff}" \
-      -b "${regions}" 2>> "${verbose}"
-
-    samtools view -@ "${threads}" -L "${regions}" -b "${bam_file}" 2>> "${verbose}" | \
-      samtools fastq -0 "${fastq}" -n -@ "${threads}" 2>> "${verbose}"
-
-    flye "--${flye_assembly_mode}" "${fastq}" -o "${reassembly_dir}" -t "${threads}" >> "${verbose}" 2>&1
-    # TODO: add support for optional flags like --meta
-
-    mkdir -p "${merge_dir}"
-    circlator merge --verbose --min_id "${circlator_min_id}" --min_length "${circlator_min_length}" \
-      "${assembly}" "${reassembly_dir}/assembly.fasta" "${merge_dir}/merge" >> "${verbose}" 2>&1
-    
-    pass_circularization=$("${SCRIPT_DIR}/check_circlator_status.py" -i "${merge_dir}/merge.circularise.log")
-    
-    mkdir -p "${outdir}/${contig}/logs/L${length_cutoff}"
-    cp "${merge_dir}/merge.circularise_details.log" "${reassembly_dir}/assembly_info.txt" \
-      "${outdir}/${contig}/logs/L${length_cutoff}"
-    
-    if [[ "${pass_circularization}" == "true" ]]; then
-
-      echo "[ $(date -u) ]: End repair: '${contig}': successfully linked contig ends" | \
-        tee -a "${log}" | tee -a "${verbose}"
-
-      seqtk seq -l 60 "${merge_dir}/merge.fasta" >> "${end_repaired_contigs}"
-
-      cp "${merge_dir}/merge.circularise_details.log" "${outdir}/circlator_logs/${contig}.log"
-
-      rm -r "${outdir:?}/${contig}"
-
-      break
-    fi
-
-  done
-
-  # If loop finishes without successful circularization
-  echo "[ $(date -u) ]: End repair: '${contig}': FAILED to linked contig ends" | tee -a "${log}" | tee -a "${verbose}"
-
-  failed_contigs=$((failed_contigs + 1))
-
-  mkdir -p "${outdir}/troubleshooting"
-  mv "${outdir}/${contig}/logs" "${outdir}/troubleshooting/${contig}"
-  rm -r "${outdir:?}/${contig}"
-
-done
-
-if [[ ${failed_contigs} -gt 0 ]]; then
-  echo "[ $(date -u) ]: End repair: ${failed_contigs} could not be circularized and were not included in the final output file. Exiting with error status. See temporary files for more details." | tee -a ${log} | tee -a "${verbose}"
-  exit 1
-
-else
-  echo "[ $(date -u) ]: End repair finished. Output contigs saved at '${end_repaired_contigs}'." | tee -a ${log} | tee -a "${verbose}"
-  
-  # Clean up temp files
-  rm "${bam_file}" "${bam_file}.bai"
-fi
-
 #######################################
-# Perform the 'run' command
+# Runs the end repair pipeline
 # Globals:
-#   SCRIPT_NAME: the name of this script
-#   VERSION: the script version
-#   SNAKEFILE: the path to the Snakefile used to run BackBLAST
+#   SCRIPT_DIR: the directory where this script is stored
 # Arguments:
-#   all command line inputs for the 'run' module - see help statement below
+#   all command line inputs for 'main' - see help statement below
 # Returns:
-#   runs the 'run' command end-to-end
+#   runs the end repair pipeline end-to-end
 #######################################
 function run_pipeline() {
 
+  # Parse input
   local qc_long
   qc_long=$1
   local all_contigs
@@ -161,6 +39,129 @@ function run_pipeline() {
   threads=$8
   local thread_mem
   thread_mem=$9
+
+  # Settings
+  local bam_file
+  bam_file="${outdir}/long_read.bam"
+  local end_repaired_contigs
+  end_repaired_contigs="${outdir}/repaired.fasta"
+  local verbose
+  verbose="${outdir}/verbose.log"
+
+  # Initialize log file
+  mkdir "${outdir}"
+  printf "" > "${verbose}"
+
+  echo "[ $(date -u) ]: Starting Flye-nano end repair pipeline" | tee -a "${verbose}"
+  echo "[ $(date -u) ]: Mapping reads to all contigs" | tee -a "${verbose}"
+
+  # Map reads
+  # TODO - add support for different flags like -ax for pacbio
+  minimap2 -t "${threads}" -ax map-ont "${all_contigs}" "${qc_long}" 2>> "${verbose}" | \
+    samtools view -b -@ "${threads}" 2>> "${verbose}" | \
+    samtools sort -@ "${threads}" -m "${thread_mem}G" 2>> "${verbose}" \
+    > "${bam_file}"
+  samtools index -@ "${threads}" "${bam_file}" 2>> "${verbose}"
+
+  # Get a list of circular contigs
+  "${SCRIPT_DIR}/circular_contig_toolkit.py" -i "${circular_info}" -a "${outdir}/circular_contigs.list" 2>> "${verbose}"
+
+  if [[ $(cat "${outdir}/circular_contigs.list" | wc -l) == 0 ]]; then
+
+    echo "[ $(date -u) ]: No circular contigs. Will copy the input file and finish early." | tee -a "${verbose}"
+
+    cp "${all_contigs}" "${end_repaired_contigs}"
+    exit 0
+
+  fi
+
+  local circular_contigs
+  circular_contigs=($(cat "${outdir}/circular_contigs.list"))
+  local failed_contigs
+  failed_contigs=0
+
+  mkdir -p "${outdir}/circlator_logs"
+  printf "" > "${end_repaired_contigs}"
+
+  for contig in "${circular_contigs[@]}"; do
+
+    mkdir -p "${outdir}/${contig}"
+    echo "[ $(date -u) ]: End repair: '${contig}'" | tee -a "${verbose}"
+
+    assembly="${outdir}/${contig}/${contig}.fasta"
+
+    echo "${contig}" > "${outdir}/${contig}/${contig}.list"
+    seqtk subseq -l 60 "${all_contigs}" "${outdir}/${contig}/${contig}.list" > "${assembly}" 2>> "${verbose}"
+
+    # TODO - allow user to set the length cutoff range
+    for length_cutoff in 100000 90000 80000 70000 60000 50000; do
+
+      lenout="${outdir}/${contig}/L${length_cutoff}"
+      regions="${lenout}/ends.bed"
+      fastq="${lenout}/ends.fastq.gz"
+      reassembly_dir="${lenout}/assembly"
+      merge_dir="${lenout}/merge"
+
+      mdkir -p "${lenout}"
+
+      echo "[ $(date -u) ]: End repair: '${contig}': attempting at ${length_cutoff} bp from ends" | tee -a "${verbose}"
+      "${SCRIPT_DIR}/circular_contig_toolkit.py" -i "${circular_info}" -n "${contig}" -l "${length_cutoff}" \
+        -b "${regions}" 2>> "${verbose}"
+
+      samtools view -@ "${threads}" -L "${regions}" -b "${bam_file}" 2>> "${verbose}" | \
+        samtools fastq -0 "${fastq}" -n -@ "${threads}" 2>> "${verbose}"
+
+      flye "--${flye_read_mode}" "${fastq}" -o "${reassembly_dir}" -t "${threads}" >> "${verbose}" 2>&1
+      # TODO: add support for optional flags like --meta
+
+      mkdir -p "${merge_dir}"
+      circlator merge --verbose --min_id "${circlator_min_id}" --min_length "${circlator_min_length}" \
+        "${assembly}" "${reassembly_dir}/assembly.fasta" "${merge_dir}/merge" >> "${verbose}" 2>&1
+
+      pass_circularization=$("${SCRIPT_DIR}/check_circlator_status.py" -i "${merge_dir}/merge.circularise.log")
+
+      mkdir -p "${outdir}/${contig}/logs/L${length_cutoff}"
+      cp "${merge_dir}/merge.circularise_details.log" "${reassembly_dir}/assembly_info.txt" \
+        "${outdir}/${contig}/logs/L${length_cutoff}"
+
+      # If the contig was circularized correctly, exit early
+      if [[ "${pass_circularization}" == "true" ]]; then
+
+        echo "[ $(date -u) ]: End repair: '${contig}': successfully linked contig ends" | tee -a "${verbose}"
+
+        seqtk seq -l 60 "${merge_dir}/merge.fasta" >> "${end_repaired_contigs}"
+        cp "${merge_dir}/merge.circularise_details.log" "${outdir}/circlator_logs/${contig}.log"
+        rm -r "${outdir:?}/${contig}"
+
+        break
+
+      fi
+
+    done
+
+    # If loop finishes without successful circularization
+    echo "[ $(date -u) ]: End repair: '${contig}': FAILED to linked contig ends" | tee -a "${verbose}"
+
+    failed_contigs=$((failed_contigs + 1))
+
+    mkdir -p "${outdir}/troubleshooting"
+    mv "${outdir}/${contig}/logs" "${outdir}/troubleshooting/${contig}"
+    rm -r "${outdir:?}/${contig}"
+
+  done
+
+  if [[ ${failed_contigs} -gt 0 ]]; then
+    printf "[ $(date -u) ]: End repair: %s contigs could not be circularized " "${failed_contigs}" | tee -a "${verbose}"
+    printf "and were not included in the final output file. Exiting with error status. " | tee -a "${verbose}"
+    printf "See temporary files for more details.\n" | tee -a "${verbose}"
+    exit 1
+
+  else
+    echo "[ $(date -u) ]: End repair finished. Output contigs saved at '${end_repaired_contigs}'." | tee -a "${verbose}"
+
+    # Clean up temp files
+    rm "${bam_file}" "${bam_file}.bai"
+  fi
 
 }
 
@@ -248,8 +249,8 @@ function main() {
   local outdir
   outdir=$4
 
-  echo "[ $(date -u) ]: Running ${SCRIPT_NAME}" >&2
-  echo "[ $(date -u) ]: Command run: ${SCRIPT_NAME} ${original_arguments}" >&2
+  echo "[ $(date -u) ]: Running ${SCRIPT_NAME}"
+  echo "[ $(date -u) ]: Command run: ${SCRIPT_NAME} ${original_arguments}"
 
   run_pipeline "${qc_long}" "${all_contigs}" "${circular_info}" "${outdir}" \
     "${flye_read_mode}" "${circlator_min_id}" "${circlator_min_length}" \

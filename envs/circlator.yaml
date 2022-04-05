@@ -9,4 +9,4 @@ dependencies:
   - minimap2=2.23
   - samtools=1.15
   - pandas=1.4
-
+  - coreutils
