@@ -64,7 +64,7 @@ function run_pipeline() {
   samtools index -@ "${threads}" "${bam_file}" 2>> "${verbose}"
 
   # Get a list of circular contigs
-  "${SCRIPT_DIR}/circular_contig_toolkit.py" -i "${circular_info}" -a "${outdir}/circular_contigs.list" 2>> "${verbose}"
+  "${SCRIPT_DIR}/flye_end_repair_utils.py" -v -i "${circular_info}" -a "${outdir}/circular_contigs.list" 2>> "${verbose}"
 
   if [[ $(cat "${outdir}/circular_contigs.list" | wc -l) == 0 ]]; then
 
@@ -105,7 +105,7 @@ function run_pipeline() {
       mdkir -p "${lenout}"
 
       echo "[ $(date -u) ]: End repair: '${contig}': attempting at ${length_cutoff} bp from ends" | tee -a "${verbose}"
-      "${SCRIPT_DIR}/circular_contig_toolkit.py" -i "${circular_info}" -n "${contig}" -l "${length_cutoff}" \
+      "${SCRIPT_DIR}/flye_end_repair_utils.py" -v -i "${circular_info}" -n "${contig}" -l "${length_cutoff}" \
         -b "${regions}" 2>> "${verbose}"
 
       samtools view -@ "${threads}" -L "${regions}" -b "${bam_file}" 2>> "${verbose}" | \
@@ -118,7 +118,7 @@ function run_pipeline() {
       circlator merge --verbose --min_id "${circlator_min_id}" --min_length "${circlator_min_length}" \
         "${assembly}" "${reassembly_dir}/assembly.fasta" "${merge_dir}/merge" >> "${verbose}" 2>&1
 
-      pass_circularization=$("${SCRIPT_DIR}/check_circlator_status.py" -i "${merge_dir}/merge.circularise.log")
+      pass_circularization=$("${SCRIPT_DIR}/flye_end_repair_utils.py" -c "${merge_dir}/merge.circularise.log")
 
       mkdir -p "${outdir}/${contig}/logs/L${length_cutoff}"
       cp "${merge_dir}/merge.circularise_details.log" "${reassembly_dir}/assembly_info.txt" \
