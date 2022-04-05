@@ -8,3 +8,4 @@ dependencies:
   - snakemake=6
   - mamba
   - wget
+  - coreutils
