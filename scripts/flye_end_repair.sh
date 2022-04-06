@@ -315,6 +315,36 @@ function main() {
   local outdir
   outdir=$4
 
+  # Test positional args
+  if [[ ! -f "${qc_long}" ]]; then
+    echo "[ $(date -u) ]: ERROR: provided longreads.fastq.gz is not a file: '${qc_long}'. Exiting..." >&2
+    exit 1
+  elif [[ ! -f "${all_contigs}" ]]; then
+    echo "[ $(date -u) ]: ERROR: provided assembly.fasta is not a file: '${all_contigs}'. Exiting..." >&2
+    exit 1
+  elif [[ ! -f "${circular_info}" ]]; then
+    echo "[ $(date -u) ]: ERROR: provided assembly_info.txt is not a file: '${circular_info}'. Exiting..." >&2
+    exit 1
+  fi
+
+  # Test flags
+  if [[ "${flye_read_mode}" != "nano-raw" ]] && [[ "${flye_read_mode}" != "nano-hq" ]]; then
+    echo "[ $(date -u) ]: ERROR: flye_read_mode must be nano-raw or nano-hq. You provided: '${flye_read_mode}'. Exiting..." >&2
+    exit 1
+  elif [[ ! "${circlator_min_id}" =~ ^[0-9]+$ ]] || [[ "${circlator_min_id}" -eq 0 ]]; then
+    echo "[ $(date -u) ]: ERROR: circlator_min_id must be a positive integer. You provided: '${circlator_min_id}'. Exiting..." >&2
+    exit 1
+  elif [[ ! "${circlator_min_length}" =~ ^[0-9]+$ ]] || [[ "${circlator_min_length}" -eq 0 ]]; then
+    echo "[ $(date -u) ]: ERROR: circlator_min_length must be a positive integer. You provided: '${circlator_min_length}'. Exiting..." >&2
+    exit 1
+  elif [[ ! "${threads}" =~ ^[0-9]+$ ]] || [[ "${threads}" -eq 0 ]]; then
+    echo "[ $(date -u) ]: ERROR: threads must be a positive integer. You provided: '${threads}'. Exiting..." >&2
+    exit 1
+  elif [[ ! "${thread_mem}" =~ ^[0-9]+$ ]] || [[ "${thread_mem}" -eq 0 ]]; then
+    echo "[ $(date -u) ]: ERROR: thread_mem must be a positive integer. You provided: '${thread_mem}'. Exiting..." >&2
+    exit 1
+  fi
+
   mkdir -p "${outdir}"
 
   # Initialize log file
