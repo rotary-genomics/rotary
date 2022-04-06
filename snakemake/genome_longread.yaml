@@ -11,6 +11,9 @@ qc_short_r1: "QC_R1.fastq.gz"
 qc_short_r2: "QC_R2.fastq.gz"
 #####################
 
+## Database installation
+db_dir: "/Data/databases/nanopore-workflows"
+
 ## Resources
 threads: 40
 # Memory in Gigabytes
@@ -29,6 +32,19 @@ flye_input_mode: "nano-hq"
 flye_meta_mode: "False"
 # By default, Flye performs one round of long read polishing after assembly
 flye_polishing_rounds: 1
+
+## End repair
+# Flye will be used to re-assemble a short region (50-100 kb) around the ends of circular contigs.
+#   The re-assembly will be stitched to the original contigs using the circlator merge module.
+#   This process repairs an added/missing bases around the contig ends.
+# Minimum % ID needed between original and stitch contigs for merging
+circlator_merge_min_id: 99
+# Minimum hit length (bp) needed between original and stitch contigs for merging
+circlator_merge_min_length: 10000
+# Minimum distance (bp) between end of original contig and nucmer hit
+circlator_merge_ref_end: 100
+# Minimum distance (bp) between end of merge contig and nucmer hit
+circlator_merge_reassemble_end: 100
 
 ## Polishing
 # Can set to any model supported by medaka
