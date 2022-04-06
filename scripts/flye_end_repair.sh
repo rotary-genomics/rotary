@@ -9,6 +9,48 @@ readonly SCRIPT_NAME="${0##*/}"
 readonly SCRIPT_DIR=$(realpath "${0%/*}")
 
 #######################################
+# Sorts a FastA file in the specified order
+# Arguments:
+#   fasta: FastA file
+#   sort_order: list of contig names for sorting
+#   tmp_dir: directory for temp files. Cannot already exist.
+# Returns:
+#   STDOUT of the sorted FastA file, 60 nt per line
+# Notes:
+#   If sort_order is missing entries in fasta, then those entries are not returned
+#   If sort_order has entries not in the fasta, then those entries are not returned
+#######################################
+function sort_fasta {
+
+  local fasta
+  fasta=$1
+  local sort_order
+  sort_order=$2
+  local tmp_dir
+  tmp_dir=$3
+
+  entry_names=($(cat "${sort_order}"))
+
+  if [[ -d "${tmp_dir}" ]]; then
+
+    echo "[ $(date -u) ]: Tmp dir cannot be created because it already exists: '${tmp_dir}'." | tee -a "${verbose}" >&2
+    exit 1
+
+  fi
+
+  mkdir -p "${tmp_dir}"
+
+  for entry in "${entry_names[@]}"; do
+    echo "${entry}" > "${tmp_dir}/${entry}.list"
+    seqtk subseq -l 60 "${fasta}" "${tmp_dir}/${entry}.list" # to STDOUT
+    rm "${tmp_dir}/${entry}.list"
+  done
+
+  rmdir "${tmp_dir}"
+
+}
+
+#######################################
 # Runs the end repair pipeline
 # Globals:
 #   SCRIPT_DIR: the directory where this script is stored
@@ -17,7 +59,6 @@ readonly SCRIPT_DIR=$(realpath "${0%/*}")
 # Returns:
 #   runs the end repair pipeline end-to-end
 #######################################
-# TODO - move some code into smaller functions
 function run_pipeline() {
 
   # Parse input
@@ -52,7 +93,7 @@ function run_pipeline() {
   mkdir "${outdir}"
   printf "" > "${verbose}"
 
-  echo "[ $(date -u) ]: Starting Flye-nano end repair pipeline" | tee -a "${verbose}"
+  echo "[ $(date -u) ]: Starting Flye-nano end repair pipeline" | tee -a "${verbose}" >&2
 
   # Get lists of circular vs linear contigs
   "${SCRIPT_DIR}/flye_end_repair_utils.py" -v -i "${circular_info}" -j "${outdir}/linear_contigs.list" \
@@ -60,7 +101,7 @@ function run_pipeline() {
 
   if [[ $(cat "${outdir}/circular_contigs.list" | wc -l) -eq 0 ]]; then
 
-    echo "[ $(date -u) ]: No circular contigs. Will copy the input file and finish early." | tee -a "${verbose}"
+    echo "[ $(date -u) ]: No circular contigs. Will copy the input file and finish early." | tee -a "${verbose}" >&2
 
     # Clean up temp files
     rm "${outdir}/circular_contigs.list" "${outdir}/linear_contigs.list"
@@ -70,7 +111,7 @@ function run_pipeline() {
 
   fi
 
-  echo "[ $(date -u) ]: Mapping reads to all contigs" | tee -a "${verbose}"
+  echo "[ $(date -u) ]: Mapping reads to all contigs" | tee -a "${verbose}" >&2
   # TODO - add support for different flags like -ax for pacbio
   minimap2 -t "${threads}" -ax map-ont "${all_contigs}" "${qc_long}" 2>> "${verbose}" | \
     samtools view -b -@ "${threads}" 2>> "${verbose}" | \
@@ -89,14 +130,14 @@ function run_pipeline() {
   for contig in "${circular_contigs[@]}"; do
 
     mkdir -p "${outdir}/contigs/${contig}"
-    echo "[ $(date -u) ]: End repair: '${contig}'" | tee -a "${verbose}"
+    echo "[ $(date -u) ]: End repair: '${contig}'" | tee -a "${verbose}" >&2
 
     local assembly
     assembly="${outdir}/contigs/${contig}/${contig}.fasta"
     local linked_ends
     linked_ends="false"
 
-    echo "${contig}" > "${outdir}/contigs/${contig}/${contig}.list"
+    echo "${contig}" > "${outdir}/contigs/${contig}/${contig}.list" >&2
     seqtk subseq -l 60 "${all_contigs}" "${outdir}/contigs/${contig}/${contig}.list" > "${assembly}" 2>> "${verbose}"
 
     # TODO - allow user to set the length cutoff range
@@ -115,7 +156,8 @@ function run_pipeline() {
 
       mkdir -p "${lenout}"
 
-      echo "[ $(date -u) ]: End repair: '${contig}': attempting at ${length_cutoff} bp from ends" | tee -a "${verbose}"
+      echo "[ $(date -u) ]: End repair: '${contig}': attempting at ${length_cutoff} bp from ends" | \
+        tee -a "${verbose}" >&2
       "${SCRIPT_DIR}/flye_end_repair_utils.py" -v -i "${circular_info}" -n "${contig}" -l "${length_cutoff}" \
         -b "${regions}" 2>> "${verbose}"
 
@@ -140,7 +182,7 @@ function run_pipeline() {
       # If the contig was circularized correctly, exit early
       if [[ "${pass_circularization}" == "true" ]]; then
 
-        echo "[ $(date -u) ]: End repair: '${contig}': successfully linked contig ends" | tee -a "${verbose}"
+        echo "[ $(date -u) ]: End repair: '${contig}': successfully linked contig ends" | tee -a "${verbose}" >&2
 
         seqtk seq -l 60 "${merge_dir}/merge.fasta" >> "${end_repaired_contigs}"
         cp "${merge_dir}/merge.circularise_details.log" "${outdir}/circlator_logs/${contig}.log"
@@ -156,7 +198,7 @@ function run_pipeline() {
     # If loop finishes without successful circularization
     if [[  "${linked_ends}" == "false" ]]; then
 
-      echo "[ $(date -u) ]: End repair: '${contig}': FAILED to linked contig ends" | tee -a "${verbose}"
+      echo "[ $(date -u) ]: End repair: '${contig}': FAILED to linked contig ends" | tee -a "${verbose}" >&2
 
       failed_contigs=$((failed_contigs + 1))
 
@@ -169,37 +211,25 @@ function run_pipeline() {
   done
 
   if [[ ${failed_contigs} -gt 0 ]]; then
-    printf "[ $(date -u) ]: End repair: %s contigs could not be circularized." "${failed_contigs}" | tee -a "${verbose}"
-    printf " A partial output file including successfully circularized contigs (and no linear " | tee -a "${verbose}"
-    pritnf "contigs) is available at '%s' for debugging.\n" "${end_repaired_contigs}" | tee -a "${verbose}"
-    printf "Exiting with error status. See temporary files and verbose log for more details.\n" | tee -a "${verbose}"
+    printf "[ $(date -u) ]: End repair: %s contigs could not be circularized." "${failed_contigs}" | tee -a "${verbose}" >&2
+    printf " A partial output file including successfully circularized contigs (and no linear " | tee -a "${verbose}" >&2
+    pritnf "contigs) is available at '%s' for debugging.\n" "${end_repaired_contigs}" | tee -a "${verbose}" >&2
+    printf "Exiting with error status. See temporary files and verbose log for more details.\n" | tee -a "${verbose}" >&2
     exit 1
   fi
 
-  # Incorporate linear contigs
-  # TODO - avoid use of this tmp file
-  echo "[ $(date -u) ]: Sorting final FastA file and adding linear contigs" | tee -a "${verbose}"
+  echo "[ $(date -u) ]: Sorting final FastA file and adding linear contigs" | tee -a "${verbose}" >&2
   seqtk subseq -l 60 "${all_contigs}" "${outdir}/linear_contigs.list" >> "${end_repaired_contigs}"
-  mv "${end_repaired_contigs}" "${end_repaired_contigs}.tmp"
-  printf "" > "${end_repaired_contigs}"
 
-  # Sort in same order the same as the original FastA file
-  local original_contig_order
-  original_contig_order=($(grep "^>" "${all_contigs}" | cut -d ">" -f 2- | cut -d " " -f 1))
-
-  mkdir -p "${outdir}/sort"
-  for contig in "${original_contig_order[@]}"; do
-    echo "${contig}" > "${outdir}/sort/${contig}.list"
-    seqtk subseq -l 60 "${end_repaired_contigs}.tmp" "${outdir}/sort/${contig}.list" >> "${end_repaired_contigs}"
-    rm "${outdir}/sort/${contig}.list"
-  done
+  grep "^>" "${all_contigs}" | cut -d ">" -f 2- | cut -d " " -f 1 > "${outdir}/sort_order.list"
+  sort_fasta "${end_repaired_contigs}.tmp" "${outdir}/sort_order.list" "${outdir}/sort" > "${end_repaired_contigs}"
 
   # Clean up temp files
   rm "${bam_file}" "${bam_file}.bai" "${outdir}/circular_contigs.list" "${outdir}/linear_contigs.list" \
     "${end_repaired_contigs}.tmp"
-  rmdir "${outdir}/sort" "${outdir}/contigs"
+  rmdir "${outdir}/contigs"
 
-  echo "[ $(date -u) ]: End repair finished. Output contigs saved at '${end_repaired_contigs}'." | tee -a "${verbose}"
+  echo "[ $(date -u) ]: End repair finished. Output contigs saved at '${end_repaired_contigs}'." | tee -a "${verbose}" >&2
 
 }
 
@@ -287,8 +317,9 @@ function main() {
   local outdir
   outdir=$4
 
-  echo "[ $(date -u) ]: Running ${SCRIPT_NAME}"
-  echo "[ $(date -u) ]: Command run: ${SCRIPT_NAME} ${original_arguments}"
+  # TODO - consider printing to logfile (so move outdir setup to here)
+  echo "[ $(date -u) ]: Running ${SCRIPT_NAME}" >&2
+  echo "[ $(date -u) ]: Command run: ${SCRIPT_NAME} ${original_arguments}" >&2
 
   run_pipeline "${qc_long}" "${all_contigs}" "${circular_info}" "${outdir}" \
     "${flye_read_mode}" "${circlator_min_id}" "${circlator_min_length}" \
