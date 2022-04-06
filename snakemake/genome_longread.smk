@@ -161,7 +161,8 @@ rule assembly_end_repair:
         assembly="assembly/flye/assembly.fasta",
         info="assembly/flye/assembly_info.txt",
         end_repair=os.path.join(config.get("db_dir"),"nanopore-workflows-" + VERSION,"scripts","flye_end_repair.sh"),
-        end_repair_utils=os.path.join(config.get("db_dir"),"nanopore-workflows-" + VERSION,"scripts","flye_end_repair_utils.py")
+        end_repair_utils=os.path.join(config.get("db_dir"),"nanopore-workflows-" + VERSION,"scripts","flye_end_repair_utils.py"),
+        install_finished=os.path.join(config.get("db_dir"),"checkpoints","internal_scripts_" + VERSION)
     output:
         assembly="assembly/end_repair/repaired.fasta",
         info="assembly/end_repair/assembly_info.txt"
@@ -184,7 +185,7 @@ rule assembly_end_repair:
         mem=int(config.get("memory") / config.get("threads",1))
     shell:
         """
-        {params.end_repair} -f {params.flye_input_mode} -i {params.min_id} -l {params.min_length} \
+        {input.end_repair} -f {params.flye_input_mode} -i {params.min_id} -l {params.min_length} \
           -e {params.ref_end} -E {params.reassemble_end} -t {threads} -m {resources.mem} \
           {input.qc_long_reads} {input.assembly} {input.info} {params.output_dir} > {log} 2>&1
         cp {input.info} {output.info}
