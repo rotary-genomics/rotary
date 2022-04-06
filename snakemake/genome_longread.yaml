@@ -11,6 +11,9 @@ qc_short_r1: "QC_R1.fastq.gz"
 qc_short_r2: "QC_R2.fastq.gz"
 #####################
 
+## Database installation
+db_dir: "/Data/databases/nanopore-workflows"
+
 ## Resources
 threads: 40
 # Memory in Gigabytes

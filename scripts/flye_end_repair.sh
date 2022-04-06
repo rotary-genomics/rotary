@@ -53,6 +53,7 @@ function check_dependency {
   fi
 
 }
+
 #######################################
 # Rotates an input (circular) contig to approximately its midpoint
 # Arguments:
@@ -70,7 +71,7 @@ function rotate_contig_to_midpoint {
 
   if [[ -d "${tmp_dir}" ]]; then
 
-    echo "[ $(date -u) ]: Tmp dir cannot be created because it already exists: '${tmp_dir}'." | tee -a "${verbose}" >&2
+    echo "[ $(date -u) ]: Tmp dir cannot be created because it already exists: '${tmp_dir}'." >&2
     exit 1
 
   fi
@@ -80,7 +81,7 @@ function rotate_contig_to_midpoint {
   # Check only one contig in FastA file
   if [[ $(grep -c "^>" "${fasta}") -ne 1 ]]; then
 
-    echo "[ $(date -u) ]: ERROR: rotate: input FastA file does not contain a single contig" | tee -a "${verbose}" >&2
+    echo "[ $(date -u) ]: ERROR: rotate: input FastA file does not contain a single contig" >&2
     exit 1
 
   fi
@@ -108,8 +109,7 @@ function rotate_contig_to_midpoint {
   # Report to user
   front_segment=$(head -n 1 "${tmp_dir}/front.fasta" | cut -d " " -f 1 | sed "s/>${contig_name_short}://g")
   back_segment=$(head -n 1 "${tmp_dir}/back.fasta" | cut -d " " -f 1 | sed "s/>${contig_name_short}://g")
-  echo "[ $(date -u) ]: Rotating to approximate midpoint at ${midpoint}: ${back_segment}, ${front_segment}" |\
-    tee -a "${verbose}" >&2
+  echo "[ $(date -u) ]: Rotating to approximate midpoint at ${midpoint}: ${back_segment}, ${front_segment}" >&2
 
   # Combine
   printf ">%s\n" "${contig_name}" > "${tmp_dir}/rotated.fasta"
@@ -150,7 +150,7 @@ function sort_fasta {
 
   if [[ -d "${tmp_dir}" ]]; then
 
-    echo "[ $(date -u) ]: Tmp dir cannot be created because it already exists: '${tmp_dir}'." | tee -a "${verbose}" >&2
+    echo "[ $(date -u) ]: Tmp dir cannot be created because it already exists: '${tmp_dir}'." >&2
     exit 1
 
   fi
@@ -300,8 +300,10 @@ function run_pipeline() {
 
         echo "[ $(date -u) ]: End repair: '${contig}': successfully linked contig ends" | tee -a "${verbose}" >&2
 
-        # Rotate to midpoint so that the stitched ends can be polished more effectively
-        rotate_contig_to_midpoint "${merge_dir}/merge.fasta" "${lenout}/rotate_tmp" > "${lenout}/rotate.fasta"
+        # Rotate to midpoint so that the stitched ends can be polished more effectively (especially stich points)
+        # TODO - sometimes small contigs are already rotated far from original origin. Stitch point hards to find. Does circlator report stitch point?
+        rotate_contig_to_midpoint "${merge_dir}/merge.fasta" "${lenout}/rotate_tmp" \
+          > "${lenout}/rotate.fasta" 2>> "${verbose}"
 
         seqtk seq -l 60 "${lenout}/rotate.fasta" >> "${end_repaired_contigs}.tmp"
         cp "${merge_dir}/merge.circularise_details.log" "${outdir}/circlator_logs/${contig}.log"
@@ -343,7 +345,8 @@ function run_pipeline() {
   seqtk subseq -l 60 "${all_contigs}" "${outdir}/linear_contigs.list" >> "${end_repaired_contigs}.tmp"
 
   grep "^>" "${all_contigs}" | cut -d ">" -f 2- | cut -d " " -f 1 > "${outdir}/sort_order.list"
-  sort_fasta "${end_repaired_contigs}.tmp" "${outdir}/sort_order.list" "${outdir}/sort" > "${end_repaired_contigs}"
+  sort_fasta "${end_repaired_contigs}.tmp" "${outdir}/sort_order.list" "${outdir}/sort" \
+    > "${end_repaired_contigs}" 2>> "${verbose}"
 
   # Clean up temp files
   rm "${bam_file}" "${bam_file}.bai" "${outdir}/circular_contigs.list" "${outdir}/linear_contigs.list" \

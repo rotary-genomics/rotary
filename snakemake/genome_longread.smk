@@ -8,12 +8,13 @@ import pandas as pd
 import itertools
 from snakemake.utils import logger, min_version, update_config
 
+VERSION="0.1.0"
+
 # Specify the minimum snakemake version allowable
 min_version("6.0")
 # Specify shell parameters
 shell.executable("/bin/bash")
 shell.prefix("set -o pipefail; ")
-
 
 rule all:
     input:
@@ -134,11 +135,32 @@ rule assembly_flye:
         """
 
 
+rule install_internal_scripts:
+    output:
+        end_repair=os.path.join(config.get("db_dir"), "nanopore-workflows-" + VERSION, "scripts", "flye_end_repair.sh"),
+        end_repair_utils=os.path.join(config.get("db_dir"), "nanopore-workflows-" + VERSION, "scripts", "flye_end_repair_utils.py"),
+        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "internal_scripts_" + VERSION)
+    log:
+        "logs/install_internal_scripts.log"
+    benchmark:
+        "benchmarks/install_internal_scripts.txt"
+    params:
+        db_dir=config.get("db_dir"),
+        url="https://github.com/jmtsuji/nanopore-workflows/archive/refs/tags/" + VERSION + "tar.gz"
+    shell:
+        """
+        mkdir -p {params.db_dir}
+        wget -O /dev/stdout {params.url} | tar -C {params.db_dir} -xzf -
+        touch {output.install_finished}
+        """
+
+
 rule assembly_end_repair:
     input:
         qc_long_reads="qc_long/nanopore_qc.fastq.gz",
         assembly="assembly/flye/assembly.fasta",
-        info="assembly/flye/assembly_info.txt"
+        info="assembly/flye/assembly_info.txt",
+        internal_script_install=os.path.join(config.get("db_dir"), "checkpoints", "internal_scripts_" + VERSION)
     output:
         assembly="assembly/end_repair/repaired.fasta",
         info="assembly/end_repair/assembly_info.txt"
@@ -150,6 +172,7 @@ rule assembly_end_repair:
         "benchmarks/end_repair.txt"
     params:
         output_dir="assembly/end_repair",
+        db_dir=config.get("db_dir"),
         flye_input_mode=config.get("flye_input_mode"),
         min_id=config.get("circlator_merge_min_id"),
         min_length=config.get("circlator_merge_min_length"),
@@ -161,7 +184,7 @@ rule assembly_end_repair:
         mem=int(config.get("memory") / config.get("threads",1))
     shell:
         """
-        flye_end_repair.sh -f {params.flye_input_mode} -i {params.min_id} -l {params.min_length} \
+        {params.db_dir}/scripts/flye_end_repair.sh -f {params.flye_input_mode} -i {params.min_id} -l {params.min_length} \
           -e {params.ref_end} -E {params.reassemble_end} -t {threads} -m {resources.mem} \
           {input.qc_long_reads} {input.assembly} {input.info} {params.output_dir} > {log} 2>&1
         cp {input.info} {output.info}
@@ -169,7 +192,7 @@ rule assembly_end_repair:
 
 
 # TODO - eventually make this rule more generic so that outputs from other assemblers can go to the same output files
-#        In particular, the format of assembly_info.txt will need to be standardized.
+#        In particular, the format of assembly_info.txt will need to be standardized (also in assembly_end_repair).
 rule finalize_assembly:
     input:
         assembly="assembly/end_repair/assembly.fasta",
