@@ -134,12 +134,46 @@ rule assembly_flye:
         """
 
 
+rule assembly_end_repair:
+    input:
+        qc_long_reads="qc_long/nanopore_qc.fastq.gz",
+        assembly="assembly/flye/assembly.fasta",
+        info="assembly/flye/assembly_info.txt"
+    output:
+        assembly="assembly/end_repair/repaired.fasta",
+        info="assembly/end_repair/assembly_info.txt"
+    conda:
+        "../envs/circlator.yaml"
+    log:
+        "logs/end_repair.log"
+    benchmark:
+        "benchmarks/end_repair.txt"
+    params:
+        output_dir="assembly/end_repair",
+        flye_input_mode=config.get("flye_input_mode"),
+        min_id=config.get("circlator_merge_min_id"),
+        min_length=config.get("circlator_merge_min_length"),
+        ref_end=config.get("circlator_merge_ref_end"),
+        reassemble_end=config.get("circlator_merge_reassemble_end")
+    threads:
+        config.get("threads",1)
+    resources:
+        mem=int(config.get("memory") / config.get("threads",1))
+    shell:
+        """
+        flye_end_repair.sh -f {params.flye_input_mode} -i {params.min_id} -l {params.min_length} \
+          -e {params.ref_end} -E {params.reassemble_end} -t {threads} -m {resources.mem} \
+          {input.qc_long_reads} {input.assembly} {input.info} {params.output_dir} > {log} 2>&1
+        cp {input.info} {output.info}
+        """
+
+
 # TODO - eventually make this rule more generic so that outputs from other assemblers can go to the same output files
 #        In particular, the format of assembly_info.txt will need to be standardized.
 rule finalize_assembly:
     input:
-        assembly="assembly/flye/assembly.fasta",
-        info="assembly/flye/assembly_info.txt"
+        assembly="assembly/end_repair/assembly.fasta",
+        info="assembly/end_repair/assembly_info.txt"
     output:
         assembly="assembly/assembly.fasta",
         info="assembly/assembly_info.txt"

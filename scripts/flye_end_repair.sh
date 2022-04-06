@@ -6,7 +6,53 @@ set -euo pipefail
 # Internal variables
 readonly VERSION="0.1.0"
 readonly SCRIPT_NAME="${0##*/}"
+
+# Get script dir (realpath is needed)
+if [[ $(which realpath > /dev/null 2>&1 ; echo $?) -ne 0 ]]; then
+  echo "[ $(date -u) ]: ERROR: missing dependency: 'realpath'. Exiting..." >&2
+  exit 1
+fi
 readonly SCRIPT_DIR=$(realpath "${0%/*}")
+
+#######################################
+# Checks if a dependency exists
+# Arguments:
+#   dependency: Name of dependency
+#   type: Type of dependency: commandline (for testing via 'which'), or python_package (for testing via 'pip'),
+#                             or internal (for testing via SCRIPT_DIR)
+# Returns:
+#   Exit status 0 if dependency exists; otherwise exit status 1 and error message.
+#######################################
+function check_dependency {
+
+  local dependency
+  dependency=$1
+  local type
+  type=$2
+
+  if [[ "${type}" == "commandline" ]]; then
+    set +e
+    success_status=$(which "${dependency}" > /dev/null 2>&1 ; echo $?)
+    set -e
+  elif [[ "${type}" == "python_package" ]]; then
+    set +e
+    success_status=$(pip list | grep -w "${dependency}" > /dev/null 2>&1 ; echo $?)
+    set -e
+  elif [[ "${type}" == "internal" ]]; then
+    set +e
+    success_status=$(test -e "${SCRIPT_DIR}/${dependency}"; echo $?)
+    set -e
+  else
+    echo "[ $(date -u) ]: ERROR (internal): success_status must be 'commandline' or 'python_package' or 'internal', but '${type}' was provided. Exiting..." >&2
+    exit 1
+  fi
+
+  if [[ "${success_status}" -ne 0 ]]; then
+    echo "[ $(date -u) ]: ERROR: missing dependency: '${dependency}'. Exiting..." >&2
+    exit 1
+  fi
+
+}
 
 #######################################
 # Sorts a FastA file in the specified order
@@ -76,20 +122,22 @@ function run_pipeline() {
   circlator_min_id=$6
   local circlator_min_length
   circlator_min_length=$7
+  local circlator_ref_end
+  circlator_ref_end=$8
+  local circlator_reassemble_end
+  circlator_reassemble_end=$9
   local threads
-  threads=$8
+  threads=${10}
   local thread_mem
-  thread_mem=$9
+  thread_mem=${11}
   local verbose
-  verbose=${10}
+  verbose=${12}
 
-  # Settings
+  # Internal settings
   local bam_file
   bam_file="${outdir}/long_read.bam"
   local end_repaired_contigs
   end_repaired_contigs="${outdir}/repaired.fasta"
-
-  echo "[ $(date -u) ]: Running Flye-nano end repair pipeline" | tee -a "${verbose}" >&2
 
   # Get lists of circular vs linear contigs
   "${SCRIPT_DIR}/flye_end_repair_utils.py" -v -i "${circular_info}" -j "${outdir}/linear_contigs.list" \
@@ -133,7 +181,7 @@ function run_pipeline() {
     local linked_ends
     linked_ends="false"
 
-    echo "${contig}" > "${outdir}/contigs/${contig}/${contig}.list" >&2
+    echo "${contig}" > "${outdir}/contigs/${contig}/${contig}.list"
     seqtk subseq -l 60 "${all_contigs}" "${outdir}/contigs/${contig}/${contig}.list" > "${assembly}" 2>> "${verbose}"
 
     # TODO - allow user to set the length cutoff range
@@ -157,6 +205,7 @@ function run_pipeline() {
       "${SCRIPT_DIR}/flye_end_repair_utils.py" -v -i "${circular_info}" -n "${contig}" -l "${length_cutoff}" \
         -b "${regions}" 2>> "${verbose}"
 
+      # TODO - consider adding option to split long reads in half if they go around a short circular contig, like in circlator
       samtools view -@ "${threads}" -L "${regions}" -b "${bam_file}" 2>> "${verbose}" | \
         samtools fastq -0 "${fastq}" -n -@ "${threads}" 2>> "${verbose}"
 
@@ -165,6 +214,7 @@ function run_pipeline() {
 
       mkdir -p "${merge_dir}"
       circlator merge --verbose --min_id "${circlator_min_id}" --min_length "${circlator_min_length}" \
+        --ref_end "${circlator_ref_end}" --reassemble_end "${circlator_reassemble_end}" \
         "${assembly}" "${reassembly_dir}/assembly.fasta" "${merge_dir}/merge" >> "${verbose}" 2>&1
       # TODO - consider exposing more flags like the threshold for aligning the ends
 
@@ -199,7 +249,7 @@ function run_pipeline() {
       failed_contigs=$((failed_contigs + 1))
 
       mkdir -p "${outdir}/troubleshooting"
-      mv "${outdir}/${contig}/logs" "${outdir}/troubleshooting/${contig}"
+      mv "${outdir}/contigs/${contig}/logs" "${outdir}/troubleshooting/${contig}"
       rm -r "${outdir:?}/contigs/${contig}"
 
     fi
@@ -245,16 +295,19 @@ function main() {
     printf "Version: %s\n\n" "${VERSION}"
     printf "Usage: %s [OPTIONS] longreads.fastq.gz assembly.fasta assembly_info.txt outdir\n\n" "${SCRIPT_NAME}"
     printf "Positional arguments:\n"
-    printf "   longreads.fastq.gz:      QC-passing Nanopore reads\n"
-    printf "   assembly.fasta:          Contigs output from Flye\n"
-    printf "   assembly_info.txt:       Assembly info file from Flye\n"
-    printf "   outdir:                  Output directory path (directory must not yet exist)\n\n"
-    printf "Optional arguments:\n"
-    printf "   -f flye_read_mode:       Type of input reads for Flye [nano-hq; can also set nano-raw]\n"
-    printf "   -i circlator_min_id:     Percent identity threshold for circlator merge [99]\n"
-    printf "   -l circlator_min_length: Required overlap (bp) between original and merge contigs [10000]\n"
-    printf "   -t threads:              Number of processors to use [1]\n"
-    printf "   -m memory:               Memory (GB) to use per thread for samtools sort [1]\n\n"
+    printf "   longreads.fastq.gz:          QC-passing Nanopore reads\n"
+    printf "   assembly.fasta:              Contigs output from Flye\n"
+    printf "   assembly_info.txt:           Assembly info file from Flye\n"
+    printf "   outdir:                      Output directory path (directory must not yet exist)\n\n"
+    printf "Optional arguments (general):\n"
+    printf "   -f flye_read_mode:           Type of input reads for Flye [nano-hq; can also set nano-raw]\n"
+    printf "   -t threads:                  Number of processors to use [1]\n"
+    printf "   -m memory:                   Memory (GB) to use per thread for samtools sort [1]\n\n"
+    printf "Optional arguments (circlator merge module, used to stitch the reassembled ends to the original contigs):\n"
+    printf "   -i circlator_min_id:         Percent identity threshold for circlator merge [99]\n"
+    printf "   -l circlator_min_length:     Minimum required overlap (bp) between original and merge contigs [10000]\n"
+    printf "   -e circlator_ref_end:        Minimum distance (bp) between end of original contig and nucmer hit [100]\n"
+    printf "   -E circlator_reassemble_end: Minimum distance (bp) between end of merge contig and nucmer hit [100]\n\n"
 
     # Exit
     exit 0
@@ -267,6 +320,10 @@ function main() {
   circlator_min_id=99
   local circlator_min_length
   circlator_min_length=10000
+  local circlator_ref_end
+  circlator_ref_end=100
+  local circlator_reassemble_end
+  circlator_reassemble_end=100
   local threads
   threads=1
   local thread_mem
@@ -274,7 +331,7 @@ function main() {
 
   # Set options (help from https://wiki.bash-hackers.org/howto/getopts_tutorial; accessed March 8th, 2019)
   OPTIND=1 # reset the OPTIND counter just in case
-  while getopts ":f:i:l:t:m:" opt; do
+  while getopts ":f:i:l:e:E:t:m:" opt; do
     case ${opt} in
       f)
         flye_read_mode=${OPTARG}
@@ -284,6 +341,12 @@ function main() {
         ;;
       l)
         circlator_min_length=${OPTARG}
+        ;;
+      e)
+        circlator_ref_end=${OPTARG}
+        ;;
+      E)
+        circlator_reassemble_end=${OPTARG}
         ;;
       t)
         threads=${OPTARG}
@@ -337,6 +400,12 @@ function main() {
   elif [[ ! "${circlator_min_length}" =~ ^[0-9]+$ ]] || [[ "${circlator_min_length}" -eq 0 ]]; then
     echo "[ $(date -u) ]: ERROR: circlator_min_length must be a positive integer. You provided: '${circlator_min_length}'. Exiting..." >&2
     exit 1
+  elif [[ ! "${circlator_ref_end}" =~ ^[0-9]+$ ]] || [[ "${circlator_ref_end}" -eq 0 ]]; then
+    echo "[ $(date -u) ]: ERROR: circlator_ref_end must be a positive integer. You provided: '${circlator_ref_end}'. Exiting..." >&2
+    exit 1
+  elif [[ ! "${circlator_reassemble_end}" =~ ^[0-9]+$ ]] || [[ "${circlator_reassemble_end}" -eq 0 ]]; then
+    echo "[ $(date -u) ]: ERROR: circlator_reassemble_end must be a positive integer. You provided: '${circlator_reassemble_end}'. Exiting..." >&2
+    exit 1
   elif [[ ! "${threads}" =~ ^[0-9]+$ ]] || [[ "${threads}" -eq 0 ]]; then
     echo "[ $(date -u) ]: ERROR: threads must be a positive integer. You provided: '${threads}'. Exiting..." >&2
     exit 1
@@ -345,6 +414,18 @@ function main() {
     exit 1
   fi
 
+  # Check dependencies
+  check_dependency python commandline
+  check_dependency pip commandline
+  check_dependency seqtk commandline
+  check_dependency circlator commandline
+  check_dependency minimap2 commandline
+  check_dependency samtools commandline
+  check_dependency pandas python_package
+  check_dependency flye_end_repair_utils.py internal
+
+  # Make output dir
+  outdir_test=$(test -d "${outdir}"; echo $?)
   mkdir -p "${outdir}"
 
   # Initialize log file
@@ -352,19 +433,16 @@ function main() {
   verbose="${outdir}/verbose.log"
   printf "" > "${verbose}"
 
-  if [[ -d "${outdir}" ]]; then
-
-    echo "[ $(date -u) ]: Warning: output dir already exists. Files could collide." | tee -a "${verbose}" >&2
-    exit 1
-
-  fi
-
   echo "[ $(date -u) ]: Running ${SCRIPT_NAME}" | tee -a "${verbose}" >&2
   echo "[ $(date -u) ]: Command run: ${SCRIPT_NAME} ${original_arguments}" | tee -a "${verbose}" >&2
 
+  if [[ "${outdir_test}" -eq 0 ]]; then
+    echo "[ $(date -u) ]: Warning: output dir already exists. Files could collide." | tee -a "${verbose}" >&2
+  fi
+
   run_pipeline "${qc_long}" "${all_contigs}" "${circular_info}" "${outdir}" \
     "${flye_read_mode}" "${circlator_min_id}" "${circlator_min_length}" \
-    "${threads}" "${thread_mem}" "${verbose}"
+    "${circlator_ref_end}" "${circlator_reassemble_end}" "${threads}" "${thread_mem}" "${verbose}"
 
 }
 
