@@ -53,6 +53,77 @@ function check_dependency {
   fi
 
 }
+#######################################
+# Rotates an input (circular) contig to approximately its midpoint
+# Arguments:
+#   fasta: FastA file containing a single circular contig
+#   tmp_dir: directory for temp files. Cannot already exist.
+# Returns:
+#   STDOUT of the rotated FastA file, 60 nt per line
+#######################################
+function rotate_contig_to_midpoint {
+
+  local fasta
+  fasta=$1
+  local tmp_dir
+  tmp_dir=$2
+
+  if [[ -d "${tmp_dir}" ]]; then
+
+    echo "[ $(date -u) ]: Tmp dir cannot be created because it already exists: '${tmp_dir}'." | tee -a "${verbose}" >&2
+    exit 1
+
+  fi
+
+  mkdir -p "${tmp_dir}"
+
+  # Check only one contig in FastA file
+  if [[ $(grep -c "^>" "${fasta}") -ne 1 ]]; then
+
+    echo "[ $(date -u) ]: ERROR: rotate: input FastA file does not contain a single contig" | tee -a "${verbose}" >&2
+    exit 1
+
+  fi
+
+  # Get contig name
+  contig_name=$(grep "^>" "${fasta}" | head -n 1 | cut -d ">" -f 2)
+  contig_name_short=$(echo "${contig_name}" | cut -d " " -f 1) # no comments
+
+  # Get length of contig
+  contig_length=$(seqtk seq -A -l 0 "${fasta}" 2>> "${verbose}" | head -n 2 | tail -n 1 | wc -m)
+  contig_length=$((contig_length - 1))
+
+  # Determine approximate midpoint - auto rounds to integer
+  midpoint=$((contig_length / 2))
+
+  # Make BED files
+  printf "%s\t0\t%s\n" "${contig_name_short}" "${midpoint}" > "${tmp_dir}/front.bed"
+  printf "%s\t%s\t%s\n" "${contig_name_short}" "${midpoint}" "${contig_length}" > "${tmp_dir}/back.bed"
+
+  # Split
+  seqtk subseq -l 60 "${fasta}" "${tmp_dir}/front.bed" > "${tmp_dir}/front.fasta"
+  seqtk subseq -l 60 "${fasta}" "${tmp_dir}/back.bed" > "${tmp_dir}/back.fasta"
+  rm "${tmp_dir}/front.bed" "${tmp_dir}/back.bed"
+
+  # Report to user
+  front_segment=$(head -n 1 "${tmp_dir}/front.fasta" | cut -d " " -f 1 | sed "s/>${contig_name_short}://g")
+  back_segment=$(head -n 1 "${tmp_dir}/back.fasta" | cut -d " " -f 1 | sed "s/>${contig_name_short}://g")
+  echo "[ $(date -u) ]: Rotating to approximate midpoint at ${midpoint}: ${back_segment}, ${front_segment}" |\
+    tee -a "${verbose}" >&2
+
+  # Combine
+  printf ">%s\n" "${contig_name}" > "${tmp_dir}/rotated.fasta"
+  tail -n +2 "${tmp_dir}/back.fasta" >> "${tmp_dir}/rotated.fasta"
+  tail -n +2 "${tmp_dir}/front.fasta" >> "${tmp_dir}/rotated.fasta"
+  rm "${tmp_dir}/front.fasta" "${tmp_dir}/back.fasta"
+
+  # Fix FastA lines and print to STDOUT
+  seqtk seq -A -l 60 "${tmp_dir}/rotated.fasta"
+  rm "${tmp_dir}/rotated.fasta"
+
+  rmdir "${tmp_dir}"
+
+}
 
 #######################################
 # Sorts a FastA file in the specified order
@@ -216,7 +287,6 @@ function run_pipeline() {
       circlator merge --verbose --min_id "${circlator_min_id}" --min_length "${circlator_min_length}" \
         --ref_end "${circlator_ref_end}" --reassemble_end "${circlator_reassemble_end}" \
         "${assembly}" "${reassembly_dir}/assembly.fasta" "${merge_dir}/merge" >> "${verbose}" 2>&1
-      # TODO - consider exposing more flags like the threshold for aligning the ends
 
       local pass_circularization
       pass_circularization=$("${SCRIPT_DIR}/flye_end_repair_utils.py" -c "${merge_dir}/merge.circularise.log")
@@ -230,7 +300,10 @@ function run_pipeline() {
 
         echo "[ $(date -u) ]: End repair: '${contig}': successfully linked contig ends" | tee -a "${verbose}" >&2
 
-        seqtk seq -l 60 "${merge_dir}/merge.fasta" >> "${end_repaired_contigs}.tmp"
+        # Rotate to midpoint so that the stitched ends can be polished more effectively
+        rotate_contig_to_midpoint "${merge_dir}/merge.fasta" "${lenout}/rotate_tmp" > "${lenout}/rotate.fasta"
+
+        seqtk seq -l 60 "${lenout}/rotate.fasta" >> "${end_repaired_contigs}.tmp"
         cp "${merge_dir}/merge.circularise_details.log" "${outdir}/circlator_logs/${contig}.log"
         rm -r "${outdir:?}/contigs/${contig}"
 
