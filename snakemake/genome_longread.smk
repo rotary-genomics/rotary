@@ -60,7 +60,7 @@ rule install_polypolish:
     benchmark:
         "benchmarks/download/install_polypolish.txt"
     params:
-        db_dir=os.path.join(config.get("db_dir"), "polypolish"),
+        db_dir=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH),
         url="https://github.com/rrwick/Polypolish/releases/download/v0.5.0/polypolish-linux-x86_64-musl-v" + VERSION_POLYPOLISH + ".tar.gz"
     shell:
         """
@@ -71,7 +71,7 @@ rule install_polypolish:
 
 
 # TODO - does not check the HMM version, only ID. If the HMM version updates, it won't automatically re-download
-rule hmm_download:
+rule download_hmm:
     output:
         hmm=os.path.join(config.get("db_dir"), "hmm", config.get("start_hmm_pfam_id") + ".hmm")
     log:
@@ -139,13 +139,13 @@ rule download_gtdb_db:
     benchmark:
         "benchmarks/download/gtdb_db_download.txt"
     params:
-        db_dir_root=os.path.join(config.get("db_dir"),
+        db_dir_root=os.path.join(config.get("db_dir")),
         initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB),
         db_dir=os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB),
         url="https://data.gtdb.ecogenomic.org/releases/release" + VERSION_GTDB + "/" + VERSION_GTDB + ".0/auxillary_files/gtdbtk_r" + VERSION_GTDB + "_data.tar.gz"
     shell:
         """
-        mkdir -p {params.db_dir}
+        mkdir -p {params.db_dir_root}
 
         if [[ -d {params.initial_download_dir} ]]; then
           echo "GTDB cannot be downloaded because of pre-existing dir: {params.initial_download_dir}"
