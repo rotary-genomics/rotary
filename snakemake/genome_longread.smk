@@ -26,6 +26,66 @@ rule all:
         "checkpoints/annotation"
 
 
+rule install_internal_scripts:
+    output:
+        end_repair=os.path.join(config.get("db_dir"), "nanopore-workflows-" + VERSION, "scripts", "flye_end_repair.sh"),
+        end_repair_utils=os.path.join(config.get("db_dir"), "nanopore-workflows-" + VERSION, "scripts", "flye_end_repair_utils.py"),
+        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "internal_scripts_" + VERSION)
+    log:
+        "logs/install_internal_scripts.log"
+    benchmark:
+        "benchmarks/install_internal_scripts.txt"
+    params:
+        db_dir=config.get("db_dir"),
+        url="https://github.com/jmtsuji/nanopore-workflows/archive/refs/tags/" + VERSION + ".tar.gz"
+    shell:
+        """
+        mkdir -p {params.db_dir}
+        wget -O - {params.url} 2> {log} | tar -C {params.db_dir} -xzf - >> {log} 2>&1
+        touch {output.install_finished}
+        """
+
+
+rule install_polypolish:
+    output:
+        polypolish_filter=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH, "polypolish_insert_filter.py"),
+        polypolish=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH, "polypolish"),
+        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "polypolish_" + VERSION_POLYPOLISH)
+    log:
+        "logs/install_polypolish.log"
+    benchmark:
+        "benchmarks/install_polypolish.txt"
+    params:
+        db_dir=os.path.join(config.get("db_dir"), "polypolish"),
+        url="https://github.com/rrwick/Polypolish/releases/download/v0.5.0/polypolish-linux-x86_64-musl-v" + VERSION_POLYPOLISH + ".tar.gz",
+    shell:
+        """
+        mkdir -p {params.db_dir}
+        wget -O - {params.url} 2> {log} | tar -C {params.output_dir} -xzf - >> {log} 2>&1
+        touch {output.install_finished}
+        """
+
+
+# TODO - does not check the HMM version, only ID. If the HMM version updates, it won't automatically re-download
+rule hmm_download:
+    output:
+        hmm=os.path.join(config.get("db_dir"), "hmm", config.get("start_hmm_pfam_id") + ".hmm"),
+        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "polypolish_" + VERSION_POLYPOLISH)
+    log:
+        "logs/install_polypolish.log"
+    benchmark:
+        "benchmarks/install_polypolish.txt"
+    params:
+        db_dir=os.path.join(config.get("db_dir"), "hmm"),
+        url="https://pfam.xfam.org/family/" + config.get("start_hmm_pfam_id") + "/hmm"
+    shell:
+        """
+        mkdir -p {params.db_dir}
+        wget -O {output.hmm} {params.url} 2> {log}
+        # --no-check-certificate
+        """
+
+
 rule nanopore_qc_filter:
     input:
         config.get("longreads")
@@ -136,26 +196,6 @@ rule assembly_flye:
         """
 
 
-rule install_internal_scripts:
-    output:
-        end_repair=os.path.join(config.get("db_dir"), "nanopore-workflows-" + VERSION, "scripts", "flye_end_repair.sh"),
-        end_repair_utils=os.path.join(config.get("db_dir"), "nanopore-workflows-" + VERSION, "scripts", "flye_end_repair_utils.py"),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "internal_scripts_" + VERSION)
-    log:
-        "logs/install_internal_scripts.log"
-    benchmark:
-        "benchmarks/install_internal_scripts.txt"
-    params:
-        db_dir=config.get("db_dir"),
-        url="https://github.com/jmtsuji/nanopore-workflows/archive/refs/tags/" + VERSION + ".tar.gz"
-    shell:
-        """
-        mkdir -p {params.db_dir}
-        wget -O - {params.url} 2> {log} | tar -C {params.db_dir} -xzf - >> {log} 2>&1
-        touch {output.install_finished}
-        """
-
-
 rule assembly_end_repair:
     input:
         qc_long_reads="qc_long/nanopore_qc.fastq.gz",
@@ -239,26 +279,6 @@ rule polish_medaka:
         """
         medaka_consensus -i {input.qc_long_reads} -d {input.contigs} -o {params.output_dir} \
           -m {params.medaka_model} -t {threads} > {log} 2>&1
-        """
-
-
-rule install_polypolish:
-    output:
-        polypolish_filter=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH, "polypolish_insert_filter.py"),
-        polypolish=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH, "polypolish"),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "polypolish_" + VERSION_POLYPOLISH)
-    log:
-        "logs/install_polypolish.log"
-    benchmark:
-        "benchmarks/install_polypolish.txt"
-    params:
-        db_dir=os.path.join(config.get("db_dir"), "polypolish"),
-        url="https://github.com/rrwick/Polypolish/releases/download/v0.5.0/polypolish-linux-x86_64-musl-v" + VERSION_POLYPOLISH + ".tar.gz",
-    shell:
-        """
-        mkdir -p {params.db_dir}
-        wget -O - {params.url} 2> {log} | tar -C {params.output_dir} -xzf - >> {log} 2>&1
-        touch {output.install_finished}
         """
 
 
@@ -576,26 +596,6 @@ rule get_polished_contigs:
     shell:
         """
         seqtk subseq -l 60 {input.contigs} {input.list} > {output}
-        """
-
-
-# TODO - does not check the HMM version, only ID. If the HMM version updates, it won't automatically re-download
-rule hmm_download:
-    output:
-        hmm=os.path.join(config.get("db_dir"), "hmm", config.get("start_hmm_pfam_id") + ".hmm"),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "polypolish_" + VERSION_POLYPOLISH)
-    log:
-        "logs/install_polypolish.log"
-    benchmark:
-        "benchmarks/install_polypolish.txt"
-    params:
-        db_dir=os.path.join(config.get("db_dir"), "hmm"),
-        url="https://pfam.xfam.org/family/" + config.get("start_hmm_pfam_id") + "/hmm"
-    shell:
-        """
-        mkdir -p {params.db_dir}
-        wget -O {output.hmm} {params.url} 2> {log}
-        # --no-check-certificate
         """
 
 
