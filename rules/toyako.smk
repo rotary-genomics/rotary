@@ -335,7 +335,7 @@ rule prepare_medaka_polish_input:
     input:
         "assembly/assembly.fasta"
     output:
-        "polish/medaka_input/input.fasta"
+        temp("polish/medaka_input/input.fasta")
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -820,7 +820,7 @@ rule prepare_medaka_circularize_input:
     input:
         "circularize/circlator/rotated.fasta"
     output:
-        "circularize/medaka_input/input.fasta"
+        temp("circularize/medaka_input/input.fasta")
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
