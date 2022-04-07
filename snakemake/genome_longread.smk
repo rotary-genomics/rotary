@@ -10,12 +10,16 @@ from snakemake.utils import logger, min_version, update_config
 
 VERSION="0.1.0"
 VERSION_POLYPOLISH="0.5.0"
+VERSION_DFAST="1.2.15"
+VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
+VERSION_GTDB="202" # See https://data.gtdb.ecogenomic.org/releases/
 
 # Specify the minimum snakemake version allowable
 min_version("6.0")
 # Specify shell parameters
 shell.executable("/bin/bash")
 shell.prefix("set -o pipefail; ")
+
 
 rule all:
     input:
@@ -32,9 +36,9 @@ rule install_internal_scripts:
         end_repair_utils=os.path.join(config.get("db_dir"), "nanopore-workflows-" + VERSION, "scripts", "flye_end_repair_utils.py"),
         install_finished=os.path.join(config.get("db_dir"), "checkpoints", "internal_scripts_" + VERSION)
     log:
-        "logs/install_internal_scripts.log"
+        "logs/download/install_internal_scripts.log"
     benchmark:
-        "benchmarks/install_internal_scripts.txt"
+        "benchmarks/download/install_internal_scripts.txt"
     params:
         db_dir=config.get("db_dir"),
         url="https://github.com/jmtsuji/nanopore-workflows/archive/refs/tags/" + VERSION + ".tar.gz"
@@ -52,16 +56,16 @@ rule install_polypolish:
         polypolish=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH, "polypolish"),
         install_finished=os.path.join(config.get("db_dir"), "checkpoints", "polypolish_" + VERSION_POLYPOLISH)
     log:
-        "logs/install_polypolish.log"
+        "logs/download/install_polypolish.log"
     benchmark:
-        "benchmarks/install_polypolish.txt"
+        "benchmarks/download/install_polypolish.txt"
     params:
         db_dir=os.path.join(config.get("db_dir"), "polypolish"),
-        url="https://github.com/rrwick/Polypolish/releases/download/v0.5.0/polypolish-linux-x86_64-musl-v" + VERSION_POLYPOLISH + ".tar.gz",
+        url="https://github.com/rrwick/Polypolish/releases/download/v0.5.0/polypolish-linux-x86_64-musl-v" + VERSION_POLYPOLISH + ".tar.gz"
     shell:
         """
         mkdir -p {params.db_dir}
-        wget -O - {params.url} 2> {log} | tar -C {params.output_dir} -xzf - >> {log} 2>&1
+        wget -O - {params.url} 2> {log} | tar -C {params.db_dir} -xzf - >> {log} 2>&1
         touch {output.install_finished}
         """
 
@@ -69,12 +73,11 @@ rule install_polypolish:
 # TODO - does not check the HMM version, only ID. If the HMM version updates, it won't automatically re-download
 rule hmm_download:
     output:
-        hmm=os.path.join(config.get("db_dir"), "hmm", config.get("start_hmm_pfam_id") + ".hmm"),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "polypolish_" + VERSION_POLYPOLISH)
+        hmm=os.path.join(config.get("db_dir"), "hmm", config.get("start_hmm_pfam_id") + ".hmm")
     log:
-        "logs/install_polypolish.log"
+        "logs/download/hmm_download.log"
     benchmark:
-        "benchmarks/install_polypolish.txt"
+        "benchmarks/download/hmm_download.txt"
     params:
         db_dir=os.path.join(config.get("db_dir"), "hmm"),
         url="https://pfam.xfam.org/family/" + config.get("start_hmm_pfam_id") + "/hmm"
@@ -83,6 +86,76 @@ rule hmm_download:
         mkdir -p {params.db_dir}
         wget -O {output.hmm} {params.url} 2> {log}
         # --no-check-certificate
+        """
+
+
+rule download_dfast_db:
+    output:
+        db=directory(os.path.join(config.get("db_dir"), "dfast_" + VERSION_DFAST)),
+        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "dfast_" + VERSION_DFAST)
+    conda:
+        "../envs/annotation_dfast.yaml"
+    log:
+        "logs/download/dfast_db_download.log"
+    benchmark:
+        "benchmarks/download/dfast_db_download.txt"
+    params:
+        db_dir=os.path.join(config.get("db_dir"), "dfast_" + VERSION_DFAST)
+    shell:
+        """
+        mkdir -p {params.db_dir}
+        dfast_file_downloader.py --protein dfast --dbroot {params.db_dir} > {log} 2>&1
+        dfast_file_downloader.py --cdd Cog --hmm TIGR --dbroot {params.db_dir} >> {log} 2>&1
+        touch {output.install_finished}
+        """
+
+
+rule download_eggnog_db:
+    output:
+        db=directory(os.path.join(config.get("db_dir"), "eggnog_" + VERSION_EGGNOG)),
+        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "eggnog_" + VERSION_EGGNOG)
+    conda:
+        "../envs/eggnog.yaml"
+    log:
+        "logs/download/eggnog_db_download.log"
+    benchmark:
+        "benchmarks/download/eggnog_db_download.txt"
+    params:
+        db_dir=os.path.join(config.get("db_dir"), "eggnog_" + VERSION_EGGNOG)
+    shell:
+        """
+        mkdir -p {params.db_dir}
+        download_eggnog_data.py -y --data_dir {params.db_dir} > {log} 2>&1
+        touch {output.install_finished}
+        """
+
+
+rule download_gtdb_db:
+    output:
+        db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
+        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "GTDB_" + VERSION_GTDB)
+    log:
+        "logs/download/gtdb_db_download.log"
+    benchmark:
+        "benchmarks/download/gtdb_db_download.txt"
+    params:
+        db_dir_root=os.path.join(config.get("db_dir"),
+        initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB),
+        db_dir=os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB),
+        url="https://data.gtdb.ecogenomic.org/releases/release" + VERSION_GTDB + "/" + VERSION_GTDB + ".0/auxillary_files/gtdbtk_r" + VERSION_GTDB + "_data.tar.gz"
+    shell:
+        """
+        mkdir -p {params.db_dir}
+
+        if [[ -d {params.initial_download_dir} ]]; then
+          echo "GTDB cannot be downloaded because of pre-existing dir: {params.initial_download_dir}"
+          exit 1
+        fi
+        
+        wget -O - {params.url} 2> {log} | tar -C {params.db_dir_root} -xzf - >> {log} 2>&1
+        mv {params.initial_download_dir} {params.db_dir}
+
+        touch {output.install_finished}
         """
 
 
@@ -810,7 +883,8 @@ rule circularize:
 # TODO - can I auto-predict genome completeness, names, types, topologies?
 rule run_dfast:
     input:
-        "circularize/circularize.fasta"
+        contigs="circularize/circularize.fasta",
+        install_finished=os.path.join(config.get("db_dir"),"checkpoints","dfast_" + VERSION_DFAST)
     output:
         "annotation/dfast/genome.fna",
         "annotation/dfast/protein.faa"
@@ -822,15 +896,15 @@ rule run_dfast:
         "benchmarks/annotation_dfast.txt"
     params:
         outdir="annotation/dfast",
-        dfast_db=config.get("dfast_db"),
+        db=directory(os.path.join(config.get("db_dir"),"dfast_" + VERSION_DFAST)),
         strain=config.get("sample_id")
     threads:
         config.get("threads",1)
     shell:
         """
         dfast --force \
-          --dbroot {params.dfast_db} \
-          -g {input} \
+          --dbroot {params.db} \
+          -g {input.contigs} \
           -o {params.outdir} \
           --strain {params.strain} \
           --locus_tag_prefix {params.strain} \
@@ -845,7 +919,8 @@ rule run_dfast:
 # TODO - add option to control whether --dbmem flag is set (uses more RAM but does faster analysis)
 rule run_eggnog:
     input:
-        "annotation/dfast/protein.faa"
+        protein="annotation/dfast/protein.faa",
+        install_finished=os.path.join(config.get("db_dir"),"checkpoints","eggnog_" + VERSION_EGGNOG)
     output:
         "annotation/eggnog/eggnog.emapper.annotations"
     conda:
@@ -857,16 +932,16 @@ rule run_eggnog:
     params:
         outdir = "annotation/eggnog",
         tmpdir="annotation/eggnog/tmp",
-        db_dir=config.get("eggnog_db"),
+        db=directory(os.path.join(config.get("db_dir"), "eggnog_" + VERSION_EGGNOG)),
         sensmode=config.get("eggnog_sensmode")
     threads:
         config.get("threads",1)
     shell:
         """
         mkdir -p {params.tmpdir}
-        emapper.py --cpu {threads} -i {input} --itype proteins -m diamond --sensmode ultra-sensitive \
+        emapper.py --cpu {threads} -i {input.protein} --itype proteins -m diamond --sensmode ultra-sensitive \
           --dbmem --output eggnog --output_dir {params.outdir} --temp_dir {params.tmpdir} \
-          --data_dir {params.db_dir} > {log} 2>&1
+          --data_dir {params.db} > {log} 2>&1
         rm -r {params.tmpdir}
         """
 
@@ -874,7 +949,8 @@ rule run_eggnog:
 # TODO - if adding support for multiple genomes, this could be run once with all genomes together to save time
 rule run_gtdbtk:
     input:
-        "annotation/dfast/genome.fna"
+        genome="annotation/dfast/genome.fna",
+        install_finished=os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB)
     output:
         batchfile=temp("annotation/gtdbtk/batchfile.tsv"),
         annotation="annotation/gtdbtk/gtdbtk.summary.tsv"
@@ -886,14 +962,14 @@ rule run_gtdbtk:
         "benchmarks/gtdbtk.txt"
     params:
         outdir="annotation/gtdbtk/run_files",
-        db_dir=config.get("gtdbtk_db"),
+        db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
         genome_id=config.get("sample_id")
     threads:
         config.get("threads",1)
     shell:
         """
-        GTDBTK_DATA_PATH={params.db_dir}
-        printf "{input}\t{params.genome_id}\n" > {output.batchfile}
+        GTDBTK_DATA_PATH={params.db}
+        printf "{input.genome}\t{params.genome_id}\n" > {output.batchfile}
         gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {params.outdir} \
           --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
         head -n 1 {params.outdir}/gtdbtk.*.summary.tsv | sort -u > {output.annotation}
