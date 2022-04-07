@@ -403,16 +403,16 @@ rule polish_polypolish:
     shell:
         """
         printf "\n\n### Read mapping ###\n" > {log}
-        bwa index {input} 2>> {log}
-        bwa mem -t {threads} -a {input} {params.qc_short_r1} > {output.mapping_r1} 2>> {log}
-        bwa mem -t {threads} -a {input} {params.qc_short_r2} > {output.mapping_r2} 2>> {log}
+        bwa index {input.contigs} 2>> {log}
+        bwa mem -t {threads} -a {input.contigs} {params.qc_short_r1} > {output.mapping_r1} 2>> {log}
+        bwa mem -t {threads} -a {input.contigs} {params.qc_short_r2} > {output.mapping_r2} 2>> {log}
         
         printf "\n\n### Polypolish insert filter ###\n" >> {log}
         {input.polypolish_filter} --in1 {output.mapping_r1} --in2 {output.mapping_r2} \
           --out1 {output.mapping_clean_r1} --out2 {output.mapping_clean_r2} 2>> {log}
           
         printf "\n\n### Polypolish ###\n" >> {log}
-        {input.polypolish} {input} --debug {output.debug} \
+        {input.polypolish} {input.contigs} --debug {output.debug} \
           {output.mapping_clean_r1} {output.mapping_clean_r2} 2>> {log} | 
           seqtk seq -A -l 0 | 
           awk \'{{ if ($0 ~ /^>/) {{ gsub("_polypolish", ""); print }} else {{ print }} }}\' | 
