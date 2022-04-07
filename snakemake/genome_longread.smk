@@ -9,6 +9,7 @@ import itertools
 from snakemake.utils import logger, min_version, update_config
 
 VERSION="0.1.0"
+VERSION_POLYPOLISH="0.5.0"
 
 # Specify the minimum snakemake version allowable
 min_version("6.0")
@@ -150,7 +151,7 @@ rule install_internal_scripts:
     shell:
         """
         mkdir -p {params.db_dir}
-        wget -O /dev/stdout {params.url} | tar -C {params.db_dir} -xzf -
+        wget -O - {params.url} 2> {log} | tar -C {params.db_dir} -xzf - >> {log} 2>&1
         touch {output.install_finished}
         """
 
@@ -241,49 +242,74 @@ rule polish_medaka:
         """
 
 
-# TODO: consider moving polypolish download to separate rule at start of pipeline so internet is not needed in middle
-rule polish_polypolish:
+rule install_polypolish:
+    output:
+        polypolish_filter=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH, "polypolish_insert_filter.py"),
+        polypolish=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH, "polypolish"),
+        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "polypolish_" + VERSION_POLYPOLISH)
+    log:
+        "logs/install_polypolish.log"
+    benchmark:
+        "benchmarks/install_polypolish.txt"
+    params:
+        db_dir=os.path.join(config.get("db_dir"), "polypolish"),
+        url="https://github.com/rrwick/Polypolish/releases/download/v0.5.0/polypolish-linux-x86_64-musl-v" + VERSION_POLYPOLISH + ".tar.gz",
+    shell:
+        """
+        mkdir -p {params.db_dir}
+        wget -O - {params.url} 2> {log} | tar -C {params.output_dir} -xzf - >> {log} 2>&1
+        touch {output.install_finished}
+        """
+
+
+rule prepare_polypolish_polish_input:
     input:
         "polish/medaka/consensus.fasta"
     output:
-        polypolish_filter="polish/polypolish/polypolish_insert_filter.py",
-        polypolish="polish/polypolish/polypolish",
-        mapping_r1=temp("polish/polypolish/R1.sam"),
-        mapping_r2=temp("polish/polypolish/R2.sam"),
-        mapping_clean_r1=temp("polish/polypolish/R1.clean.sam"),
-        mapping_clean_r2=temp("polish/polypolish/R2.clean.sam"),
-        polished="polish/polypolish/polypolish.fasta",
-        debug="polish/polypolish/polypolish.debug.log",
-        debug_stats="stats/polypolish_changes_round1.log"
+        "polish/polypolish/input.fasta"
+    run:
+        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+        os.symlink(source_relpath,str(output))
+
+
+rule polish_polypolish:
+    input:
+        contigs="{step}/polypolish/input.fasta",
+        polypolish_filter=os.path.join(config.get("db_dir"),"polypolish_" + VERSION_POLYPOLISH,"polypolish_insert_filter.py"),
+        polypolish=os.path.join(config.get("db_dir"),"polypolish_" + VERSION_POLYPOLISH,"polypolish"),
+        install_finished=os.path.join(config.get("db_dir"),"checkpoints","polypolish_" + VERSION_POLYPOLISH)
+    output:
+        mapping_r1=temp("{step}/polypolish/R1.sam"),
+        mapping_r2=temp("{step}/polypolish/R2.sam"),
+        mapping_clean_r1=temp("{step}/polypolish/R1.clean.sam"),
+        mapping_clean_r2=temp("{step}/polypolish/R2.clean.sam"),
+        polished="{step}/polypolish/polypolish.fasta",
+        debug="{step}/polypolish/polypolish.debug.log",
+        debug_stats="stats/{step}/polypolish_changes.log"
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/polypolish.log"
+        "logs/polypolish_{step}.log"
     benchmark:
-        "benchmarks/polypolish.txt"
+        "benchmarks/polypolish_{step}.txt"
     params:
-        polypolish_url="https://github.com/rrwick/Polypolish/releases/download/v0.5.0/polypolish-linux-x86_64-musl-v0.5.0.tar.gz",
-        output_dir="polish/polypolish",
         qc_short_r1=config.get("qc_short_r1"),
         qc_short_r2=config.get("qc_short_r2")
     threads:
         config.get("threads",1)
     shell:
         """
-        printf "### File download ###\n" > {log}
-        wget -O - {params.polypolish_url} 2>> {log} | tar -C {params.output_dir} -xvzf - >> {log} 2>&1
-        
-        printf "\n\n### Read mapping ###\n" >> {log}
+        printf "\n\n### Read mapping ###\n" > {log}
         bwa index {input} 2>> {log}
         bwa mem -t {threads} -a {input} {params.qc_short_r1} > {output.mapping_r1} 2>> {log}
         bwa mem -t {threads} -a {input} {params.qc_short_r2} > {output.mapping_r2} 2>> {log}
         
         printf "\n\n### Polypolish insert filter ###\n" >> {log}
-        {output.polypolish_filter} --in1 {output.mapping_r1} --in2 {output.mapping_r2} \
+        {input.polypolish_filter} --in1 {output.mapping_r1} --in2 {output.mapping_r2} \
           --out1 {output.mapping_clean_r1} --out2 {output.mapping_clean_r2} 2>> {log}
           
         printf "\n\n### Polypolish ###\n" >> {log}
-        {output.polypolish} {input} --debug {output.debug} \
+        {input.polypolish} {input} --debug {output.debug} \
           {output.mapping_clean_r1} {output.mapping_clean_r2} 2>> {log} | 
           seqtk seq -A -l 0 | 
           awk \'{{ if ($0 ~ /^>/) {{ gsub("_polypolish", ""); print }} else {{ print }} }}\' | 
@@ -553,27 +579,30 @@ rule get_polished_contigs:
         """
 
 
-# TODO - move to download to a re-usable DB folder and then symlink the HMM (if needed) to this folder
+# TODO - does not check the HMM version, only ID. If the HMM version updates, it won't automatically re-download
 rule hmm_download:
     output:
-        "circularize/identify/start.hmm"
+        hmm=os.path.join(config.get("db_dir"), "hmm", config.get("start_hmm_pfam_id") + ".hmm"),
+        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "polypolish_" + VERSION_POLYPOLISH)
     log:
-        "logs/hmm_download.log"
+        "logs/install_polypolish.log"
     benchmark:
-        "benchmarks/hmm_download.txt"
+        "benchmarks/install_polypolish.txt"
     params:
-        pfam_id=config.get("start_hmm_pfam_id")
+        db_dir=os.path.join(config.get("db_dir"), "hmm"),
+        url="https://pfam.xfam.org/family/" + config.get("start_hmm_pfam_id") + "/hmm"
     shell:
         """
-        wget -O {output} --no-check-certificate \
-          https://pfam.xfam.org/family/{params.pfam_id}/hmm 2> {log}
+        mkdir -p {params.db_dir}
+        wget -O {output.hmm} {params.url} 2> {log}
+        # --no-check-certificate
         """
 
 
 rule search_contig_start:
     input:
         contigs="circularize/filter/circular.fasta",
-        hmm="circularize/identify/start.hmm"
+        hmm=os.path.join(config.get("db_dir"), "hmm", config.get("start_hmm_pfam_id") + ".hmm")
     output:
         orf_predictions=temp("circularize/identify/circular.faa"),
         gene_predictions=temp("circularize/identify/circular.ffn"),
@@ -703,59 +732,15 @@ rule run_circlator:
         """
 
 
-# TODO: can I merge this code with the first run of polypolish? The only difference is to change the input/output names and to add the summarizer code at the end
-rule repolish_polypolish:
+# Points to the main polypolish rule (polish_polypolish) above
+rule prepare_polypolish_circularize_input:
     input:
         "circularize/circlator/rotated.fasta"
     output:
-        polypolish_filter="circularize/polypolish/polypolish_insert_filter.py",
-        polypolish="circularize/polypolish/polypolish",
-        mapping_r1=temp("circularize/polypolish/R1.sam"),
-        mapping_r2=temp("circularize/polypolish/R2.sam"),
-        mapping_clean_r1=temp("circularize/polypolish/R1.clean.sam"),
-        mapping_clean_r2=temp("circularize/polypolish/R2.clean.sam"),
-        polished="circularize/polypolish/polypolish.fasta",
-        debug="circularize/polypolish/polypolish.debug.log",
-        debug_stats="stats/polypolish_changes_round2.log"
-    conda:
-        "../envs/mapping.yaml"
-    log:
-        "logs/repolypolish.log"
-    benchmark:
-        "benchmarks/repolypolish.txt"
-    params:
-        polypolish_url="https://github.com/rrwick/Polypolish/releases/download/v0.5.0/polypolish-linux-x86_64-musl-v0.5.0.tar.gz",
-        output_dir="circularize/polypolish",
-        qc_short_r1=config.get("qc_short_r1"),
-        qc_short_r2=config.get("qc_short_r2")
-    threads:
-        config.get("threads",1)
-    shell:
-        """
-        printf "### File download ###\n" > {log}
-        wget -O - {params.polypolish_url} 2>> {log} | tar -C {params.output_dir} -xvzf - >> {log} 2>&1
-        
-        printf "\n\n### Read mapping ###\n" >> {log}
-        bwa index {input} 2>> {log}
-        bwa mem -t {threads} -a {input} {params.qc_short_r1} > {output.mapping_r1} 2>> {log}
-        bwa mem -t {threads} -a {input} {params.qc_short_r2} > {output.mapping_r2} 2>> {log}
-        
-        printf "\n\n### Polypolish insert filter ###\n" >> {log}
-        {output.polypolish_filter} --in1 {output.mapping_r1} --in2 {output.mapping_r2} \
-          --out1 {output.mapping_clean_r1} --out2 {output.mapping_clean_r2} 2>> {log}
-          
-        printf "\n\n### Polypolish ###\n" >> {log}
-        {output.polypolish} {input} --debug {output.debug} \
-          {output.mapping_clean_r1} {output.mapping_clean_r2} 2>> {log} | 
-          seqtk seq -A -l 0 | 
-          awk \'{{ if ($0 ~ /^>/) {{ gsub("_polypolish", ""); print }} else {{ print }} }}\' | 
-          seqtk seq -l 60 > {output.polished} 2>> {log}
-        
-        head -n 1 {output.debug} > {output.debug_stats}
-        grep changed {output.debug} >> {output.debug_stats}
-        
-        printf "\n\n### Done. ###\n"
-        """
+        "circularize/polypolish/input.fasta"
+    run:
+        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+        os.symlink(source_relpath,str(output))
 
 
 rule finalize_circular_contig_rotation:
@@ -1018,7 +1003,7 @@ rule summarize_annotation:
     shell:
         """
         cd {params.zipdir}
-        zip -r ../{output} * -x \*.bam\* gtdbtk/run_files/\* 2> "../summarize_annotation.log"
+        zip -r ../{output} * -x \*.bam\* gtdbtk/run_files/\* > "../summarize_annotation.log" 2>&1
         cd ..
         mv "summarize_annotation.log" {log}
         """
