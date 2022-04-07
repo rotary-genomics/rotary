@@ -335,7 +335,7 @@ rule prepare_medaka_polish_input:
     input:
         "assembly/assembly.fasta"
     output:
-        "polish/medaka/input.fasta"
+        "polish/medaka/input/input.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -344,7 +344,7 @@ rule prepare_medaka_polish_input:
 rule polish_medaka:
     input:
         qc_long_reads="qc_long/nanopore_qc.fastq.gz",
-        contigs="{step}/medaka/input.fasta"
+        contigs="{step}/medaka/input/input.fasta"
     output:
         dir=directory("{step}/medaka"),
         contigs="{step}/medaka/consensus.fasta"
@@ -369,7 +369,7 @@ rule prepare_polypolish_polish_input:
     input:
         "polish/medaka/consensus.fasta"
     output:
-        "polish/polypolish/input.fasta"
+        "polish/polypolish/input/input.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -377,7 +377,7 @@ rule prepare_polypolish_polish_input:
 
 rule polish_polypolish:
     input:
-        contigs="{step}/polypolish/input.fasta",
+        contigs="{step}/polypolish/input/input.fasta",
         polypolish_filter=os.path.join(config.get("db_dir"),"polypolish_" + VERSION_POLYPOLISH,"polypolish_insert_filter.py"),
         polypolish=os.path.join(config.get("db_dir"),"polypolish_" + VERSION_POLYPOLISH,"polypolish"),
         install_finished=os.path.join(config.get("db_dir"),"checkpoints","polypolish_" + VERSION_POLYPOLISH)
@@ -820,7 +820,7 @@ rule prepare_medaka_circularize_input:
     input:
         "circularize/circlator/rotated.fasta"
     output:
-        "circularize/medaka/input.fasta"
+        "circularize/medaka/input/input.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -831,7 +831,7 @@ rule prepare_polypolish_circularize_input:
     input:
         "circularize/circlator/rotated.fasta"
     output:
-        "circularize/polypolish/input.fasta"
+        "circularize/polypolish/input/input.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
