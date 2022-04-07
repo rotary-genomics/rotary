@@ -1,4 +1,4 @@
-# Config file for running Nanopore genome assembly
+# Config file for toyako
 
 #####################
 ## Sample information
@@ -11,7 +11,7 @@ qc_short_r1: "QC_R1.fastq.gz"
 qc_short_r2: "QC_R2.fastq.gz"
 #####################
 
-## Database installation
+## Directory for database installation
 db_dir: "/Data/databases/nanopore-workflows"
 
 ## Resources

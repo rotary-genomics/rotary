@@ -36,7 +36,7 @@ The pipeline performs long read QC, assembly, end repair, polishing, contig rota
 - Snakemake checkpointing allows you to re-start a failed run from where you left off
 - Circularization is handled fairly carefully. Unlike the defaults in most pipelines, _tōyako_ fixes the 
   [short gap region](https://github.com/fenderglass/Flye/issues/315#issuecomment-720679812) that can occur at the ends 
-  of circular contigs produced by Flye. If short reads are provided, it then polishes the circular contigs in two 
+  of circular contigs produced by Flye. It also polishes the circular contigs in two 
   different rotation states to try to correct errors near contig ends.
 
 ## Requirements
@@ -120,14 +120,13 @@ please feel free to use this basic working version.
 6. Filters resulting contigs by a user-provided coverage threshold
 7. Rotates any circular contigs to start at a marker gene of your choice (_dnaA_ by default), with help from 
    [circlator](https://github.com/sanger-pathogens/circlator)
-8. Performs one more round of short read polishing via [Polypolish](https://github.com/rrwick/Polypolish), 
-   if short reads are provided, on circular contigs
+8. Performs one more round of short read polishing on circular contigs, either using 
+   Polypolish (if short reads were provided) or medaka (if only long reads were provided)
 9. Gene prediction via [DFAST](https://github.com/nigyta/dfast_core)
 10. Functional and taxonomic annotation via [EggNOG-mapper](https://github.com/eggnogdb/eggnog-mapper) 
     and [GTDB-Tk](https://github.com/Ecogenomics/GTDBTk)
 
 ### Known issues
-- Re-polishing is not performed if short reads are not provided
 - Short read QC is not performed (you have to do it in advance)
 - If you get "unlucky" and genome rotation is not substantial (e.g., _dnaA_ is already at the end of the contig, re-polishing will have effect in improving assembly quality)
 - Similarly, for short contigs, the error-prone region from end repair might end up near the end of short contigs (e.g., < 100kb long)

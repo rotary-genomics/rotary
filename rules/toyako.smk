@@ -1,5 +1,5 @@
-# Snakemake rules long read-based genome assembly workflow
-# Copyright Jackson M. Tsuji, ILTS, Hokkaido University, 2022
+# toyako, a snakemake-based Nanopore genome assembly workflow
+# Copyright Jackson M. Tsuji, Institute of Low Temperature Science, Hokkaido University, 2022
 
 import os
 import sys
@@ -331,26 +331,36 @@ rule assembly:
         temp(touch("checkpoints/assembly"))
 
 
+rule prepare_medaka_polish_input:
+    input:
+        "assembly/assembly.fasta"
+    output:
+        "polish/medaka/input.fasta"
+    run:
+        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+        os.symlink(source_relpath,str(output))
+
+
 rule polish_medaka:
     input:
         qc_long_reads="qc_long/nanopore_qc.fastq.gz",
-        contigs="assembly/assembly.fasta"
+        contigs="{step}/medaka/input.fasta"
     output:
-        "polish/medaka/consensus.fasta"
+        dir=directory("{step}/medaka"),
+        contigs="{step}/medaka/consensus.fasta"
     conda:
         "../envs/medaka.yaml"
     log:
-        "logs/medaka.log"
+        "logs/medaka_{step}.log"
     benchmark:
-        "benchmarks/medaka.txt"
+        "benchmarks/medaka_{step}.txt"
     params:
-        output_dir="polish/medaka",
         medaka_model=config.get("medaka_model")
     threads:
         config.get("threads",1)
     shell:
         """
-        medaka_consensus -i {input.qc_long_reads} -d {input.contigs} -o {params.output_dir} \
+        medaka_consensus -i {input.qc_long_reads} -d {input.contigs} -o {output.dir} \
           -m {params.medaka_model} -t {threads} > {log} 2>&1
         """
 
@@ -805,6 +815,17 @@ rule run_circlator:
         """
 
 
+# Points to the main medaka rule (polish_medaka) above
+rule prepare_medaka_circularize_input:
+    input:
+        "circularize/circlator/rotated.fasta"
+    output:
+        "circularize/medaka/input.fasta"
+    run:
+        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+        os.symlink(source_relpath,str(output))
+
+
 # Points to the main polypolish rule (polish_polypolish) above
 rule prepare_polypolish_circularize_input:
     input:
@@ -816,9 +837,10 @@ rule prepare_polypolish_circularize_input:
         os.symlink(source_relpath,str(output))
 
 
+# Determines whether a second round of long vs. short read polishing is performed
 rule finalize_circular_contig_rotation:
     input:
-        "circularize/polypolish/polypolish.fasta"
+        "circularize/medaka/consensus.fasta" if config.get("qc_short_r1") == "None" else "circularize/polypolish/polypolish.fasta"
     output:
         "circularize/combine/circular.fasta"
     run:
