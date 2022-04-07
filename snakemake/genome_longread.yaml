@@ -66,7 +66,4 @@ start_hmm_pfam_id: "PF00308"
 hmmsearch_evalue: 1e-40
 
 ## Annotation
-dfast_db: "/Data/jmtsuji/databases_211111_legacy/dfast"
-eggnog_db: "/Data/jmtsuji/databases_211111_legacy/atlas/2.8.x/EggNOG_V5"
 eggnog_sensmode: "ultra-sensitive"
-gtdbtk_db: "/Data/jmtsuji/databases_211111_legacy/atlas/2.8.x/GTDB_V06"
