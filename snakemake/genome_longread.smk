@@ -61,7 +61,7 @@ rule install_polypolish:
         "benchmarks/download/install_polypolish.txt"
     params:
         db_dir=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH),
-        url="https://github.com/rrwick/Polypolish/releases/download/v0.5.0/polypolish-linux-x86_64-musl-v" + VERSION_POLYPOLISH + ".tar.gz"
+        url="https://github.com/rrwick/Polypolish/releases/download/v" + VERSION_POLYPOLISH + "/polypolish-linux-x86_64-musl-v" + VERSION_POLYPOLISH + ".tar.gz"
     shell:
         """
         mkdir -p {params.db_dir}
