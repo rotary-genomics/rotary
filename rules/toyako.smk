@@ -335,7 +335,7 @@ rule prepare_medaka_polish_input:
     input:
         "assembly/assembly.fasta"
     output:
-        "polish/medaka/input/input.fasta"
+        "polish/medaka_input/input.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -344,7 +344,7 @@ rule prepare_medaka_polish_input:
 rule polish_medaka:
     input:
         qc_long_reads="qc_long/nanopore_qc.fastq.gz",
-        contigs="{step}/medaka/input/input.fasta"
+        contigs="{step}/medaka_input/input.fasta"
     output:
         dir=directory("{step}/medaka"),
         contigs="{step}/medaka/consensus.fasta"
@@ -820,7 +820,7 @@ rule prepare_medaka_circularize_input:
     input:
         "circularize/circlator/rotated.fasta"
     output:
-        "circularize/medaka/input/input.fasta"
+        "circularize/medaka_input/input.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
