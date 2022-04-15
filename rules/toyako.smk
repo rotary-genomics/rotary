@@ -659,11 +659,11 @@ checkpoint split_circular_and_linear_contigs:
 
         os.makedirs(output[0], exist_ok=True)
 
-        # Only output files if there is >1 entry
-        if circular_contigs.shape[0] > 1:
+        # Only output files if there is >=1 entry
+        if circular_contigs.shape[0] >= 1:
             circular_contigs['#seq_name'].to_csv(os.path.join(output[0], 'circular.list'), header=None, index=False)
 
-        if linear_contigs.shape[0] > 1:
+        if linear_contigs.shape[0] >= 1:
             linear_contigs['#seq_name'].to_csv(os.path.join(output[0], 'linear.list'), header=None, index=False)
 
 

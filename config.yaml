@@ -12,7 +12,7 @@ qc_short_r2: "QC_R2.fastq.gz"
 #####################
 
 ## Directory for database installation
-db_dir: "/Data/databases/nanopore-workflows"
+db_dir: "/Data/databases/toyako"
 
 ## Resources
 threads: 40
