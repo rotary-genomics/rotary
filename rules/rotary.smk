@@ -168,9 +168,9 @@ rule nanopore_qc_filter:
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/qc_long.log"
+        "logs/qc/qc_long.log"
     benchmark:
-        "benchmarks/qc_long.benchmark.txt"
+        "benchmarks/qc/qc_long.benchmark.txt"
     threads:
         config.get("threads",1)
     resources:
@@ -193,9 +193,9 @@ rule qc_long_length_hist:
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/qc_long_length_hist.log"
+        "logs/qc/qc_long_length_hist.log"
     benchmark:
-        "benchmarks/qc_long_length_hist.benchmark.txt"
+        "benchmarks/qc/qc_long_length_hist.benchmark.txt"
     threads:
         config.get("threads",1)
     resources:
@@ -213,9 +213,9 @@ rule qc_long_length_stats:
     output:
         "stats/qc_long_length_stats.txt"
     log:
-        "logs/qc_long_length_stats.log"
+        "logs/qc/qc_long_length_stats.log"
     benchmark:
-        "benchmarks/qc_long_length_stats.benchmark.txt"
+        "benchmarks/qc/qc_long_length_stats.benchmark.txt"
     run:
         length_hist = pd.read_csv(input[0], sep='\t')
 
@@ -253,9 +253,9 @@ rule assembly_flye:
     conda:
         "../envs/assembly_flye.yaml"
     log:
-        "logs/assembly_flye.log"
+        "logs/assembly/assembly_flye.log"
     benchmark:
-        "benchmarks/assembly_flye.benchmark.txt"
+        "benchmarks/assembly/assembly_flye.benchmark.txt"
     params:
         output_dir="assembly/flye",
         input_mode=config.get("flye_input_mode"),
@@ -270,6 +270,7 @@ rule assembly_flye:
           --iterations {params.polishing_rounds} -t {threads} > {log} 2>&1
         """
 
+# TODO - add support for read error rate flag (here and in Bash code)
 rule assembly_end_repair:
     input:
         qc_long_reads="qc_long/nanopore_qc.fastq.gz",
@@ -284,9 +285,9 @@ rule assembly_end_repair:
     conda:
         "../envs/circlator.yaml"
     log:
-        "logs/end_repair.log"
+        "logs/assembly/end_repair.log"
     benchmark:
-        "benchmarks/end_repair.txt"
+        "benchmarks/assembly/end_repair.txt"
     params:
         output_dir="assembly/end_repair",
         flye_input_mode=config.get("flye_input_mode"),
@@ -352,9 +353,9 @@ rule polish_medaka:
     conda:
         "../envs/medaka.yaml"
     log:
-        "logs/medaka_{step}.log"
+        "logs/{step}/medaka.log"
     benchmark:
-        "benchmarks/medaka_{step}.txt"
+        "benchmarks/{step}/medaka.txt"
     params:
         medaka_model=config.get("medaka_model")
     threads:
@@ -393,9 +394,9 @@ rule polish_polypolish:
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/polypolish_{step}.log"
+        "logs/{step}/polypolish.log"
     benchmark:
-        "benchmarks/polypolish_{step}.txt"
+        "benchmarks/{step}/polypolish.txt"
     params:
         qc_short_r1=config.get("qc_short_r1"),
         qc_short_r2=config.get("qc_short_r2")
@@ -437,9 +438,9 @@ rule polish_polca:
     conda:
         "../envs/masurca.yaml"
     log:
-        "logs/polca.log"
+        "logs/polish/polca.log"
     benchmark:
-        "benchmarks/polca.txt"
+        "benchmarks/polish/polca.txt"
     params:
         qc_short_r1=config.get("qc_short_r1"),
         qc_short_r2=config.get("qc_short_r2"),
@@ -486,9 +487,9 @@ if (config.get("qc_short_r1") != "None") & \
         conda:
             "../envs/mapping.yaml"
         log:
-            "logs/calculate_short_read_coverage.log"
+            "logs/polish/calculate_short_read_coverage.log"
         benchmark:
-            "benchmarks/calculate_short_read_coverage.txt"
+            "benchmarks/polish/calculate_short_read_coverage.txt"
         params:
             qc_short_r1=config.get("qc_short_r1"),
             qc_short_r2=config.get("qc_short_r2")
@@ -523,9 +524,9 @@ if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_
         conda:
             "../envs/mapping.yaml"
         log:
-            "logs/calculate_long_read_coverage.log"
+            "logs/polish/calculate_long_read_coverage.log"
         benchmark:
-            "benchmarks/calculate_long_read_coverage.txt"
+            "benchmarks/polish/calculate_long_read_coverage.txt"
         threads:
             config.get("threads",1)
         resources:
@@ -695,9 +696,9 @@ rule search_contig_start:
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/search_contig_start.log"
+        "logs/circularize/search_contig_start.log"
     benchmark:
-        "benchmarks/search_contig_start.txt"
+        "benchmarks/circularize/search_contig_start.txt"
     params:
         hmmsearch_evalue=config.get("hmmsearch_evalue")
     threads:
@@ -722,7 +723,7 @@ rule process_start_genes:
     output:
         "circularize/identify/start_genes.list"
     log:
-        "logs/process_start_genes.log"
+        "logs/circularize/process_start_genes.log"
     run:
         # Load HMM search results
         hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None, comment='#')[[0, 2, 3, 4]]
@@ -800,9 +801,9 @@ rule run_circlator:
     conda:
         "../envs/circlator.yaml"
     log:
-        "logs/circlator.log"
+        "logs/circularize/circlator.log"
     benchmark:
-        "benchmarks/circlator.txt"
+        "benchmarks/circularize/circlator.txt"
     params:
         min_id=90,
         run_name="circularize/circlator/rotated"
@@ -886,13 +887,13 @@ rule combine_circular_and_linear_contigs:
 
 
 rule symlink_circularization:
-        input:
-            "circularize/combine/combined.fasta"
-        output:
-            "circularize/circularize.fasta"
-        run:
-            source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
-            os.symlink(source_relpath,str(output))
+    input:
+        "circularize/combine/combined.fasta"
+    output:
+        "circularize/circularize.fasta"
+    run:
+        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+        os.symlink(source_relpath,str(output))
 
 
 rule circularize:
@@ -914,9 +915,9 @@ rule run_dfast:
     conda:
         "../envs/annotation_dfast.yaml"
     log:
-        "logs/annotation_dfast.log"
+        "logs/annotation/annotation_dfast.log"
     benchmark:
-        "benchmarks/annotation_dfast.txt"
+        "benchmarks/annotation/annotation_dfast.txt"
     params:
         outdir="annotation/dfast",
         db=directory(os.path.join(config.get("db_dir"),"dfast_" + VERSION_DFAST)),
@@ -949,9 +950,9 @@ rule run_eggnog:
     conda:
         "../envs/eggnog.yaml"
     log:
-        "logs/eggnog.log"
+        "logs/annotation/eggnog.log"
     benchmark:
-        "benchmarks/eggnog.txt"
+        "benchmarks/annotation/eggnog.txt"
     params:
         outdir = "annotation/eggnog",
         tmpdir="annotation/eggnog/tmp",
@@ -979,9 +980,9 @@ rule run_gtdbtk:
     conda:
         "../envs/gtdbtk.yaml"
     log:
-        "logs/gtdbtk.log"
+        "logs/annotation/gtdbtk.log"
     benchmark:
-        "benchmarks/gtdbtk.txt"
+        "benchmarks/annotation/gtdbtk.txt"
     params:
         outdir="annotation/gtdbtk/run_files",
         db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
@@ -1013,9 +1014,9 @@ if config.get("qc_short_r1") != "None":
         conda:
             "../envs/mapping.yaml"
         log:
-            "logs/calculate_final_short_read_coverage.log"
+            "logs/annotation/calculate_final_short_read_coverage.log"
         benchmark:
-            "benchmarks/calculate_final_short_read_coverage.txt"
+            "benchmarks/annotation/calculate_final_short_read_coverage.txt"
         params:
             qc_short_r1=config.get("qc_short_r1"),
             qc_short_r2=config.get("qc_short_r2")
@@ -1046,9 +1047,9 @@ rule calculate_final_long_read_coverage:
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/calculate_final_long_read_coverage.log"
+        "logs/annotation/calculate_final_long_read_coverage.log"
     benchmark:
-        "benchmarks/calculate_final_long_read_coverage.txt"
+        "benchmarks/annotation/calculate_final_long_read_coverage.txt"
     threads:
         config.get("threads",1)
     resources:
@@ -1096,7 +1097,7 @@ rule summarize_annotation:
     output:
         "summary.zip"
     log:
-        "logs/summarize_annotation.log"
+        "logs/annotation/summarize_annotation.log"
     params:
         zipdir="annotation"
     shell:
