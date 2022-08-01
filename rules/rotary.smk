@@ -129,7 +129,8 @@ rule download_eggnog_db:
         """
 
 
-# TODO - the special "_v2" text had to be hard-coded into the GTDB-Tk URL due to a special update to release 207. This text needs to be removed after the next GTDB release, or else the downloader will break.
+# TODO - the special "_v2" text had to be hard-coded into the GTDB-Tk URL and initial_download_dir due to a special update to release 207. This text needs to be removed after the next GTDB release, or else the downloader will break.
+# TODO - if there is an error during download, the initial_download_dir is not deleted during cleanup
 rule download_gtdb_db:
     output:
         db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
@@ -140,7 +141,7 @@ rule download_gtdb_db:
         "benchmarks/download/gtdb_db_download.txt"
     params:
         db_dir_root=os.path.join(config.get("db_dir")),
-        initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB),
+        initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB + "_v2"),
         db_dir=os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB),
         url="https://data.gtdb.ecogenomic.org/releases/release" + VERSION_GTDB + "/" + VERSION_GTDB + ".0/auxillary_files/gtdbtk_r" + VERSION_GTDB + "_v2_data.tar.gz"
     shell:
