@@ -44,7 +44,7 @@ The pipeline performs long read QC, assembly, end repair, polishing, contig rota
 - Software: requires `miniconda`
 - Resources: The majority of the pipeline is not too resource intensive. The limiting factors are:
   - Flye requires moderate RAM (e.g., < 64 GB for typical bacterial genome runs)
-  - GTDB-Tk needs a huge amount of RAM (~220 GB!)
+  - GTDB-Tk v2 (with GTDB r207) needs ~55 GB RAM
   - EggNOG-mapper is a bit slow (e.g., ~40 minutes on 40 CPU threads)
 
 ## Usage

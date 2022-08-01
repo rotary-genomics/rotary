@@ -68,4 +68,5 @@ start_hmm_pfam_id: "PF00308"
 hmmsearch_evalue: 1e-40
 
 ## Annotation
+gtdbtk_mode: "default" # set to "full_tree" to use the GTDB-Tk v1 method (needs ~320 GB RAM!) - otherwise, will use the v2 phylogenetic placement method needing ~55 GB RAM.
 eggnog_sensmode: "ultra-sensitive"

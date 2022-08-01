@@ -986,7 +986,8 @@ rule run_gtdbtk:
     params:
         outdir="annotation/gtdbtk/run_files",
         db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
-        genome_id=config.get("sample_id")
+        genome_id=config.get("sample_id"),
+        gtdbtk_mode="--full_tree" if config.get("gtdbtk_mode") == "full_tree" else ""
     threads:
         config.get("threads",1)
     shell:
@@ -994,7 +995,7 @@ rule run_gtdbtk:
         GTDBTK_DATA_PATH={params.db}
         printf "{input.genome}\t{params.genome_id}\n" > {output.batchfile}
         gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {params.outdir} \
-          --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
+          {params.gtdbtk_mode} --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
         head -n 1 {params.outdir}/gtdbtk.*.summary.tsv | sort -u > {output.annotation}
         tail -n +2 {params.outdir}/gtdbtk.*.summary.tsv >> {output.annotation}
         """
