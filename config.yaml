@@ -1,7 +1,8 @@
-# Config file for toyako
+# Config file for rotary
 
 #####################
 ## Sample information
+# The sample ID should ideally be short and without special characters (e.g., < 10 characters, alphanumeric and underscores only)
 sample_id: "E_coli"
 # Nanopore data
 longreads: "E_coli.fastq.gz"
@@ -12,7 +13,7 @@ qc_short_r2: "QC_R2.fastq.gz"
 #####################
 
 ## Directory for database installation
-db_dir: "/Data/databases/toyako"
+db_dir: "/Data/databases/rotary"
 
 ## Resources
 threads: 40

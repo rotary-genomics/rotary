@@ -8,14 +8,14 @@ import pandas as pd
 import itertools
 from snakemake.utils import logger, min_version, update_config
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 VERSION_POLYPOLISH="0.5.0"
-VERSION_DFAST="1.2.15"
+VERSION_DFAST="1.2.18"
 VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
 VERSION_GTDB="207" # See https://data.gtdb.ecogenomic.org/releases/
 
 # Specify the minimum snakemake version allowable
-min_version("6.0")
+min_version("7.0")
 # Specify shell parameters
 shell.executable("/bin/bash")
 shell.prefix("set -o pipefail; ")
