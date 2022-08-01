@@ -6,5 +6,5 @@ dependencies:
   - python=3.9
   - pandas=1.4
   - snakemake=6
-#  - atlas=2.8.2
-
+  - mamba
+  - wget

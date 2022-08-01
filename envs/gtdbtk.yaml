@@ -3,4 +3,4 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  - gtdbtk=1.5.1
+  - gtdbtk=1.5.1 # Remember to update VERSION_GTDB in the snakefile if the GTDB version updates
