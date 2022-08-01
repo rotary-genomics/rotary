@@ -84,13 +84,13 @@ mkdir -p "${run_directory}"
 snakemake --dryrun --snakefile "${snakefile}" --configfile "${config}" \
   --directory "${run_directory}" --use-conda --conda-frontend mamba \
   --conda-prefix "${conda_prefix}" --jobs "${jobs}" --rerun-incomplete \
-  --reason --printshellcmds 2>&1 | tee genome_longread_steps.log
+  --reason --printshellcmds 2>&1 | tee rotary_steps.log
 
 # Run the pipeline
 snakemake --snakefile "${snakefile}" --configfile "${config}" \
   --directory "${run_directory}" --use-conda --conda-frontend mamba \
   --conda-prefix "${conda_prefix}" --jobs "${jobs}" --rerun-incomplete \
-  --reason --printshellcmds 2>&1 | tee genome_longread.log
+  --reason --printshellcmds 2>&1 | tee rotary.log
 ```
 
 ### 4. Post-run tips

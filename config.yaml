@@ -18,7 +18,8 @@ db_dir: "/Data/databases/rotary"
 ## Resources
 threads: 40
 # Memory in Gigabytes
-memory: 200
+#   At least ~55-60 GB is needed
+memory: 100
 
 ## Long read QC
 # Minimum read length
