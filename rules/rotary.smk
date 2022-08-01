@@ -965,9 +965,9 @@ rule run_eggnog:
     shell:
         """
         mkdir -p {params.tmpdir}
-        emapper.py --cpu {threads} -i {input.protein} --itype proteins -m diamond --sensmode ultra-sensitive \
+        emapper.py --cpu {threads} -i {input.protein} --itype proteins -m diamond --sensmode {params.sensmode} \
           --dbmem --output eggnog --output_dir {params.outdir} --temp_dir {params.tmpdir} \
-          --data_dir {params.db} > {log} 2>&1
+          --data_dir {params.db} --override > {log} 2>&1
         rm -r {params.tmpdir}
         """
 
