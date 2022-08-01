@@ -98,6 +98,7 @@ To double check that everything ran correctly, I recommend to briefly check all 
 once the run is finished.
 
 In addition, please check the following:
+- QC results (`logs/qc_long.log`) -- shows how many reads were retained vs. discarded during the QC filter step (this is technically in the `logs` folder mentioned above, but I wanted to add it here again to stress that it is worth checking)
 - Assembly quality (`assembly/assembly_info.txt`) -- see how many contigs you got and circular vs linear status
 - Detailed end repair log (`assembly/end_repair/verbose.log`) -- this is hard to read, but it's helpful to look for any 
   signs of errors or warnings. You can also see how contig rotation went after the stitch.
@@ -110,7 +111,7 @@ In addition, please check the following:
   If you see more than about 20 changes, it means your genome might have some odd difficult-to-correct regions.
 
 ## Final comments
-Enjoy! I hope to continue to update this pipeline (and remove some of the above caveats) over time, but for now, 
+Enjoy! I hope to continue to update/improve this pipeline (and remove some of the below caveats) over time, but for now, 
 please feel free to use this basic working version.
 
 ## Appendix

@@ -85,7 +85,6 @@ rule download_hmm:
         """
         mkdir -p {params.db_dir}
         wget -O {output.hmm} {params.url} 2> {log}
-        # --no-check-certificate
         """
 
 
@@ -969,7 +968,6 @@ rule run_eggnog:
         """
 
 
-# TODO - if adding support for multiple genomes, this could be run once with all genomes together to save time
 rule run_gtdbtk:
     input:
         genome="annotation/dfast/genome.fna",
