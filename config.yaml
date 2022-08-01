@@ -28,6 +28,8 @@ minavgquality: 13
 ## Assembly
 # nano-hq (if <5% error) or nano-raw
 flye_input_mode: "nano-hq"
+# Optional: specify the error rate of the input reads as a fraction (e.g., use 0.03 for 3% error). This is mostly useful if you are using nano-hq with reads having >95% accuracy.
+flye_read_error: "auto"
 # Run Flye in --meta mode? Set to "True", with quotation marks, to use meta mode. Anything else (e.g., "False") will not use meta mode.
 flye_meta_mode: "False"
 # By default, Flye performs one round of long read polishing after assembly

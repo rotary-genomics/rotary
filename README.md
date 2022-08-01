@@ -142,10 +142,10 @@ please feel free to use this basic working version.
 ### Future ideas
 - Add proper CLI (including auto generation of config)
 - Create a conda install (e.g., in bioconda)
-- Move the end repair script from Bash to Python
 - Add summary reports
 - Add other assembly options
 - Auto classify contigs as chromosomes vs. plasmids
+- Move the end repair script from Bash to Python
 
 ## Footnotes
 <sup>1</sup> Currently, Nanopore data generated with R9.4.1 flow cells (or earlier) requires short reads for error correction. A [recent paper](https://doi.org/10.1038/s41592-022-01539-7) demonstrated that microbial genome assemblies from R10.4 flow cells no longer benefit from short read error correction compared to just using long reads (very cool!).

@@ -32,8 +32,8 @@ rule all:
 
 rule install_internal_scripts:
     output:
-        end_repair=os.path.join(config.get("db_dir"), "nanopore-workflows-" + VERSION, "scripts", "flye_end_repair.sh"),
-        end_repair_utils=os.path.join(config.get("db_dir"), "nanopore-workflows-" + VERSION, "scripts", "flye_end_repair_utils.py"),
+        end_repair=os.path.join(config.get("db_dir"), "rotary-" + VERSION, "scripts", "flye_end_repair.sh"),
+        end_repair_utils=os.path.join(config.get("db_dir"), "rotary-" + VERSION, "scripts", "flye_end_repair_utils.py"),
         install_finished=os.path.join(config.get("db_dir"), "checkpoints", "internal_scripts_" + VERSION)
     log:
         "logs/download/install_internal_scripts.log"
@@ -41,7 +41,7 @@ rule install_internal_scripts:
         "benchmarks/download/install_internal_scripts.txt"
     params:
         db_dir=config.get("db_dir"),
-        url="https://github.com/jmtsuji/nanopore-workflows/archive/refs/tags/" + VERSION + ".tar.gz"
+        url="https://github.com/jmtsuji/rotary/archive/refs/tags/" + VERSION + ".tar.gz"
     shell:
         """
         mkdir -p {params.db_dir}
@@ -258,24 +258,24 @@ rule assembly_flye:
     params:
         output_dir="assembly/flye",
         input_mode=config.get("flye_input_mode"),
+        read_error="" if config.get("flye_read_error") == "auto" else "--read-error " + config.get("flye_read_error"),
         meta_mode="--meta" if config.get("flye_meta_mode") == "True" else "",
         polishing_rounds=config.get("flye_polishing_rounds")
     threads:
         config.get("threads",1)
     shell:
         """
-        flye --{params.input_mode} {input} --out-dir {params.output_dir} {params.meta_mode} \
+        flye --{params.input_mode} {input} {params.read_error} --out-dir {params.output_dir} {params.meta_mode} \
           --iterations {params.polishing_rounds} -t {threads} > {log} 2>&1
         """
-
 
 rule assembly_end_repair:
     input:
         qc_long_reads="qc_long/nanopore_qc.fastq.gz",
         assembly="assembly/flye/assembly.fasta",
         info="assembly/flye/assembly_info.txt",
-        end_repair=os.path.join(config.get("db_dir"),"nanopore-workflows-" + VERSION,"scripts","flye_end_repair.sh"),
-        end_repair_utils=os.path.join(config.get("db_dir"),"nanopore-workflows-" + VERSION,"scripts","flye_end_repair_utils.py"),
+        end_repair=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"scripts","flye_end_repair.sh"),
+        end_repair_utils=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"scripts","flye_end_repair_utils.py"),
         install_finished=os.path.join(config.get("db_dir"),"checkpoints","internal_scripts_" + VERSION)
     output:
         assembly="assembly/end_repair/repaired.fasta",
