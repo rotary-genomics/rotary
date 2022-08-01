@@ -8,14 +8,14 @@ import pandas as pd
 import itertools
 from snakemake.utils import logger, min_version, update_config
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 VERSION_POLYPOLISH="0.5.0"
-VERSION_DFAST="1.2.15"
+VERSION_DFAST="1.2.18"
 VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
-VERSION_GTDB="202" # See https://data.gtdb.ecogenomic.org/releases/
+VERSION_GTDB="207" # See https://data.gtdb.ecogenomic.org/releases/
 
 # Specify the minimum snakemake version allowable
-min_version("6.0")
+min_version("7.0")
 # Specify shell parameters
 shell.executable("/bin/bash")
 shell.prefix("set -o pipefail; ")
@@ -32,8 +32,8 @@ rule all:
 
 rule install_internal_scripts:
     output:
-        end_repair=os.path.join(config.get("db_dir"), "nanopore-workflows-" + VERSION, "scripts", "flye_end_repair.sh"),
-        end_repair_utils=os.path.join(config.get("db_dir"), "nanopore-workflows-" + VERSION, "scripts", "flye_end_repair_utils.py"),
+        end_repair=os.path.join(config.get("db_dir"), "rotary-" + VERSION, "scripts", "flye_end_repair.sh"),
+        end_repair_utils=os.path.join(config.get("db_dir"), "rotary-" + VERSION, "scripts", "flye_end_repair_utils.py"),
         install_finished=os.path.join(config.get("db_dir"), "checkpoints", "internal_scripts_" + VERSION)
     log:
         "logs/download/install_internal_scripts.log"
@@ -41,7 +41,7 @@ rule install_internal_scripts:
         "benchmarks/download/install_internal_scripts.txt"
     params:
         db_dir=config.get("db_dir"),
-        url="https://github.com/jmtsuji/nanopore-workflows/archive/refs/tags/" + VERSION + ".tar.gz"
+        url="https://github.com/jmtsuji/rotary/archive/refs/tags/" + VERSION + ".tar.gz"
     shell:
         """
         mkdir -p {params.db_dir}
@@ -85,7 +85,6 @@ rule download_hmm:
         """
         mkdir -p {params.db_dir}
         wget -O {output.hmm} {params.url} 2> {log}
-        # --no-check-certificate
         """
 
 
@@ -130,6 +129,7 @@ rule download_eggnog_db:
         """
 
 
+# TODO - the special "_v2" text had to be hard-coded into the GTDB-Tk URL due to a special update to release 207. This text needs to be removed after the next GTDB release, or else the downloader will break.
 rule download_gtdb_db:
     output:
         db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
@@ -142,7 +142,7 @@ rule download_gtdb_db:
         db_dir_root=os.path.join(config.get("db_dir")),
         initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB),
         db_dir=os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB),
-        url="https://data.gtdb.ecogenomic.org/releases/release" + VERSION_GTDB + "/" + VERSION_GTDB + ".0/auxillary_files/gtdbtk_r" + VERSION_GTDB + "_data.tar.gz"
+        url="https://data.gtdb.ecogenomic.org/releases/release" + VERSION_GTDB + "/" + VERSION_GTDB + ".0/auxillary_files/gtdbtk_r" + VERSION_GTDB + "_v2_data.tar.gz"
     shell:
         """
         mkdir -p {params.db_dir_root}
@@ -258,24 +258,24 @@ rule assembly_flye:
     params:
         output_dir="assembly/flye",
         input_mode=config.get("flye_input_mode"),
+        read_error="" if config.get("flye_read_error") == "auto" else "--read-error " + config.get("flye_read_error"),
         meta_mode="--meta" if config.get("flye_meta_mode") == "True" else "",
         polishing_rounds=config.get("flye_polishing_rounds")
     threads:
         config.get("threads",1)
     shell:
         """
-        flye --{params.input_mode} {input} --out-dir {params.output_dir} {params.meta_mode} \
+        flye --{params.input_mode} {input} {params.read_error} --out-dir {params.output_dir} {params.meta_mode} \
           --iterations {params.polishing_rounds} -t {threads} > {log} 2>&1
         """
-
 
 rule assembly_end_repair:
     input:
         qc_long_reads="qc_long/nanopore_qc.fastq.gz",
         assembly="assembly/flye/assembly.fasta",
         info="assembly/flye/assembly_info.txt",
-        end_repair=os.path.join(config.get("db_dir"),"nanopore-workflows-" + VERSION,"scripts","flye_end_repair.sh"),
-        end_repair_utils=os.path.join(config.get("db_dir"),"nanopore-workflows-" + VERSION,"scripts","flye_end_repair_utils.py"),
+        end_repair=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"scripts","flye_end_repair.sh"),
+        end_repair_utils=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"scripts","flye_end_repair_utils.py"),
         install_finished=os.path.join(config.get("db_dir"),"checkpoints","internal_scripts_" + VERSION)
     output:
         assembly="assembly/end_repair/repaired.fasta",
@@ -968,7 +968,6 @@ rule run_eggnog:
         """
 
 
-# TODO - if adding support for multiple genomes, this could be run once with all genomes together to save time
 rule run_gtdbtk:
     input:
         genome="annotation/dfast/genome.fna",
@@ -985,7 +984,8 @@ rule run_gtdbtk:
     params:
         outdir="annotation/gtdbtk/run_files",
         db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
-        genome_id=config.get("sample_id")
+        genome_id=config.get("sample_id"),
+        gtdbtk_mode="--full_tree" if config.get("gtdbtk_mode") == "full_tree" else ""
     threads:
         config.get("threads",1)
     shell:
@@ -993,7 +993,7 @@ rule run_gtdbtk:
         GTDBTK_DATA_PATH={params.db}
         printf "{input.genome}\t{params.genome_id}\n" > {output.batchfile}
         gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {params.outdir} \
-          --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
+          {params.gtdbtk_mode} --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
         head -n 1 {params.outdir}/gtdbtk.*.summary.tsv | sort -u > {output.annotation}
         tail -n +2 {params.outdir}/gtdbtk.*.summary.tsv >> {output.annotation}
         """
