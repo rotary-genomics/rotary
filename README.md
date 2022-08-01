@@ -1,7 +1,7 @@
 # rotary
 [![GitHub release](https://img.shields.io/badge/Version-0.2.0--beta2-lightgrey.svg)](https://github.com/jmtsuji/rotary/releases)
 
-Assembly/annotation workflow for Nanopore genome data
+Assembly/annotation workflow for Nanopore-based microbial genome data containing circular DNA elements 
 
 ## Quick start
 ```bash
