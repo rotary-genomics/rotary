@@ -12,7 +12,7 @@ VERSION="0.1.0"
 VERSION_POLYPOLISH="0.5.0"
 VERSION_DFAST="1.2.15"
 VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
-VERSION_GTDB="202" # See https://data.gtdb.ecogenomic.org/releases/
+VERSION_GTDB="207" # See https://data.gtdb.ecogenomic.org/releases/
 
 # Specify the minimum snakemake version allowable
 min_version("6.0")
@@ -130,6 +130,7 @@ rule download_eggnog_db:
         """
 
 
+# TODO - the special "_v2" text had to be hard-coded into the GTDB-Tk URL due to a special update to release 207. This text needs to be removed after the next GTDB release, or else the downloader will break.
 rule download_gtdb_db:
     output:
         db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
@@ -142,7 +143,7 @@ rule download_gtdb_db:
         db_dir_root=os.path.join(config.get("db_dir")),
         initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB),
         db_dir=os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB),
-        url="https://data.gtdb.ecogenomic.org/releases/release" + VERSION_GTDB + "/" + VERSION_GTDB + ".0/auxillary_files/gtdbtk_r" + VERSION_GTDB + "_data.tar.gz"
+        url="https://data.gtdb.ecogenomic.org/releases/release" + VERSION_GTDB + "/" + VERSION_GTDB + ".0/auxillary_files/gtdbtk_r" + VERSION_GTDB + "_v2_data.tar.gz"
     shell:
         """
         mkdir -p {params.db_dir_root}
