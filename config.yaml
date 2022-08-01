@@ -51,8 +51,8 @@ circlator_merge_reassemble_end: 100
 medaka_model: "r941_min_sup_g507"
 
 ## Post-polishing contig filter
-# My advice: only filter by short reads if you have short reads. If you have long reads, filter by long reads
-# Only contigs with this or greater mean read depth will be kept (e.g., 10x)
+# My advice: Only filter by short reads if you have short reads.
+#            If you have long reads, filter by long reads (40x minimum depth recommended by Sereika et al., 2022, Nat Methods, for R10.4 flow cells)
 meandepth_cutoff_short_read: 10
 meandepth_cutoff_long_read: "None"
 # Only contigs with this or greater % of bases covered by reads will be kept (e.g., 95%)
