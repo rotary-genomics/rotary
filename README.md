@@ -27,14 +27,14 @@ snakemake --snakefile rotary/rules/rotary.yaml \
 ```
 
 ## Description
-_tōyako_ is a snakemake pipeline that can be used to assemble single microbial genomes using 
+_rotary_ is a snakemake pipeline that can be used to assemble single microbial genomes using 
 standlone Nanopore data<sup>[1](#Footnotes)</sup> or hybrid Nanopore + short read data. 
 The pipeline performs long read QC, assembly, end repair, polishing, contig rotation, and genome annotation.
 
-### Some advantages of using _tōyako_:
+### Some advantages of using _rotary_:
 - All databases auto-install, so you can start analyzing genomes reproducibly with limited effort!
 - Snakemake checkpointing allows you to re-start a failed run from where you left off
-- Circularization is handled fairly carefully. Unlike the defaults in most pipelines, _tōyako_ fixes the 
+- Circularization is handled fairly carefully. Unlike the defaults in most pipelines, _rotary_ fixes the 
   [short gap region](https://github.com/fenderglass/Flye/issues/315#issuecomment-720679812) that can occur at the ends 
   of circular contigs produced by Flye. It also polishes the circular contigs in two 
   different rotation states to try to correct errors near contig ends.
@@ -60,7 +60,7 @@ The key parameters to fill are the genome name, the paths to the long and (QC'ed
 
 Save as something like `genome_longread_mycopy.yaml`.
 
-**Note** that short read QC is not performed, so you'll want to do short read QC prior to using _tōyako_. 
+**Note** that short read QC is not performed, so you'll want to do short read QC prior to using _rotary_. 
 I recomend using the qc module of the [ATLAS pipeline](https://github.com/metagenome-atlas/atlas) for quick/robust QC.
 
 3. Run
@@ -108,7 +108,7 @@ please feel free to use this basic working version.
 
 ## Appendix
 
-### _tōyako_ workflow summary
+### _rotary_ workflow summary
 1. Perform simple long read QC using 
    [reformat.sh from bbmap](https://jgi.doe.gov/data-and-tools/software-tools/bbtools/bb-tools-user-guide/reformat-guide/)
 2. Assemble long reads using [Flye](https://github.com/fenderglass/Flye)
