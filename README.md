@@ -59,15 +59,20 @@ conda env create -n rotary --file=rotary/envs/rotary.yaml
 ### 2. Copy and fill out the config (YAML) file (`config.yaml`).
 
 The basic parameters to fill are the genome name, the paths to the long and (QC'ed) short reads, and the DB dir.
+(The DB dir is a directory of your choosing where the databases and scripts will be stored.)
 
 Other very important parameters:
 - `flye_input_mode`: set to "nano-hq" if your reads have <= 5% error rate; otherwise use "nano-raw"
 - `medaka_model`: set this parameter to match the flow cell version / basecalling model you used to generate the long reads. See details in the [Medaka Github repo's "Models" section](https://github.com/nanoporetech/medaka#models)
 - "Post-polishing contig filter" section: set the min depth and coverage you would like for a contig to be kept (more info in that section of the YAML file)
 
-Save as something like `myconfig.yaml`.
+There are other advanced parameters that you can also edit if you'd like.
 
-**Note** that short read QC is not performed, so you'll want to do short read QC prior to using _rotary_. 
+Lastly, make sure you set the threads and memory to values that make sense for your server.
+
+One you're finished editing the config file, save it as something like `myconfig.yaml`.
+
+**Note**: short read QC is not performed by _rotary_, so you'll want to do short read QC prior to using this pipeline. 
 I recomend using the qc module of the [ATLAS pipeline](https://github.com/metagenome-atlas/atlas) for quick/robust QC.
 
 ### 3. Run
@@ -78,6 +83,7 @@ run_directory="E_coli" # Wherever you want to store the run files
 config="myconfig.yaml"
 conda_prefix="/Data/databases/rotary/conda_envs" # Wherever you want to store the conda envs, which can be re-used between runs
 snakefile="rotary/rules/rotary.smk"
+# It works well to use the same number of threads for jobs as you specified in the config file
 jobs=40
 
 mkdir -p "${run_directory}"
