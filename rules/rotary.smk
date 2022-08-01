@@ -270,7 +270,7 @@ rule assembly_flye:
           --iterations {params.polishing_rounds} -t {threads} > {log} 2>&1
         """
 
-# TODO - add support for read error rate flag (here and in Bash code)
+
 rule assembly_end_repair:
     input:
         qc_long_reads="qc_long/nanopore_qc.fastq.gz",
@@ -291,6 +291,7 @@ rule assembly_end_repair:
     params:
         output_dir="assembly/end_repair",
         flye_input_mode=config.get("flye_input_mode"),
+        flye_read_error="0" if config.get("flye_read_error") == "auto" else config.get("flye_read_error"),
         min_id=config.get("circlator_merge_min_id"),
         min_length=config.get("circlator_merge_min_length"),
         ref_end=config.get("circlator_merge_ref_end"),
@@ -301,8 +302,8 @@ rule assembly_end_repair:
         mem=int(config.get("memory") / config.get("threads",1))
     shell:
         """
-        {input.end_repair} -f {params.flye_input_mode} -i {params.min_id} -l {params.min_length} \
-          -e {params.ref_end} -E {params.reassemble_end} -t {threads} -m {resources.mem} \
+        {input.end_repair} -f {params.flye_input_mode} -F {params.flye_read_error} -i {params.min_id} \
+          -l {params.min_length} -e {params.ref_end} -E {params.reassemble_end} -t {threads} -m {resources.mem} \
           {input.qc_long_reads} {input.assembly} {input.info} {params.output_dir} > {log} 2>&1
         cp {input.info} {output.info}
         """
@@ -357,13 +358,14 @@ rule polish_medaka:
     benchmark:
         "benchmarks/{step}/medaka.txt"
     params:
-        medaka_model=config.get("medaka_model")
+        medaka_model=config.get("medaka_model"),
+        batch_size=config.get("medaka_batch_size")
     threads:
         config.get("threads",1)
     shell:
         """
         medaka_consensus -i {input.qc_long_reads} -d {input.contigs} -o {output.dir} \
-          -m {params.medaka_model} -t {threads} > {log} 2>&1
+          -m {params.medaka_model} -t {threads} -b {params.batch_size} > {log} 2>&1
         """
 
 
