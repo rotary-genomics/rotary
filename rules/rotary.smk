@@ -1,4 +1,4 @@
-# toyako, a snakemake-based Nanopore genome assembly workflow
+# rotary, a snakemake-based Nanopore genome assembly workflow
 # Copyright Jackson M. Tsuji, Institute of Low Temperature Science, Hokkaido University, 2022
 
 import os

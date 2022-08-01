@@ -1,19 +1,19 @@
-# _tōyako_
+# rotary
 Assembly/annotation workflow for Nanopore genome data
 
 ## Quick start
 ```bash
-git clone https://github.com/jmtsuji/toyako.git
+git clone https://github.com/jmtsuji/rotary.git
 
-conda env create -n toyako --file=toyako/envs/toyako.yaml
+conda env create -n rotary --file=rotary/envs/rotary.yaml
 
-cp toyako/config.yaml myconfig.yaml # Edit this file, especially the first few lines
+cp rotary/config.yaml myconfig.yaml # Edit this file, especially the first few lines
 
-conda activate toyako
+conda activate rotary
 
 mkdir -p output_dir conda_envs
 
-snakemake --snakefile toyako/rules/toyako.yaml \
+snakemake --snakefile rotary/rules/rotary.yaml \
   --configfile myconfig.yaml \
   --directory output_dir \
   --conda-prefix conda_envs \
@@ -23,7 +23,7 @@ snakemake --snakefile toyako/rules/toyako.yaml \
   --rerun-incomplete \
   --reason \
   --printshellcmds 2>&1 | \
-  tee toyako.log
+  tee rotary.log
 ```
 
 ## Description
@@ -50,8 +50,8 @@ The pipeline performs long read QC, assembly, end repair, polishing, contig rota
 ## Usage
 1. Install
 ```bash
-git clone https://github.com/jmtsuji/toyako.git
-conda env create -n toyako --file=toyako/envs/toyako.yaml
+git clone https://github.com/jmtsuji/rotary.git
+conda env create -n rotary --file=rotary/envs/rotary.yaml
 ```
 
 2. Copy and fill out the config (YAML) file (`config.yaml`).
@@ -69,8 +69,8 @@ conda activate genome_longread
 
 run_directory="E_coli" # Wherever you want to store the run files
 config="genome_longread_mycopy.yaml"
-conda_prefix="/Data/databases/toyako/conda_envs" # Wherever you want to store the conda envs, which can be re-used between runs
-snakefile="toyako/rules/toyako.smk"
+conda_prefix="/Data/databases/rotary/conda_envs" # Wherever you want to store the conda envs, which can be re-used between runs
+snakefile="rotary/rules/rotary.smk"
 jobs=40
 
 mkdir -p "${run_directory}"
