@@ -176,13 +176,31 @@ rule setup_gtdb:
     shell:
         """
         # Set the database path in the conda installation
-        echo "#################################" > {log}
-        echo "Set: GTDBTK_DATA_PATH={params.db_dir}" >> {log}
-        echo "#################################" >> {log}
+        echo "Set: GTDBTK_DATA_PATH={params.db_dir}" > {log}
         conda env config vars set GTDBTK_DATA_PATH={params.db_dir}
 
-        # Verify the install
-        gtdbtk check_install >> {log} 2>&1
+        touch {output}
+        """
+
+
+rule validate_gtdb:
+    input:
+        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_setup")
+    output:
+        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_validate")
+    conda:
+        "../envs/gtdbtk.yaml"
+    log:
+        "logs/download/gtdb_db_validate.log"
+    benchmark:
+        "benchmarks/download/gtdb_db_validate.txt"
+    params:
+        db_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB),
+    shell:
+        """
+        # Split the "progress bar" style output into multiple lines with sed
+        # See: https://stackoverflow.com/a/60786606 (accessed 2022.08.02)
+        gtdbtk check_install | sed 's/\r/\n/g' > {log} 2>&1
 
         touch {output}
         """
@@ -1003,7 +1021,7 @@ rule run_eggnog:
 rule run_gtdbtk:
     input:
         genome="annotation/dfast/genome.fna",
-        setup_finished=os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_setup")
+        setup_finished=os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_validate")
     output:
         batchfile=temp("annotation/gtdbtk/batchfile.tsv"),
         annotation="annotation/gtdbtk/gtdbtk.summary.tsv"
