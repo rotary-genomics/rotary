@@ -134,7 +134,7 @@ rule download_eggnog_db:
 rule download_gtdb_db:
     output:
         db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "GTDB_" + VERSION_GTDB)
+        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "GTDB_" + VERSION_GTDB + "_download")
     log:
         "logs/download/gtdb_db_download.log"
     benchmark:
@@ -157,6 +157,34 @@ rule download_gtdb_db:
         mv {params.initial_download_dir} {params.db_dir}
 
         touch {output.install_finished}
+        """
+
+
+rule setup_gtdb:
+    input:
+        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_download")
+    output:
+        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_setup")
+    conda:
+        "../envs/gtdbtk.yaml"
+    log:
+        "logs/download/gtdb_db_setup.log"
+    benchmark:
+        "benchmarks/download/gtdb_db_setup.txt"
+    params:
+        db_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB),
+    shell:
+        """
+        # Set the database path in the conda installation
+        echo "#################################" > {log}
+        echo "Set: GTDBTK_DATA_PATH={params.db_dir}" >> {log}
+        echo "#################################" >> {log}
+        conda env config vars set GTDBTK_DATA_PATH={params.db_dir}
+
+        # Verify the install
+        gtdbtk check_install >> {log} 2>&1
+
+        touch {output}
         """
 
 
@@ -975,7 +1003,7 @@ rule run_eggnog:
 rule run_gtdbtk:
     input:
         genome="annotation/dfast/genome.fna",
-        install_finished=os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB)
+        setup_finished=os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_setup")
     output:
         batchfile=temp("annotation/gtdbtk/batchfile.tsv"),
         annotation="annotation/gtdbtk/gtdbtk.summary.tsv"
@@ -994,7 +1022,6 @@ rule run_gtdbtk:
         config.get("threads",1)
     shell:
         """
-        GTDBTK_DATA_PATH={params.db}
         printf "{input.genome}\t{params.genome_id}\n" > {output.batchfile}
         gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {params.outdir} \
           {params.gtdbtk_mode} --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
