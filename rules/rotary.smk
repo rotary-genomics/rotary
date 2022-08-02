@@ -8,7 +8,7 @@ import pandas as pd
 import itertools
 from snakemake.utils import logger, min_version, update_config
 
-VERSION="0.2.0-beta1"
+VERSION="0.2.0-beta2"
 VERSION_POLYPOLISH="0.5.0"
 VERSION_DFAST="1.2.18"
 VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
@@ -129,18 +129,19 @@ rule download_eggnog_db:
         """
 
 
-# TODO - the special "_v2" text had to be hard-coded into the GTDB-Tk URL due to a special update to release 207. This text needs to be removed after the next GTDB release, or else the downloader will break.
+# TODO - the special "_v2" text had to be hard-coded into the GTDB-Tk URL and initial_download_dir due to a special update to release 207. This text needs to be removed after the next GTDB release, or else the downloader will break.
+# TODO - if there is an error during download, the initial_download_dir is not deleted during cleanup
 rule download_gtdb_db:
     output:
         db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "GTDB_" + VERSION_GTDB)
+        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "GTDB_" + VERSION_GTDB + "_download")
     log:
         "logs/download/gtdb_db_download.log"
     benchmark:
         "benchmarks/download/gtdb_db_download.txt"
     params:
         db_dir_root=os.path.join(config.get("db_dir")),
-        initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB),
+        initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB + "_v2"),
         db_dir=os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB),
         url="https://data.gtdb.ecogenomic.org/releases/release" + VERSION_GTDB + "/" + VERSION_GTDB + ".0/auxillary_files/gtdbtk_r" + VERSION_GTDB + "_v2_data.tar.gz"
     shell:
@@ -159,6 +160,52 @@ rule download_gtdb_db:
         """
 
 
+rule setup_gtdb:
+    input:
+        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_download")
+    output:
+        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_setup")
+    conda:
+        "../envs/gtdbtk.yaml"
+    log:
+        "logs/download/gtdb_db_setup.log"
+    benchmark:
+        "benchmarks/download/gtdb_db_setup.txt"
+    params:
+        db_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB),
+    shell:
+        """
+        # Set the database path in the conda installation
+        echo "Set: GTDBTK_DATA_PATH={params.db_dir}" > {log}
+        conda env config vars set GTDBTK_DATA_PATH={params.db_dir}
+
+        touch {output}
+        """
+
+
+rule validate_gtdb:
+    input:
+        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_setup")
+    output:
+        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_validate")
+    conda:
+        "../envs/gtdbtk.yaml"
+    log:
+        "logs/download/gtdb_db_validate.log"
+    benchmark:
+        "benchmarks/download/gtdb_db_validate.txt"
+    params:
+        db_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB),
+    shell:
+        """
+        # Split the "progress bar" style output into multiple lines with sed
+        # See: https://stackoverflow.com/a/60786606 (accessed 2022.08.02)
+        gtdbtk check_install | sed 's/\r/\n/g' > {log} 2>&1
+
+        touch {output}
+        """
+
+
 rule nanopore_qc_filter:
     input:
         config.get("longreads")
@@ -167,9 +214,9 @@ rule nanopore_qc_filter:
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/qc_long.log"
+        "logs/qc/qc_long.log"
     benchmark:
-        "benchmarks/qc_long.benchmark.txt"
+        "benchmarks/qc/qc_long.benchmark.txt"
     threads:
         config.get("threads",1)
     resources:
@@ -192,9 +239,9 @@ rule qc_long_length_hist:
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/qc_long_length_hist.log"
+        "logs/qc/qc_long_length_hist.log"
     benchmark:
-        "benchmarks/qc_long_length_hist.benchmark.txt"
+        "benchmarks/qc/qc_long_length_hist.benchmark.txt"
     threads:
         config.get("threads",1)
     resources:
@@ -212,9 +259,9 @@ rule qc_long_length_stats:
     output:
         "stats/qc_long_length_stats.txt"
     log:
-        "logs/qc_long_length_stats.log"
+        "logs/qc/qc_long_length_stats.log"
     benchmark:
-        "benchmarks/qc_long_length_stats.benchmark.txt"
+        "benchmarks/qc/qc_long_length_stats.benchmark.txt"
     run:
         length_hist = pd.read_csv(input[0], sep='\t')
 
@@ -252,9 +299,9 @@ rule assembly_flye:
     conda:
         "../envs/assembly_flye.yaml"
     log:
-        "logs/assembly_flye.log"
+        "logs/assembly/assembly_flye.log"
     benchmark:
-        "benchmarks/assembly_flye.benchmark.txt"
+        "benchmarks/assembly/assembly_flye.benchmark.txt"
     params:
         output_dir="assembly/flye",
         input_mode=config.get("flye_input_mode"),
@@ -268,6 +315,7 @@ rule assembly_flye:
         flye --{params.input_mode} {input} {params.read_error} --out-dir {params.output_dir} {params.meta_mode} \
           --iterations {params.polishing_rounds} -t {threads} > {log} 2>&1
         """
+
 
 rule assembly_end_repair:
     input:
@@ -283,12 +331,13 @@ rule assembly_end_repair:
     conda:
         "../envs/circlator.yaml"
     log:
-        "logs/end_repair.log"
+        "logs/assembly/end_repair.log"
     benchmark:
-        "benchmarks/end_repair.txt"
+        "benchmarks/assembly/end_repair.txt"
     params:
         output_dir="assembly/end_repair",
         flye_input_mode=config.get("flye_input_mode"),
+        flye_read_error="0" if config.get("flye_read_error") == "auto" else config.get("flye_read_error"),
         min_id=config.get("circlator_merge_min_id"),
         min_length=config.get("circlator_merge_min_length"),
         ref_end=config.get("circlator_merge_ref_end"),
@@ -299,8 +348,8 @@ rule assembly_end_repair:
         mem=int(config.get("memory") / config.get("threads",1))
     shell:
         """
-        {input.end_repair} -f {params.flye_input_mode} -i {params.min_id} -l {params.min_length} \
-          -e {params.ref_end} -E {params.reassemble_end} -t {threads} -m {resources.mem} \
+        {input.end_repair} -f {params.flye_input_mode} -F {params.flye_read_error} -i {params.min_id} \
+          -l {params.min_length} -e {params.ref_end} -E {params.reassemble_end} -t {threads} -m {resources.mem} \
           {input.qc_long_reads} {input.assembly} {input.info} {params.output_dir} > {log} 2>&1
         cp {input.info} {output.info}
         """
@@ -351,17 +400,18 @@ rule polish_medaka:
     conda:
         "../envs/medaka.yaml"
     log:
-        "logs/medaka_{step}.log"
+        "logs/{step}/medaka.log"
     benchmark:
-        "benchmarks/medaka_{step}.txt"
+        "benchmarks/{step}/medaka.txt"
     params:
-        medaka_model=config.get("medaka_model")
+        medaka_model=config.get("medaka_model"),
+        batch_size=config.get("medaka_batch_size")
     threads:
         config.get("threads",1)
     shell:
         """
         medaka_consensus -i {input.qc_long_reads} -d {input.contigs} -o {output.dir} \
-          -m {params.medaka_model} -t {threads} > {log} 2>&1
+          -m {params.medaka_model} -t {threads} -b {params.batch_size} > {log} 2>&1
         """
 
 
@@ -392,9 +442,9 @@ rule polish_polypolish:
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/polypolish_{step}.log"
+        "logs/{step}/polypolish.log"
     benchmark:
-        "benchmarks/polypolish_{step}.txt"
+        "benchmarks/{step}/polypolish.txt"
     params:
         qc_short_r1=config.get("qc_short_r1"),
         qc_short_r2=config.get("qc_short_r2")
@@ -436,9 +486,9 @@ rule polish_polca:
     conda:
         "../envs/masurca.yaml"
     log:
-        "logs/polca.log"
+        "logs/polish/polca.log"
     benchmark:
-        "benchmarks/polca.txt"
+        "benchmarks/polish/polca.txt"
     params:
         qc_short_r1=config.get("qc_short_r1"),
         qc_short_r2=config.get("qc_short_r2"),
@@ -485,9 +535,9 @@ if (config.get("qc_short_r1") != "None") & \
         conda:
             "../envs/mapping.yaml"
         log:
-            "logs/calculate_short_read_coverage.log"
+            "logs/polish/calculate_short_read_coverage.log"
         benchmark:
-            "benchmarks/calculate_short_read_coverage.txt"
+            "benchmarks/polish/calculate_short_read_coverage.txt"
         params:
             qc_short_r1=config.get("qc_short_r1"),
             qc_short_r2=config.get("qc_short_r2")
@@ -522,9 +572,9 @@ if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_
         conda:
             "../envs/mapping.yaml"
         log:
-            "logs/calculate_long_read_coverage.log"
+            "logs/polish/calculate_long_read_coverage.log"
         benchmark:
-            "benchmarks/calculate_long_read_coverage.txt"
+            "benchmarks/polish/calculate_long_read_coverage.txt"
         threads:
             config.get("threads",1)
         resources:
@@ -694,9 +744,9 @@ rule search_contig_start:
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/search_contig_start.log"
+        "logs/circularize/search_contig_start.log"
     benchmark:
-        "benchmarks/search_contig_start.txt"
+        "benchmarks/circularize/search_contig_start.txt"
     params:
         hmmsearch_evalue=config.get("hmmsearch_evalue")
     threads:
@@ -721,7 +771,7 @@ rule process_start_genes:
     output:
         "circularize/identify/start_genes.list"
     log:
-        "logs/process_start_genes.log"
+        "logs/circularize/process_start_genes.log"
     run:
         # Load HMM search results
         hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None, comment='#')[[0, 2, 3, 4]]
@@ -799,9 +849,9 @@ rule run_circlator:
     conda:
         "../envs/circlator.yaml"
     log:
-        "logs/circlator.log"
+        "logs/circularize/circlator.log"
     benchmark:
-        "benchmarks/circlator.txt"
+        "benchmarks/circularize/circlator.txt"
     params:
         min_id=90,
         run_name="circularize/circlator/rotated"
@@ -885,13 +935,13 @@ rule combine_circular_and_linear_contigs:
 
 
 rule symlink_circularization:
-        input:
-            "circularize/combine/combined.fasta"
-        output:
-            "circularize/circularize.fasta"
-        run:
-            source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
-            os.symlink(source_relpath,str(output))
+    input:
+        "circularize/combine/combined.fasta"
+    output:
+        "circularize/circularize.fasta"
+    run:
+        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+        os.symlink(source_relpath,str(output))
 
 
 rule circularize:
@@ -913,9 +963,9 @@ rule run_dfast:
     conda:
         "../envs/annotation_dfast.yaml"
     log:
-        "logs/annotation_dfast.log"
+        "logs/annotation/annotation_dfast.log"
     benchmark:
-        "benchmarks/annotation_dfast.txt"
+        "benchmarks/annotation/annotation_dfast.txt"
     params:
         outdir="annotation/dfast",
         db=directory(os.path.join(config.get("db_dir"),"dfast_" + VERSION_DFAST)),
@@ -948,9 +998,9 @@ rule run_eggnog:
     conda:
         "../envs/eggnog.yaml"
     log:
-        "logs/eggnog.log"
+        "logs/annotation/eggnog.log"
     benchmark:
-        "benchmarks/eggnog.txt"
+        "benchmarks/annotation/eggnog.txt"
     params:
         outdir = "annotation/eggnog",
         tmpdir="annotation/eggnog/tmp",
@@ -961,9 +1011,9 @@ rule run_eggnog:
     shell:
         """
         mkdir -p {params.tmpdir}
-        emapper.py --cpu {threads} -i {input.protein} --itype proteins -m diamond --sensmode ultra-sensitive \
+        emapper.py --cpu {threads} -i {input.protein} --itype proteins -m diamond --sensmode {params.sensmode} \
           --dbmem --output eggnog --output_dir {params.outdir} --temp_dir {params.tmpdir} \
-          --data_dir {params.db} > {log} 2>&1
+          --data_dir {params.db} --override > {log} 2>&1
         rm -r {params.tmpdir}
         """
 
@@ -971,16 +1021,16 @@ rule run_eggnog:
 rule run_gtdbtk:
     input:
         genome="annotation/dfast/genome.fna",
-        install_finished=os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB)
+        setup_finished=os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_validate")
     output:
         batchfile=temp("annotation/gtdbtk/batchfile.tsv"),
         annotation="annotation/gtdbtk/gtdbtk.summary.tsv"
     conda:
         "../envs/gtdbtk.yaml"
     log:
-        "logs/gtdbtk.log"
+        "logs/annotation/gtdbtk.log"
     benchmark:
-        "benchmarks/gtdbtk.txt"
+        "benchmarks/annotation/gtdbtk.txt"
     params:
         outdir="annotation/gtdbtk/run_files",
         db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
@@ -990,7 +1040,6 @@ rule run_gtdbtk:
         config.get("threads",1)
     shell:
         """
-        GTDBTK_DATA_PATH={params.db}
         printf "{input.genome}\t{params.genome_id}\n" > {output.batchfile}
         gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {params.outdir} \
           {params.gtdbtk_mode} --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
@@ -1012,9 +1061,9 @@ if config.get("qc_short_r1") != "None":
         conda:
             "../envs/mapping.yaml"
         log:
-            "logs/calculate_final_short_read_coverage.log"
+            "logs/annotation/calculate_final_short_read_coverage.log"
         benchmark:
-            "benchmarks/calculate_final_short_read_coverage.txt"
+            "benchmarks/annotation/calculate_final_short_read_coverage.txt"
         params:
             qc_short_r1=config.get("qc_short_r1"),
             qc_short_r2=config.get("qc_short_r2")
@@ -1045,9 +1094,9 @@ rule calculate_final_long_read_coverage:
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/calculate_final_long_read_coverage.log"
+        "logs/annotation/calculate_final_long_read_coverage.log"
     benchmark:
-        "benchmarks/calculate_final_long_read_coverage.txt"
+        "benchmarks/annotation/calculate_final_long_read_coverage.txt"
     threads:
         config.get("threads",1)
     resources:
@@ -1095,7 +1144,7 @@ rule summarize_annotation:
     output:
         "summary.zip"
     log:
-        "logs/summarize_annotation.log"
+        "logs/annotation/summarize_annotation.log"
     params:
         zipdir="annotation"
     shell:

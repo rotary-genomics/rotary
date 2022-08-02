@@ -189,26 +189,34 @@ function run_pipeline() {
   outdir=$4
   local flye_read_mode
   flye_read_mode=$5
+  local flye_read_error
+  flye_read_error=$6
   local circlator_min_id
-  circlator_min_id=$6
+  circlator_min_id=$7
   local circlator_min_length
-  circlator_min_length=$7
+  circlator_min_length=$8
   local circlator_ref_end
-  circlator_ref_end=$8
+  circlator_ref_end=$9
   local circlator_reassemble_end
-  circlator_reassemble_end=$9
+  circlator_reassemble_end=${10}
   local threads
-  threads=${10}
+  threads=${11}
   local thread_mem
-  thread_mem=${11}
+  thread_mem=${12}
   local verbose
-  verbose=${12}
+  verbose=${13}
 
   # Internal settings
   local bam_file
   bam_file="${outdir}/long_read.bam"
   local end_repaired_contigs
   end_repaired_contigs="${outdir}/repaired.fasta"
+  local flye_read_error_flag
+  if [[ "${flye_read_error}" == 0 ]]; then
+    flye_read_error_flag=""
+  else
+    flye_read_error_flag="--read_error ${flye_read_error}"
+  fi
 
   # Get lists of circular vs linear contigs
   "${SCRIPT_DIR}/flye_end_repair_utils.py" -v -i "${circular_info}" -j "${outdir}/linear_contigs.list" \
@@ -280,8 +288,8 @@ function run_pipeline() {
       samtools view -@ "${threads}" -L "${regions}" -b "${bam_file}" 2>> "${verbose}" | \
         samtools fastq -0 "${fastq}" -n -@ "${threads}" 2>> "${verbose}"
 
-      flye "--${flye_read_mode}" "${fastq}" -o "${reassembly_dir}" -t "${threads}" >> "${verbose}" 2>&1
-      # TODO: add support for optional flags like --meta
+      flye "--${flye_read_mode}" "${fastq}" "${flye_read_error_flag}" -o "${reassembly_dir}" \
+        -t "${threads}" >> "${verbose}" 2>&1
 
       mkdir -p "${merge_dir}"
       circlator merge --verbose --min_id "${circlator_min_id}" --min_length "${circlator_min_length}" \
@@ -374,9 +382,10 @@ function main() {
     printf "   longreads.fastq.gz:          QC-passing Nanopore reads\n"
     printf "   assembly.fasta:              Contigs output from Flye\n"
     printf "   assembly_info.txt:           Assembly info file from Flye\n"
-    printf "   outdir:                      Output directory path (directory must not yet exist)\n\n"
+    printf "   outdir:                      Output directory path (might overwrite contents if the dir already exists!)\n\n"
     printf "Optional arguments (general):\n"
     printf "   -f flye_read_mode:           Type of input reads for Flye [nano-hq; can also set nano-raw]\n"
+    printf "   -F flye_read_error:          Expected error rate of input reads, expressed as proportion (e.g., 0.03) [0 = use flye defaults]\n"
     printf "   -t threads:                  Number of processors to use [1]\n"
     printf "   -m memory:                   Memory (GB) to use per thread for samtools sort [1]\n\n"
     printf "Optional arguments (circlator merge module, used to stitch the reassembled ends to the original contigs):\n"
@@ -392,6 +401,8 @@ function main() {
   # Set defaults for options
   local flye_read_mode
   flye_read_mode="nano-hq"
+  local flye_read_error
+  flye_read_error=0
   local circlator_min_id
   circlator_min_id=99
   local circlator_min_length
@@ -407,10 +418,13 @@ function main() {
 
   # Set options (help from https://wiki.bash-hackers.org/howto/getopts_tutorial; accessed March 8th, 2019)
   OPTIND=1 # reset the OPTIND counter just in case
-  while getopts ":f:i:l:e:E:t:m:" opt; do
+  while getopts ":f:F:i:l:e:E:t:m:" opt; do
     case ${opt} in
       f)
         flye_read_mode=${OPTARG}
+        ;;
+      F)
+        flye_read_error=${OPTARG}
         ;;
       i)
         circlator_min_id=${OPTARG}
@@ -470,6 +484,9 @@ function main() {
   if [[ "${flye_read_mode}" != "nano-raw" ]] && [[ "${flye_read_mode}" != "nano-hq" ]]; then
     echo "[ $(date -u) ]: ERROR: flye_read_mode must be nano-raw or nano-hq. You provided: '${flye_read_mode}'. Exiting..." >&2
     exit 1
+  elif [[ "${flye_read_error}" -gt 1 ]] || [[ "${flye_read_error}" -lt 0 ]]; then
+    echo "[ $(date -u) ]: ERROR: flye_read_error must be a proportion between 0-1. You provided: '${flye_read_error}'. Exiting..." >&2
+    exit 1
   elif [[ ! "${circlator_min_id}" =~ ^[0-9]+$ ]] || [[ "${circlator_min_id}" -eq 0 ]]; then
     echo "[ $(date -u) ]: ERROR: circlator_min_id must be a positive integer. You provided: '${circlator_min_id}'. Exiting..." >&2
     exit 1
@@ -517,7 +534,7 @@ function main() {
   fi
 
   run_pipeline "${qc_long}" "${all_contigs}" "${circular_info}" "${outdir}" \
-    "${flye_read_mode}" "${circlator_min_id}" "${circlator_min_length}" \
+    "${flye_read_mode}" "${flye_read_error}" "${circlator_min_id}" "${circlator_min_length}" \
     "${circlator_ref_end}" "${circlator_reassemble_end}" "${threads}" "${thread_mem}" "${verbose}"
 
 }
