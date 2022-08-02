@@ -1,5 +1,6 @@
 # rotary
 [![GitHub release](https://img.shields.io/badge/Version-0.2.0--beta2-lightgrey.svg)](https://github.com/jmtsuji/rotary/releases)
+[![DOI](https://zenodo.org/badge/473891963.svg)](https://zenodo.org/badge/latestdoi/473891963)
 
 Assembly/annotation workflow for Nanopore-based microbial genome data containing circular DNA elements 
 
