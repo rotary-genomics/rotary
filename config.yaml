@@ -16,7 +16,7 @@ qc_short_r2: "QC_R2.fastq.gz"
 db_dir: "/Data/databases/rotary"
 
 ## Resources
-threads: 40
+threads: 20
 # Memory in Gigabytes
 #   At least ~55-60 GB is needed
 memory: 100
