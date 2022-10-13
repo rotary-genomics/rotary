@@ -211,12 +211,6 @@ function run_pipeline() {
   bam_file="${outdir}/long_read.bam"
   local end_repaired_contigs
   end_repaired_contigs="${outdir}/repaired.fasta"
-  local flye_read_error_flag
-  if [[ "${flye_read_error}" == 0 ]]; then
-    flye_read_error_flag=""
-  else
-    flye_read_error_flag="--read_error ${flye_read_error}"
-  fi
 
   # Get lists of circular vs linear contigs
   "${SCRIPT_DIR}/flye_end_repair_utils.py" -v -i "${circular_info}" -j "${outdir}/linear_contigs.list" \
@@ -288,8 +282,17 @@ function run_pipeline() {
       samtools view -@ "${threads}" -L "${regions}" -b "${bam_file}" 2>> "${verbose}" | \
         samtools fastq -0 "${fastq}" -n -@ "${threads}" 2>> "${verbose}"
 
-      flye "--${flye_read_mode}" "${fastq}" "${flye_read_error_flag}" -o "${reassembly_dir}" \
-        -t "${threads}" >> "${verbose}" 2>&1
+      if [[ "${flye_read_error}" == 0 ]]; then
+
+        flye "--${flye_read_mode}" "${fastq}" -o "${reassembly_dir}" \
+          -t "${threads}" >> "${verbose}" 2>&1
+
+      else
+
+        flye "--${flye_read_mode}" "${fastq}" -o "${reassembly_dir}" --read_error "${flye_read_error}" \
+          -t "${threads}" >> "${verbose}" 2>&1
+
+      fi
 
       mkdir -p "${merge_dir}"
       circlator merge --verbose --min_id "${circlator_min_id}" --min_length "${circlator_min_length}" \
