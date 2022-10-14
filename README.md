@@ -1,5 +1,5 @@
 # rotary
-[![GitHub release](https://img.shields.io/badge/Version-0.2.0--beta2-lightgrey.svg)](https://github.com/jmtsuji/rotary/releases)
+[![GitHub release](https://img.shields.io/badge/Version-0.2.0--beta3-lightgrey.svg)](https://github.com/jmtsuji/rotary/releases)
 [![DOI](https://zenodo.org/badge/473891963.svg)](https://zenodo.org/badge/latestdoi/473891963)
 
 Assembly/annotation workflow for Nanopore-based microbial genome data containing circular DNA elements 
@@ -16,11 +16,11 @@ conda activate rotary
 
 mkdir -p output_dir conda_envs
 
-snakemake --snakefile rotary/rules/rotary.yaml \
+snakemake --snakefile rotary/rules/rotary.smk \
   --configfile myconfig.yaml \
   --directory output_dir \
   --conda-prefix conda_envs \
-  --jobs 10 \
+  --jobs 20 \
   --use-conda \
   --conda-frontend mamba \
   --rerun-incomplete \
@@ -85,7 +85,7 @@ config="myconfig.yaml"
 conda_prefix="/Data/databases/rotary/conda_envs" # Wherever you want to store the conda envs, which can be re-used between runs
 snakefile="rotary/rules/rotary.smk"
 # It works well to use the same number of threads for jobs as you specified in the config file
-jobs=40
+jobs=20
 
 mkdir -p "${run_directory}"
 
@@ -146,10 +146,11 @@ please feel free to use this basic working version.
 ### Known issues
 - Short read QC is not performed (you have to do it in advance)
 - Limited flags are exposed for some key tools in the pipeline (e.g., Flye)
+- Minimum supported length for circular contigs is 100 kb (it should be a fairly easy fix in a future version to decrease this threshold)
 - Edge case: If you get "unlucky" and genome rotation is not substantial (e.g., _dnaA_ is already at the end of the contig, re-polishing will have effect in improving assembly quality). Ideally, I should add a test of how the contig was rotated after finding _dnaA_.
 - Very rare edge case: Similarly, for short contigs, the error-prone region from end repair might end up near the end of short contigs (e.g., < 100kb long). This means that it could miss the benefits of long read polishing. It will still receive short read polishing after the circularization module, but sometimes short read polishing is less efficient if long read polishing has not been performed properly in advance. Ideally, I should add a check of how short contigs have been rotated after end repair.
 
-### Future ideas
+### Future to-do's and ideas
 - Add proper CLI (including auto generation of config)
 - Create a conda install (e.g., in bioconda)
 - Add summary reports
@@ -158,4 +159,4 @@ please feel free to use this basic working version.
 - Move the end repair script from Bash to Python
 
 ## Footnotes
-<sup>1</sup> Currently, Nanopore data generated with R9.4.1 flow cells (or earlier) requires short reads for error correction. A [recent paper](https://doi.org/10.1038/s41592-022-01539-7) demonstrated that microbial genome assemblies from R10.4 flow cells no longer benefit from short read error correction compared to just using long reads (very cool!).
+<sup>1</sup> Currently, Nanopore data generated with R9.4.1 flow cells (or earlier) requires short reads for error correction. A [recent paper](https://doi.org/10.1038/s41592-022-01539-7) demonstrated that microbial genome assemblies from R10.4 flow cells no longer benefit from short read error correction compared to just using long reads (very cool!). Thus, long-read only assembly and polishing might be sufficient if you have R10.4 (or higher) data - probably should be called with a super-high accuracy Guppy model.

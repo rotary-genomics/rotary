@@ -8,7 +8,7 @@ import pandas as pd
 import itertools
 from snakemake.utils import logger, min_version, update_config
 
-VERSION="0.2.0-beta2"
+VERSION="0.2.0-beta3"
 VERSION_POLYPOLISH="0.5.0"
 VERSION_DFAST="1.2.18"
 VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
