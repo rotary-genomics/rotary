@@ -85,7 +85,7 @@ config="myconfig.yaml"
 conda_prefix="/Data/databases/rotary/conda_envs" # Wherever you want to store the conda envs, which can be re-used between runs
 snakefile="rotary/rules/rotary.smk"
 # It works well to use the same number of threads for jobs as you specified in the config file
-jobs=40
+jobs=20
 
 mkdir -p "${run_directory}"
 
