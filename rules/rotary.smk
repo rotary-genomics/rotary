@@ -774,54 +774,62 @@ rule process_start_genes:
         "logs/circularize/process_start_genes.log"
     run:
         # Load HMM search results
-        hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None, comment='#')[[0, 2, 3, 4]]
-        hmmsearch_results.columns = ['orf', 'hmm_name', 'hmm_accession', 'evalue']
+        hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None, comment='#')
 
-        hmmsearch_results['contig'] = hmmsearch_results['orf'] \
-            .str.split('_',expand=False) \
-            .apply(lambda x: x[:-1]) \
-            .str.join('_')
+        if hmmsearch_results.shape[0] == 0:
+            # Write empty output if there were no HMM hits
+            start_orf_ids = []
 
-        contig_counts = pd.DataFrame(hmmsearch_results['contig'].value_counts()) \
-            .reset_index() \
-            .rename(columns={'index': 'contig', 'contig': 'count'})
+        else:
+            hmmsearch_results = hmmsearch_results[[0, 2, 3, 4]]
 
-        # If one contig has multiple HMM hits, throw a warning and take the hit with lowest e-value
-        start_orf_ids = []
+            hmmsearch_results.columns = ['orf', 'hmm_name', 'hmm_accession', 'evalue']
 
-        for index, row in contig_counts.iterrows():
-            contig, count = row
+            hmmsearch_results['contig'] = hmmsearch_results['orf'] \
+                .str.split('_',expand=False) \
+                .apply(lambda x: x[:-1]) \
+                .str.join('_')
 
-            if count == 1:
-                start_id = hmmsearch_results[hmmsearch_results['contig'] == contig]['orf'].to_list()[0]
-                start_orf_ids.append(start_id)
+            contig_counts = pd.DataFrame(hmmsearch_results['contig'].value_counts()) \
+                .reset_index() \
+                .rename(columns={'index': 'contig', 'contig': 'count'})
 
-            elif count > 1:
-                multistart_orfs = hmmsearch_results[hmmsearch_results['contig'] == contig] \
-                    .sort_values(by='evalue',ascending=True) \
-                    .reset_index(drop=True)
+            # If one contig has multiple HMM hits, throw a warning and take the hit with lowest e-value
+            start_orf_ids = []
 
-                multistart_orf_ids = multistart_orfs['orf'].to_list()
+            for index, row in contig_counts.iterrows():
+                contig, count = row
 
-                print("WARNING: More than one possible start gene on contig '" + str(contig) + "': '" + \
-                      ', '.join(multistart_orf_ids) + "'. Will take the hit with lowest e-value.")
+                if count == 1:
+                    start_id = hmmsearch_results[hmmsearch_results['contig'] == contig]['orf'].to_list()[0]
+                    start_orf_ids.append(start_id)
 
-                # Warn if there are ties
-                if multistart_orfs['evalue'][0] == multistart_orfs['evalue'][1]:
+                elif count > 1:
+                    multistart_orfs = hmmsearch_results[hmmsearch_results['contig'] == contig] \
+                        .sort_values(by='evalue',ascending=True) \
+                        .reset_index(drop=True)
 
-                    tie_orf_ids = multistart_orfs[multistart_orfs['evalue'] == multistart_orfs['evalue'][0]][
-                        'orf'].to_list()
+                    multistart_orf_ids = multistart_orfs['orf'].to_list()
 
-                    print('WARNING: Two or more genes tied for the lowest e-value for this contig. ' + \
-                          'This implies there could be something unusual going on with your data.')
-                    print('         All genes with lowest evalue will be output for use by circlator for this contig.')
-                    print('         Gene IDs: ' + ', '.join(tie_orf_ids))
+                    print("WARNING: More than one possible start gene on contig '" + str(contig) + "': '" + \
+                          ', '.join(multistart_orf_ids) + "'. Will take the hit with lowest e-value.")
 
-                    start_orf_ids = start_orf_ids + tie_orf_ids
+                    # Warn if there are ties
+                    if multistart_orfs['evalue'][0] == multistart_orfs['evalue'][1]:
 
-                else:
-                    # Relies on the dataframe having already been sorted by e-value above
-                    start_orf_ids.append(multistart_orf_ids[0])
+                        tie_orf_ids = multistart_orfs[multistart_orfs['evalue'] == multistart_orfs['evalue'][0]][
+                            'orf'].to_list()
+
+                        print('WARNING: Two or more genes tied for the lowest e-value for this contig. ' + \
+                              'This implies there could be something unusual going on with your data.')
+                        print('         All genes with lowest evalue will be output for use by circlator for this contig.')
+                        print('         Gene IDs: ' + ', '.join(tie_orf_ids))
+
+                        start_orf_ids = start_orf_ids + tie_orf_ids
+
+                    else:
+                        # Relies on the dataframe having already been sorted by e-value above
+                        start_orf_ids.append(multistart_orf_ids[0])
 
         pd.Series(start_orf_ids).to_csv(output[0], header=None, index=False)
 
@@ -857,8 +865,20 @@ rule run_circlator:
         run_name="circularize/circlator/rotated"
     shell:
         """
-        circlator fixstart --min_id {params.min_id} --genes_fa {input.start_gene}\
-          {input.contigs} {params.run_name} > {log} 2>&1
+        if [ -s {input.start_gene} ]:
+        
+          circlator fixstart --min_id {params.min_id} --genes_fa {input.start_gene}\
+            {input.contigs} {params.run_name} > {log} 2>&1
+            
+        else:
+        
+          ## TODO - I think by default circlator might search for DnaA or something via its own builtins.
+          #         It would be better to skip that step and just rotate everything around to a gene start on the other side of the contig.
+          printf "## Start gene file is empty, so will use circlator defaults\n\n"
+          circlator fixstart --min_id {params.min_id} \
+            {input.contigs} {params.run_name} > {log} 2>&1
+            
+        fi
         
         printf "### Circlator log output ###\n" >> {log}
         cat "circularize/circlator/rotated.log" >> {log}
