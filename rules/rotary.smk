@@ -740,7 +740,8 @@ rule search_contig_start:
         orf_predictions=temp("circularize/identify/circular.faa"),
         gene_predictions=temp("circularize/identify/circular.ffn"),
         annotation_gff=temp("circularize/identify/circular.gff"),
-        search_hits="circularize/identify/hmmsearch_hits.txt"
+        search_hits="circularize/identify/hmmsearch_hits.txt",
+        search_hits_no_comments="circularize/identify/hmmsearch_hits_no_comments.txt"
     conda:
         "../envs/mapping.yaml"
     log:
@@ -760,6 +761,8 @@ rule search_contig_start:
         printf "\n\n### Find HMM hits ###\n\n" >> {log}
         hmmsearch --cpu {threads} -E {params.hmmsearch_evalue} --tblout {output.search_hits} -o /dev/stdout \
           {input.hmm} {output.orf_predictions} >> {log} 2>&1
+          
+        grep -v "^#" {output.search_hits} > {output.search_hits_no_comments}
         
         printf "\n\n### Done. ###\n" >> {log}
         """
@@ -767,21 +770,22 @@ rule search_contig_start:
 
 rule process_start_genes:
     input:
-        "circularize/identify/hmmsearch_hits.txt"
+        "circularize/identify/hmmsearch_hits_no_comments.txt"
     output:
         "circularize/identify/start_genes.list"
     log:
         "logs/circularize/process_start_genes.log"
     run:
-        # Load HMM search results
-        hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None, comment='#')
+        with open(input[0], 'r') as hmmsearch_results_raw:
+            line_count = len(hmmsearch_results_raw.readlines())
 
-        if hmmsearch_results.shape[0] == 0:
+        if line_count == 0:
             # Write empty output if there were no HMM hits
             start_orf_ids = []
 
         else:
-            hmmsearch_results = hmmsearch_results[[0, 2, 3, 4]]
+            # Load HMM search results
+            hmmsearch_results = hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None, comment='#')[[0, 2, 3, 4]]
 
             hmmsearch_results.columns = ['orf', 'hmm_name', 'hmm_accession', 'evalue']
 
@@ -865,18 +869,19 @@ rule run_circlator:
         run_name="circularize/circlator/rotated"
     shell:
         """
-        if [ -s {input.start_gene} ]:
+        if [[ -s {input.start_gene} ]]; then
         
+          printf "## Running circlator with custom start gene:\n" > {log}
           circlator fixstart --min_id {params.min_id} --genes_fa {input.start_gene}\
-            {input.contigs} {params.run_name} > {log} 2>&1
+            {input.contigs} {params.run_name} >> {log} 2>&1
             
-        else:
+        else
         
           ## TODO - I think by default circlator might search for DnaA or something via its own builtins.
           #         It would be better to skip that step and just rotate everything around to a gene start on the other side of the contig.
-          printf "## Start gene file is empty, so will use circlator defaults\n\n"
+          printf "## Start gene file is empty, so will use circlator defaults\n\n" > {log}
           circlator fixstart --min_id {params.min_id} \
-            {input.contigs} {params.run_name} > {log} 2>&1
+            {input.contigs} {params.run_name} >> {log} 2>&1
             
         fi
         

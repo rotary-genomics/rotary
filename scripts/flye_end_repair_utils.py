@@ -57,6 +57,8 @@ def summarize_assembly_info(assembly_info_filepath, linear_contig_list_filepath=
                 starts.append(0)
                 stops.append(length)
 
+                # Instead just get the
+
             else:
                 half_threshold = int(round(length_threshold / 2, 0))
 
