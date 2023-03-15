@@ -741,7 +741,7 @@ rule search_contig_start:
         gene_predictions=temp("circularize/identify/circular.ffn"),
         annotation_gff=temp("circularize/identify/circular.gff"),
         search_hits="circularize/identify/hmmsearch_hits.txt",
-        search_hits_no_comments="circularize/identify/hmmsearch_hits_no_comments.txt"
+        search_hits_no_comments=temp("circularize/identify/hmmsearch_hits_no_comments.txt")
     conda:
         "../envs/mapping.yaml"
     log:
@@ -785,7 +785,7 @@ rule process_start_genes:
 
         else:
             # Load HMM search results
-            hmmsearch_results = hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None, comment='#')[[0, 2, 3, 4]]
+            hmmsearch_results = hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None)[[0, 2, 3, 4]]
 
             hmmsearch_results.columns = ['orf', 'hmm_name', 'hmm_accession', 'evalue']
 
@@ -877,7 +877,7 @@ rule run_circlator:
             
         else
         
-          ## TODO - I think by default circlator might search for DnaA or something via its own builtins.
+          ## TODO - I think by default circlator might search for DnaA via its own builtins.
           #         It would be better to skip that step and just rotate everything around to a gene start on the other side of the contig.
           printf "## Start gene file is empty, so will use circlator defaults\n\n" > {log}
           circlator fixstart --min_id {params.min_id} \
