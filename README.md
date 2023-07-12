@@ -1,5 +1,5 @@
 # rotary
-[![GitHub release](https://img.shields.io/badge/Version-0.2.0--beta3-lightgrey.svg)](https://github.com/jmtsuji/rotary/releases)
+[![GitHub release](https://img.shields.io/badge/Version-0.2.0--beta4-lightgrey.svg)](https://github.com/jmtsuji/rotary/releases)
 [![DOI](https://zenodo.org/badge/473891963.svg)](https://zenodo.org/badge/latestdoi/473891963)
 
 Assembly/annotation workflow for Nanopore-based microbial genome data containing circular DNA elements 
@@ -118,6 +118,10 @@ In addition, please check the following:
   (so that the second round of polishing will actually improve things?)
 - Re-polishing (`stats/circularize/polypolish_changes.log`) - there should be few to zero changes if everything went smoothly. 
   If you see more than about 20 changes, it means your genome might have some odd difficult-to-correct regions.
+
+## Citation
+_rotary_ is currently described in the methods of a bioRxiv pre-print. Please cite this pre-print if you use _rotary_:
+> Tsuji JM, Shaw NA, Nagashima S, Venkiteswaran JJ, Schiff SL, Watanabe T, Fukui M, Hanada S, Tank M, Neufeld JD (2023). Anoxygenic phototrophic _Chloroflexota_ member uses a Type I reaction center. _bioRxiv_, DOI:10.1101/2020.07.07.190934
 
 ## Final comments
 Enjoy! I hope to continue to update/improve this pipeline (and remove some of the below caveats) over time, but for now, 
