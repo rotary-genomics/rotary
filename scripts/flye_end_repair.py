@@ -58,13 +58,14 @@ def rotate_contig_to_midpoint(contig_fasta_filepath, output_filepath):
     :return: writes FastA file to output_filepath, 60 nt per line
     """
 
-    contig_count=0
+    # Read contig FastA
+    contig_count = 0
+
     with open(contig_fasta_filepath) as fasta_handle:
-        for seqid,seq in SeqIO.FastIO.SimpleFastaParser(fasta_handle):
+        for record in SeqIO.parse(fasta_handle, 'fasta'):
 
             if contig_count == 0:
-                contig_name = seqid
-                contig_sequence = seq
+                contig_record = record
 
             elif contig_count > 0:
                 logger.error('More than one contig in input FastA file')
@@ -72,20 +73,21 @@ def rotate_contig_to_midpoint(contig_fasta_filepath, output_filepath):
 
             contig_count = contig_count + 1
 
-    contig_length = len(contig_sequence)
-    contig_midpoint = round(contig_length / 2, 0)
+    contig_length = len(contig_record.seq)
+    contig_midpoint = int(contig_length / 2)
 
-    # TODO - check this works without missing some bases
-    logger.debug(f'Rotating contig to midpoint {contig_midpoint}')
-    contig_sequence_rotated_front = contig_sequence[contig_midpoint:contig_length]
-    contig_sequence_rotated_back = contig_sequence[0:contig_midpoint]
-
-    # TODO - check you can join sequences like this
+    logger.debug(f'Rotating contig to midpoint at {contig_midpoint} bp')
+    contig_sequence_rotated_front = contig_record.seq[contig_midpoint:contig_length]
+    contig_sequence_rotated_back = contig_record.seq[0:contig_midpoint]
     contig_sequence_rotated = contig_sequence_rotated_front + contig_sequence_rotated_back
 
-    # Make SeqRecord
+    # Update SeqRecord
+    contig_record.seq = contig_sequence_rotated
+    contig_record.description = contig_record.name  # trim off description
 
     # Write
+    with open(output_filepath, 'w') as output_handle:
+        SeqIO.write(contig_record, output_handle, 'fasta')
 
 
 def summarize_assembly_info(assembly_info_filepath, linear_contig_list_filepath=None,
