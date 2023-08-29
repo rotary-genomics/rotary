@@ -90,6 +90,93 @@ def rotate_contig_to_midpoint(contig_fasta_filepath, output_filepath):
         SeqIO.write(contig_record, output_handle, 'fasta')
 
 
+def sort_fasta(input_multi_fasta, output_fasta, sort_order, low_memory=True):
+    """
+    Sorts entries in a multi-FastA file in the specified sequence order
+
+    :param input_multi_fasta: filepath to a FastA file (1 or more entries)
+    :param output_fasta: path to write the output sorted FastA file
+    :param sort_order: list of contig names for sorting.
+                       If sort_order is missing entries in input_multi_fasta, then those entries are not returned.
+                       If sort_order has entries not in input_multi_fasta, then those entries are not returned.
+    :param low_memory: whether to run in low memory mode (uses more disk).
+                       In high memory mode, will load the whole FastA file into RAM
+    :return: writes the output FastA file to disk
+    """
+
+    if low_memory is False:
+
+        contig_names = []
+        contig_records = []
+
+        with open(input_multi_fasta) as fasta_handle:
+            for record in SeqIO.parse(fasta_handle, 'fasta'):
+
+                contig_names.append(record.name)
+                contig_records.append(record)
+
+        # Load the names and positions of the sequences as a DataFrame
+        sequence_positions = pd.DataFrame({'contig_name': contig_names}).reset_index()
+
+        # Sort/subset the DataFrame based on the provided sort order list
+        sequence_positions_sorted = sequence_positions\
+            .set_index('contig_name')\
+            .reindex(sort_order)\
+            .reset_index()
+        sequence_positions_sorted = sequence_positions_sorted[
+            sequence_positions_sorted['index'].isna() == False]
+
+        # Write output in the desired order
+        with open(output_fasta, 'w') as output_handle:
+            for record_index in sequence_positions_sorted['index'].apply(int):
+
+                logger.debug(f'Writing record index {record_index}')
+                record = contig_records[record_index]
+
+                SeqIO.write(record, output_handle, 'fasta')
+
+    elif low_memory is True:
+
+        # First read only the contig names (not sequences)
+        contig_names = []
+
+        with open(input_multi_fasta) as fasta_handle:
+            for record in SeqIO.parse(fasta_handle, 'fasta'):
+
+                contig_names.append(record.name)
+
+        # Load the names and positions of the sequences as a DataFrame
+        sequence_positions = pd.DataFrame({'contig_name': contig_names}).reset_index()
+
+        # Sort/subset the DataFrame based on the provided sort order list
+        sequence_positions_sorted = sequence_positions \
+            .set_index('contig_name') \
+            .reindex(sort_order) \
+            .reset_index()
+        sequence_positions_sorted = sequence_positions_sorted[
+            sequence_positions_sorted['index'].isna() == False]
+
+        # Write output in the desired order, reading each sequence on demand
+        with open(output_fasta, 'w') as output_handle:
+            for record_index in sequence_positions_sorted['index'].apply(int):
+
+                with open(input_multi_fasta) as fasta_handle:
+
+                    record_count = 0
+                    for record in SeqIO.parse(fasta_handle, 'fasta'):
+
+                        if record_count == record_index:
+                            logger.debug(f'Writing record index {record_index}')
+                            SeqIO.write(record, output_handle, 'fasta')
+
+                        record_count = record_count + 1
+
+    else:
+
+        logger.error(f'low_memory mode should be True or False; you provided {low_memory}')
+        raise RuntimeError
+
+
 def summarize_assembly_info(assembly_info_filepath, linear_contig_list_filepath=None,
                             circular_contig_list_filepath=None, bed_filepath=None,
                             length_threshold=100000, contig_id=None):
