@@ -177,20 +177,22 @@ def sort_fasta(input_multi_fasta, output_fasta, sort_order, low_memory=True):
         raise RuntimeError
 
 
-def summarize_assembly_info(assembly_info_filepath, linear_contig_list_filepath=None,
-                            circular_contig_list_filepath=None, bed_filepath=None,
-                            length_threshold=100000, contig_id=None):
+def parse_assembly_info_file(assembly_info_filepath, linear_contig_list_filepath=None,
+                             circular_contig_list_filepath=None):
+    """
+    List circular and linear contigs from the Flye assembly info file
+
+    :param assembly_info_filepath: path to assembly_info.txt output by Flye
+    :param linear_contig_list_filepath: output filepath to list the names of linear contigs
+    :param circular_contig_list_filepath: output filepath to list the names of circular contigs
+    :return: list of circular contig names
+    """
 
     logger.debug('Loading assembly info file')
     assembly_info = pd.read_csv(assembly_info_filepath, sep='\t')
 
     circular_contigs = assembly_info[assembly_info['circ.'] == 'Y'][['#seq_name', 'length', 'circ.']]
     linear_contigs = assembly_info[assembly_info['circ.'] == 'N'][['#seq_name', 'length', 'circ.']]
-
-    # TODO - add multi-contig support
-    if contig_id is not None:
-        logger.debug('Filtering by contig ID')
-        circular_contigs = circular_contigs[circular_contigs['#seq_name'] == contig_id]
 
     if linear_contig_list_filepath is not None:
         logger.debug('Exporting linear contig list')
@@ -200,54 +202,236 @@ def summarize_assembly_info(assembly_info_filepath, linear_contig_list_filepath=
         logger.debug('Exporting circular contig list')
         circular_contigs['#seq_name'].to_csv(circular_contig_list_filepath, index=False, header=None)
 
-    if bed_filepath is not None:
-        logger.debug('Making BED file with end proximity threshold of ' + str(length_threshold))
+    return list(circular_contigs['#seq_name'])
 
-        contigs = []
-        starts = []
-        stops = []
 
-        for index, row in circular_contigs.iterrows():
-            contig, length, circ = row
+def generate_bed_file(contig_seqrecord, bed_filepath, length_threshold=100000):
+    """
+    Generates a BED file for the desired contig for the desired bp threshold around that contig's ends
 
-            if length < length_threshold:
-                contigs.append(contig)
-                starts.append(0)
-                stops.append(length)
+    :param contig_seqrecord: SeqRecord for the contig of interest
+    :param bed_filepath: desired output filepath for the BED file
+    :param length_threshold: length (bp) around the contig end to target in the BED file
+    :return: writes BED file to the bed_filepath
+    """
 
-            else:
-                half_threshold = int(round(length_threshold / 2, 0))
+    contig_name = contig_seqrecord.name
+    contig_length = len(contig_seqrecord.seq)
 
-                contigs.append(contig)
-                starts.append(0)
-                stops.append(half_threshold)
+    logger.debug('Making BED file with end proximity threshold of ' + str(length_threshold))
 
-                contigs.append(contig)
-                starts.append(length - half_threshold)
-                stops.append(length)
-    
-        end_regions = pd.DataFrame({'contig': contigs, 'start': starts, 'stop': stops})
-        end_regions.to_csv(bed_filepath, sep='\t', header=None, index=False)
+    if contig_length < length_threshold:
+        logger.warning(f'Contig length ({contig_length}) is less than the supplied length threshold '
+                       f'({length_threshold}), so the BED file will be for the whole contig.')
+
+        contigs = [contig_name]
+        starts = [0]
+        stops = [contig_length]
+
+    else:
+        half_threshold = int(length_threshold / 2)
+
+        contigs = [contig_name, contig_name]
+        starts = [0, contig_length - half_threshold]
+        stops = [half_threshold, contig_length]
+
+    end_regions = pd.DataFrame({'contig': contigs, 'start': starts, 'stop': stops})
+
+    end_regions.to_csv(bed_filepath, sep='\t', header=None, index=False)
 
 
 def check_circlator_logfile(circlator_logfile):
+    """
+    Checks the circlator log file to see if contig stitching was successful
+
+    :param circlator_logfile: path to the circlator log file
+    :return: Boolean of whether the contigs were successfully stitched or not
+    """
 
     logger.debug('Loading circlator logfile')
-    circlator_info = pd.read_csv(circlator_logfile, sep='\t')[['#Contig', 'circularised']]
+    circlator_info = pd.read_csv(circlator_logfile, sep='\t')[['#Contig', 'stitched']]
 
-    # If a row is '1', it means it was circularized, but if '0', it means it was not circularized.
-    # So if all rows are 1 (i.e., the sum of rows / # of rows is 1), it means everything was circularized.
-    if circlator_info['circularised'].sum() / circlator_info.shape[0] == 1:
-        logger.debug('Everything is circularized.')
-        print('true')
+    # TODO - check I understood this properly when making edits (look at a real file as an example)
+    # If a row is '1', it means it was stitched properly, but if '0', it means it was not stitched.
+    # So if all rows are 1 (i.e., the sum of rows / # of rows is 1), it means everything was stiched properly.
+    if circlator_info['stitched'].sum() / circlator_info.shape[0] == 1:
+        logger.debug('Everything is stitched.')
+        result = True
 
-    elif circlator_info['circularised'].sum() >= 0:
-        logger.debug('Not everything is circularized.')
-        print('false')
+    elif circlator_info['stitched'].sum() >= 0:
+        logger.debug('Not everything is stitched.')
+        result = False
 
     else:
-        logger.error('File processing error. # of non-circularized contigs is not >=0. Exiting...')
+        logger.error('File processing error. # of non-stitched contigs is not >=0. Exiting...')
+        raise RuntimeError
+
+    return result
+
+
+def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, output_dir,
+                   flye_read_mode, flye_read_error, circlator_min_id, circlator_min_length,
+                   circlator_ref_end, circlator_reassemble_end, threads, thread_mem):
+
+    # Variable names
+    end_repaired_contigs_filepath = os.path.join(output_dir, 'repaired.fasta')
+    end_repaired_contigs_filepath_unsorted = f'{end_repaired_contigs_filepath}.tmp'  # TODO - initialize this file
+    verbose_logfile = os.path.join(output_dir, 'verbose.log')
+    bam_filepath = os.path.join(output_dir, 'long_read.bam')
+    circlator_logdir = os.path.join(output_dir, 'circlator_logs')
+
+    # Check output dir
+    if os.path.isdir(output_dir):
+        logger.warning(f'Output directory already exists: "{output_dir}"; files may be overwritten.')
+
+    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(circlator_logdir, exist_ok=True)
+
+    # Get lists of circular and linear contigs
+    circular_contig_names = parse_assembly_info_file(assembly_info_filepath)
+
+    # No need to run the pipeline if there are no circular contigs
+    if len(circular_contig_names) == 0:
+
+        logger.info('No circular contigs. Will copy the input file and finish early.')
+        shutil.copyfile(assembly_fasta_filepath, end_repaired_contigs_filepath)
+        logger.info('Pipeline finished.')
+        sys.exit(0)
+
+    logger.info('Mapping reads to all contigs')
+    # TODO - fix this command; some ideas at https://stackoverflow.com/a/13332300 (accessed 2023.8.29)
+    subprocess.run(['minimap2', '-t', threads, '-ax', 'map-ont', assembly_fasta_filepath, long_read_filepath,
+                    '2>>', verbose_logfile, '|',
+                    'samtools', 'view', '-b', '-@', threads, '2>>', verbose_logfile, '|',
+                    'samtools', 'sort', '-@', threads, '-m', str(thread_mem) + 'G', '2>>', verbose_logfile,
+                    '>', bam_filepath])
+    # # TODO - add support for different flags like -ax for pacbio
+    #   minimap2 -t "${threads}" -ax map-ont "${all_contigs}" "${qc_long}" 2>> "${verbose}" | \
+    #     samtools view -b -@ "${threads}" 2>> "${verbose}" | \
+    #     samtools sort -@ "${threads}" -m "${thread_mem}G" 2>> "${verbose}" \
+    #     > "${bam_file}"
+    # # TODO - add this command
+    # samtools index -@ "${threads}" "${bam_file}" 2>> "${verbose}"
+
+    failed_contigs = 0
+
+    for contig_name in circular_contig_names:
+
+        logger.info(f'End repair: {contig_name}')
+
+        # Output dir setup
+        reassembly_outdir = os.path.join(output_dir, 'contigs', contig_name)
+        reassembly_outfile = os.path.join(reassembly_outdir, f'{contig_name}.fasta')
+        os.makedirs(reassembly_outdir, exist_ok=True)
+
+        # Get contig sequence as a SeqRecord
+        with open(assembly_fasta_filepath) as fasta_handle:
+            for record in SeqIO.parse(fasta_handle):
+                if record.name == contig_name:
+                    contig_record = record
+
+        # TODO - allow user to customize these lengths
+        length_cutoffs = [100000, 90000, 80000, 70000, 60000, 50000, 20000, 10000, 5000, 2000]
+        assembly_attempts = 0
+        linked_ends = False
+
+        while linked_ends is False:
+
+            # End the script if all length cutoffs have been tried
+            if assembly_attempts > len(length_cutoffs)-1:
+
+                logger.warning(f'End repair: {contig_name}: FAILED to linked contig ends')
+                failed_contigs = failed_contigs + 1
+                os.makedirs(os.path.join(output_dir, 'troubleshooting'))
+                shutil.move(log_dir, os.path.join(output_dir, 'troubleshooting', contig_name))
+                shutil.rmtree(reassembly_outdir)
+
+                break
+
+            # Get the length cutoff for this attempt
+            length_cutoff = length_cutoffs[assembly_attempts]
+
+            if len(contig_record.seq) <= length_cutoff:
+                logger.debug(f'Skipping length cutoff of {length_cutoff} because '
+                             f'contig is shorter than this ({len(contig_record.seq)} bp)')
+                continue
+
+            logger.debug(f'Starting reassembly with a length cutoff of {length_cutoff}')
+
+            # Define some folder and filenames for this attempt
+            length_outdir = os.path.join(reassembly_outdir, f'L{length_cutoff}')
+            bed_filepath = os.path.join(length_outdir, 'ends.bed')
+            flye_length_outdir = os.path.join(length_outdir, 'assembly')
+            merge_dir = os.path.join(length_outdir, 'merge')
+            log_dir = os.path.join(reassembly_outdir, 'logs', f'L{length_cutoff}')
+            os.makedirs(length_outdir, exist_ok=True)
+            os.makedirs(log_dir, exist_ok=True)
+
+            # Make a BED file
+            generate_bed_file(contig_record, bed_filepath, length_threshold=length_cutoff)
+
+            # TODO - finish code for getting reads for that region
+            # # TODO - consider adding option to split long reads in half if they go around a short circular contig, like in circlator
+            #       samtools view -@ "${threads}" -L "${regions}" -b "${bam_file}" 2>> "${verbose}" | \
+            #         samtools fastq -0 "${fastq}" -n -@ "${threads}" 2>> "${verbose}"
+
+            if flye_read_error == 0:
+
+                # TODO - finish command
+                # flye "--${flye_read_mode}" "${fastq}" -o "${flye_length_outdir}" \
+                #           -t "${threads}" >> "${verbose}" 2>&1
+
+            else:
+
+                # TODO - finish command
+                # flye "--${flye_read_mode}" "${fastq}" -o "${flye_length_outdir}" --read_error "${flye_read_error}" \
+                #           -t "${threads}" >> "${verbose}" 2>&1
+
+            shutil.copy(os.path.join(flye_length_outdir, 'assembly_info.txt'), log_dir)
+
+            os.makedirs(merge_dir, exist_ok=True)
+
+            # TODO - finish command
+            # circlator merge --verbose --min_id "${circlator_min_id}" --min_length "${circlator_min_length}" \
+            #         --ref_end "${circlator_ref_end}" --reassemble_end "${circlator_reassemble_end}" \
+            #         "${assembly}" "${reassembly_dir}/assembly.fasta" "${merge_dir}/merge" >> "${verbose}" 2>&1
+            shutil.copy(os.path.join(merge_dir, 'merge.circularise.log'), log_dir)
+            shutil.copy(os.path.join(merge_dir, 'merge.circularise_details.log'), log_dir)
+
+            if check_circlator_logfile(os.path.join(merge_dir, 'merge.circularise.log')) is True:
+
+                logger.info('End repair: successfully linked contig ends')
+
+                # Rotate to midpoint so that the stitched ends can be polished more effectively (especially stich points)
+                # TODO - sometimes small contigs are already rotated far from original origin. Stitch point hards to find. Does circlator report stitch point?
+                rotate_contig_to_midpoint(os.path.join(merge_dir, 'merge.fasta'),
+                                          os.path.join(length_outdir, 'rotate.fasta'))
+
+                # TODO - fix this code and also make sure to initialize the unsorted outfile first - consider if this can all be done within Python
+                subprocess.run(['cat', os.path.join(length_outdir, 'rotate.fasta'), '>>', end_repaired_contigs_filepath_unsorted])
+
+                # Cleanup
+                # TODO - clean up path "${outdir}/circlator_logs/${contig}.log"
+                shutil.copy(os.path.join(merge_dir, 'merge.circularise_details.log'),
+                            os.path.join(circlator_logdir, f'{contig_name}.log'))
+                shutil.rmtree(reassembly_outdir)
+
+                linked_ends = True
+
+            assembly_attempts = assembly_attempts + 1
+
+    if failed_contigs > 0:
+
+        # TODO - allow user to optionally keep going
+        shutil.move(end_repaired_contigs_filepath_unsorted, end_repaired_contigs_filepath)
+
+        logger.error(f'{failed_contigs} contigs could not be circularized. A partial output file including '
+                     f'successfully circularized contigs (and no linear contigs) is available at '
+                     f'{end_repaired_contigs_filepath} for debugging. Exiting with error status. See temporary files '
+                     f'and verbose logs for more details.')
         sys.exit(1)
+
+    # TODO - stopped here - add final FastA sort code
 
 
 def main(args):
