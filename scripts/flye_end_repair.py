@@ -1,22 +1,91 @@
 #!/usr/bin/env python
-# flye_end_repair_utils.py
-# Utility functions for flye_end_repair.sh
-# Jackson M. Tsuji, ILTS, Hokkaido University, 2022
+# flye_end_repair.py
+# Fixes ends of circular contigs produced by Flye
+# Jackson M. Tsuji, Hokkaido University & JAMSTEC, 2023
 
 import os
 import sys
 import time
 import argparse
 import logging
+import shutil
+import subprocess
+from Bio import SeqIO
 import pandas as pd
 
 # GLOBAL VARIABLES
-SCRIPT_VERSION = '0.1.0'
+SCRIPT_VERSION = '0.2.0'
+SCRIPT_NAME = sys.argv[0]
 
 # Set up the logger
 logging.basicConfig(format='[ %(asctime)s UTC ]: %(levelname)s: %(message)s')
 logging.Formatter.converter = time.gmtime
 logger = logging.getLogger(__name__)
+
+
+def check_dependency(dependency_name, dependency_type='shell'):
+    """
+    Checks if a required dependency is present
+
+    :param dependency_name: name of the dependency
+    :param dependency_type: specify the dependency type - currently only 'shell' command is available
+    :return: string of the dependency type and name
+    """
+
+    if dependency_type == 'shell':
+
+        if shutil.which(dependency_name) is None:
+
+            logger.error(f'Dependency not found: {dependency_name}')
+            raise RuntimeError
+
+    else:
+
+        logger.error(f'Available dependency types are "shell" and "python" - you provided "{dependency_type}"')
+        raise RuntimeError
+
+    dependency_message = f'{dependency_type} : {dependency_name}'
+
+    return dependency_message
+
+
+def rotate_contig_to_midpoint(contig_fasta_filepath, output_filepath):
+    """
+    Rotates an input (circular) contig to its approximate midpoint
+
+    :param contig_fasta_filepath: FastA file containing a single circular contig
+    :param output_filepath: Filepath for the output rotated FastA file
+    :return: writes FastA file to output_filepath, 60 nt per line
+    """
+
+    contig_count=0
+    with open(contig_fasta_filepath) as fasta_handle:
+        for seqid,seq in SeqIO.FastIO.SimpleFastaParser(fasta_handle):
+
+            if contig_count == 0:
+                contig_name = seqid
+                contig_sequence = seq
+
+            elif contig_count > 0:
+                logger.error('More than one contig in input FastA file')
+                raise RuntimeError
+
+            contig_count = contig_count + 1
+
+    contig_length = len(contig_sequence)
+    contig_midpoint = round(contig_length / 2, 0)
+
+    # TODO - check this works without missing some bases
+    logger.debug(f'Rotating contig to midpoint {contig_midpoint}')
+    contig_sequence_rotated_front = contig_sequence[contig_midpoint:contig_length]
+    contig_sequence_rotated_back = contig_sequence[0:contig_midpoint]
+
+    # TODO - check you can join sequences like this
+    contig_sequence_rotated = contig_sequence_rotated_front + contig_sequence_rotated_back
+
+    # Make SeqRecord
+
+    # Write
 
 
 def summarize_assembly_info(assembly_info_filepath, linear_contig_list_filepath=None,
