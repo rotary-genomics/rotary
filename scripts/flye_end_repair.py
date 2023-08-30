@@ -15,7 +15,6 @@ import pandas as pd
 
 # GLOBAL VARIABLES
 SCRIPT_VERSION = '0.2.0'
-SCRIPT_NAME = sys.argv[0]
 
 # Set up the logger
 logging.basicConfig(format='[ %(asctime)s UTC ]: %(levelname)s: %(message)s')
@@ -177,15 +176,16 @@ def sort_fasta(input_multi_fasta, output_fasta, sort_order, low_memory=True):
         raise RuntimeError
 
 
-def parse_assembly_info_file(assembly_info_filepath, linear_contig_list_filepath=None,
+def parse_assembly_info_file(assembly_info_filepath, return_type='circular', linear_contig_list_filepath=None,
                              circular_contig_list_filepath=None):
     """
     List circular and linear contigs from the Flye assembly info file
 
     :param assembly_info_filepath: path to assembly_info.txt output by Flye
+    :param return_type: whether to return a list of 'circular' or 'linear' contigs
     :param linear_contig_list_filepath: output filepath to list the names of linear contigs
     :param circular_contig_list_filepath: output filepath to list the names of circular contigs
-    :return: list of circular contig names
+    :return: list of contig names, either circular or linear depending on return_type
     """
 
     logger.debug('Loading assembly info file')
@@ -202,7 +202,15 @@ def parse_assembly_info_file(assembly_info_filepath, linear_contig_list_filepath
         logger.debug('Exporting circular contig list')
         circular_contigs['#seq_name'].to_csv(circular_contig_list_filepath, index=False, header=None)
 
-    return list(circular_contigs['#seq_name'])
+    if return_type == 'circular':
+        output_list = list(circular_contigs['#seq_name'])
+    elif return_type == 'linear':
+        output_list = list(linear_contigs['#seq_name'])
+    else:
+        logger.error(f'return_type must be "circular" or "linear"; you provided "{return_type}"')
+        raise RuntimeError
+
+    return output_list
 
 
 def generate_bed_file(contig_seqrecord, bed_filepath, length_threshold=100000):
@@ -279,6 +287,8 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
     verbose_logfile = os.path.join(output_dir, 'verbose.log')
     bam_filepath = os.path.join(output_dir, 'long_read.bam')
     circlator_logdir = os.path.join(output_dir, 'circlator_logs')
+    linear_contig_list_filepath = os.path.join(output_dir, 'linear.list')
+    reassembly_outdir_base = os.path.join(output_dir, 'contigs')
 
     # Check output dir
     if os.path.isdir(output_dir):
@@ -287,14 +297,16 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(circlator_logdir, exist_ok=True)
 
-    # Get lists of circular and linear contigs
-    circular_contig_names = parse_assembly_info_file(assembly_info_filepath)
+    # Get lists of circular contigs in RAM while saving linear contig list to file
+    circular_contig_names = parse_assembly_info_file(assembly_info_filepath, return_type='circular',
+                                                     linear_contig_list_filepath=linear_contig_list_filepath)
 
     # No need to run the pipeline if there are no circular contigs
     if len(circular_contig_names) == 0:
 
         logger.info('No circular contigs. Will copy the input file and finish early.')
         shutil.copyfile(assembly_fasta_filepath, end_repaired_contigs_filepath)
+        os.remove(linear_contig_list_filepath)
         logger.info('Pipeline finished.')
         sys.exit(0)
 
@@ -320,7 +332,7 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
         logger.info(f'End repair: {contig_name}')
 
         # Output dir setup
-        reassembly_outdir = os.path.join(output_dir, 'contigs', contig_name)
+        reassembly_outdir = os.path.join(reassembly_outdir_base, contig_name)
         reassembly_outfile = os.path.join(reassembly_outdir, f'{contig_name}.fasta')
         os.makedirs(reassembly_outdir, exist_ok=True)
 
@@ -404,11 +416,10 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
 
                 # Rotate to midpoint so that the stitched ends can be polished more effectively (especially stich points)
                 # TODO - sometimes small contigs are already rotated far from original origin. Stitch point hards to find. Does circlator report stitch point?
-                rotate_contig_to_midpoint(os.path.join(merge_dir, 'merge.fasta'),
-                                          os.path.join(length_outdir, 'rotate.fasta'))
+                rotate_contig_to_midpoint(os.path.join(merge_dir, 'merge.fasta'), reassembly_outfile)
 
                 # TODO - fix this code and also make sure to initialize the unsorted outfile first - consider if this can all be done within Python
-                subprocess.run(['cat', os.path.join(length_outdir, 'rotate.fasta'), '>>', end_repaired_contigs_filepath_unsorted])
+                subprocess.run(['cat', reassembly_outfile, '>>', end_repaired_contigs_filepath_unsorted])
 
                 # Cleanup
                 # TODO - clean up path "${outdir}/circlator_logs/${contig}.log"
@@ -431,18 +442,40 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
                      f'and verbose logs for more details.')
         sys.exit(1)
 
-    # TODO - stopped here - add final FastA sort code
+    # TODO - the final contigs will not be sorted
+    # with open(end_repaired_contigs_filepath_unsorted) as circular_handle:
+    #     with open(assembly_fasta_filepath) as linear_handle:
+    #         with open(end_repaired_contigs_filepath, 'w') as output_handle:
+    #             shutil.copyfileobj(circular_handle, output_handle)
+
+    shutil.move(end_repaired_contigs_filepath_unsorted, end_repaired_contigs_filepath)
+    # TODO - fix this code
+    subprocess.run(['seqtk','subseq',assembly_fasta_filepath,linear_contig_list_filepath,'>>',end_repaired_contigs_filepath])
+
+    # Clean up temp files
+    os.remove(bam_filepath)
+    os.remove(f'{bam_filepath}.bai')
+    os.remove(linear_contig_list_filepath)
+    os.remove(end_repaired_contigs_filepath_unsorted)
+    shutil.rmtree(reassembly_outdir_base)
+
+    logger.info(f'End repair finished. Output contigs saved at {end_repaired_contigs_filepath}.')
 
 
 def main(args):
     # Set user variables
+    long_read_filepath = args.long_reads
+    assembly_fasta_filepath = args.assembly_fasta
     assembly_info_filepath = args.assembly_info
-    linear_list_outfile = args.output_linear_contig_list
-    circular_list_outfile = args.output_circular_contig_list
-    end_regions_outfile = args.output_bed_file
-    length_threshold = args.length_threshold
-    contig_id = args.contig_id
-    circlator_logfile = args.circlator_merge_log
+    output_dir = args.output_dir
+    flye_read_mode = args.flye_read_mode
+    flye_read_error = args.flye_read_error
+    circlator_min_id = args.circlator_min_id
+    circlator_min_length = args.circlator_min_length
+    circlator_ref_end = args.circlator_ref_end
+    circlator_reassemble_end = args.circlator_reassemble_end
+    threads = args.threads
+    thread_mem = args.thread_mem
     verbose = args.verbose
 
     # Startup checks
@@ -451,74 +484,60 @@ def main(args):
     else:
         logger.setLevel(logging.INFO)
 
-    if (assembly_info_filepath is not None) & (circlator_logfile is not None):
-        logger.error('Specified --assembly_info and --circlator_merge_log, ' +
-                     'but both options cannot be set at the same time. Exiting...')
-        sys.exit(1)
-
-    if (assembly_info_filepath is not None) & (linear_list_outfile is None) & (circular_list_outfile is None) & \
-            (end_regions_outfile is None):
-        logger.error('You specified --assembly_info, but you did not specify an output file ' +
-                     '(output_circular_contig_list and/or output_linear_contig_list and/or output_bed_file). ' +
-                     'Exiting...')
-        sys.exit(1)
-
     # Startup messages
-    logger.debug('Running ' + os.path.basename(sys.argv[0]))
-    logger.debug('Version: ' + SCRIPT_VERSION)
-    logger.debug('### SETTINGS ###')
-    logger.debug('Assembly info filepath: ' + str(assembly_info_filepath))
-    logger.debug('Output linear contig list filepath: ' + str(linear_list_outfile))
-    logger.debug('Output circular contig list filepath: ' + str(circular_list_outfile))
-    logger.debug('Output BED file of circular contig end regions: ' + str(end_regions_outfile))
-    logger.debug('End region threshold (bp): ' + str(length_threshold))
-    logger.debug('Contig ID for subsetting: ' + str(contig_id))
-    logger.debug('Logfile from circlator merge: ' + str(circlator_logfile))
-    logger.debug('Verbose logging: ' + str(verbose))
-    logger.debug('################')
+    logger.info('Running ' + os.path.basename(sys.argv[0]))
+    logger.info('Version: ' + SCRIPT_VERSION)
+    logger.info('### SETTINGS ###')
+    logger.info(f'Long read filepath: {long_read_filepath}')
+    logger.info(f'Assembly FastA filepath: {assembly_fasta_filepath}')
+    logger.info(f'Assembly info filepath: {assembly_info_filepath}')
+    logger.info(f'Output directory: {output_dir}')
+    logger.info(f'Flye read mode: {flye_read_mode}')
+    logger.info(f'Flye read error: {flye_read_error}')
+    logger.info(f'Circlator min. ID: {circlator_min_id}')
+    logger.info(f'Circlator min. length: {circlator_min_length}')
+    logger.info(f'Circlator ref. end: {circlator_ref_end}')
+    logger.info(f'Circlator reassembly end: {circlator_reassemble_end}')
+    logger.info(f'Threads: {threads}')
+    logger.info(f'Memory per thread (GB): {thread_mem}')
+    logger.info(f'Verbose logging: {verbose}')
+    logger.info('################')
 
-    if assembly_info_filepath is not None:
-        summarize_assembly_info(assembly_info_filepath, linear_contig_list_filepath=linear_list_outfile,
-                                circular_contig_list_filepath=circular_list_outfile,
-                                bed_filepath=end_regions_outfile, length_threshold=length_threshold,
-                                contig_id=contig_id)
+    run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, output_dir,
+                   flye_read_mode, flye_read_error, circlator_min_id, circlator_min_length,
+                   circlator_ref_end, circlator_reassemble_end, threads, thread_mem)
 
-    elif circlator_logfile is not None:
-        check_circlator_logfile(circlator_logfile)
-
-    else:
-        logger.error('Neither --assembly_info nor --circlator_merge_log was set, ' +
-                     'but choosing one of these options is required. Exiting...')
-        logger.error('Were you looking for the help statement? If so, use the -h flag.')
-        sys.exit(1)
-
-    logger.debug(os.path.basename(sys.argv[0]) + ': done.')
+    logger.info(os.path.basename(sys.argv[0]) + ': done.')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Utilities for the flye_end_repair.sh pipeline. '
-                    'Copyright Jackson M. Tsuji, ILTS, Hokkaido University, 2022. '
-                    'Version: ' + SCRIPT_VERSION)
-    parser.add_argument('-i', '--assembly_info', required=False, default=None,
-                        help='The path to the assembly_info.txt file output by Flye.')
-    parser.add_argument('-j', '--output_linear_contig_list', required=False, default=None,
-                        help='Outputs a list of linear contigs to the designated filepath based on -i.')
-    parser.add_argument('-k', '--output_circular_contig_list', required=False, default=None,
-                        help='Outputs a list of circular contigs to the designated filepath based on -i.')
-    parser.add_argument('-b', '--output_bed_file', required=False, default=None,
-                        help='Outputs a BED file to the designated filepath specifying the ends of circular contigs. '
-                             'Contig information is determined from -i. Proximity to ends is determined from -l.')
-    parser.add_argument('-l', '--length_threshold', required=False, default=100000, type=int,
-                        help='Proximity (bp) to the contig ends to be used in the output BED file (-b) [100000]')
-    parser.add_argument('-n', '--contig_id', required=False, default=None,
-                        help='Optional contig_id (matching the #seq_name header in -i). '
-                             'Only output information for that contig.')
-    parser.add_argument('-c', '--circlator_merge_log', required=False, default=None,
-                        help='Path to [prefix].circularize.log file from the circlator merge command. '
-                             'Will output "true" if all contigs were circularized and "false" if not (to STDOUT). '
-                             'This function is the only function independent of -i.')
-    parser.add_argument('-v', '--verbose', required=False, action='store_true',
+        description=f'{os.path.basename(sys.argv[0])}: pipeline to repair ends of circular contigs from Flye. \n'
+                    f'Copyright Jackson M. Tsuji, Hokkaido University / JAMSTEC, 2023. \n'
+                    f'Version: {SCRIPT_VERSION}')
+    parser.add_argument('longreads.fastq.gz', dest='long_read_filepath', help='QC-passing Nanopore reads')
+    parser.add_argument('assembly.fasta', dest='assembly_fasta_filepath', help='Contigs output from Flye')
+    parser.add_argument('assembly_info.txt', dest='assembly_info_filepath', help='Assembly info file from Flye')
+    parser.add_argument('output_dir',
+                        help='Output directory path (might overwrite contents if the dir already exists!)')
+    parser.add_argument('-f', '--flye_read_mode', required=False, default='nano-hq', choices=['nano-hq','nano-raw'],
+                        help='Type of input reads for Flye')
+    parser.add_argument('-F', '--flye_read_error', required=False, default=0, type=float,
+                        help='Expected error rate of input reads, expressed as proportion (e.g., 0.03) '
+                             '[0 = use flye defaults]')
+    parser.add_argument('-i', '--circlator_min_id', required=False, default=99, type=float,
+                        help='Percent identity threshold for circlator merge')
+    parser.add_argument('-l', '--circlator_min_length', required=False, default=10000, type=int,
+                        help='Minimum required overlap (bp) between original and merge contigs')
+    parser.add_argument('-e', '--circlator_ref_end', required=False, default=100, type=int,
+                        help='Minimum distance (bp) between end of original contig and nucmer hit')
+    parser.add_argument('-E', '--circlator_reassemble_end', required=False, default=100, type=int,
+                        help='Minimum distance (bp) between end of merge contig and nucmer hit')
+    parser.add_argument('-t', '--threads', required=False, default=1, type=int,
+                        help='Number of processors threads to use')
+    parser.add_argument('-m', '--threads_mem', required=False, default=1, type=float,
+                        help='Memory (GB) to use **per thread** for samtools sort')
+    parser.add_argument('-v', '--verbose', required=False, action='store_false',
                         help='Enable for verbose logging.')
     command_line_args = parser.parse_args()
     main(command_line_args)
