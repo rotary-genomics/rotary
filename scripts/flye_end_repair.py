@@ -311,19 +311,23 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
         sys.exit(0)
 
     logger.info('Mapping reads to all contigs')
-    # TODO - fix this command; some ideas at https://stackoverflow.com/a/13332300 (accessed 2023.8.29)
-    subprocess.run(['minimap2', '-t', threads, '-ax', 'map-ont', assembly_fasta_filepath, long_read_filepath,
-                    '2>>', verbose_logfile, '|',
-                    'samtools', 'view', '-b', '-@', threads, '2>>', verbose_logfile, '|',
-                    'samtools', 'sort', '-@', threads, '-m', str(thread_mem) + 'G', '2>>', verbose_logfile,
-                    '>', bam_filepath])
-    # # TODO - add support for different flags like -ax for pacbio
-    #   minimap2 -t "${threads}" -ax map-ont "${all_contigs}" "${qc_long}" 2>> "${verbose}" | \
-    #     samtools view -b -@ "${threads}" 2>> "${verbose}" | \
-    #     samtools sort -@ "${threads}" -m "${thread_mem}G" 2>> "${verbose}" \
-    #     > "${bam_file}"
-    # # TODO - add this command
-    # samtools index -@ "${threads}" "${bam_file}" 2>> "${verbose}"
+
+    # Initialize the repaired contigs FastA file (so it will overwrite an old file rather than just append later)
+    with open(end_repaired_contigs_filepath_unsorted, 'w') as output_handle:
+        output_handle.write('')
+
+    with open(verbose_logfile, 'w') as logfile_handle:
+        with open(bam_filepath, 'w') as bam_handle:
+
+            # TODO - add support for different flags like -ax for pacbio
+            minimap = subprocess.run(['minimap2','-t',threads,'-ax','map-ont',assembly_fasta_filepath,long_read_filepath],
+                                     check=True, stdout=subprocess.PIPE, stderr=logfile_handle)
+            samtools_view = subprocess.run(['samtools','view','-b','-@',threads], check=True, input=minimap.stdout,
+                                           stdout=subprocess.PIPE, stderr=logfile_handle)
+            subprocess.run(['samtools','sort','-@',threads,'-m',f'{thread_mem}G'], check=True,
+                           input=samtools_view.stdout, stdout=bam_handle, stderr=logfile_handle)
+
+        subprocess.run(['samtools','index','-@',threads,bam_filepath], check=True, stderr=logfile_handle)
 
     failed_contigs = 0
 
@@ -333,7 +337,8 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
 
         # Output dir setup
         reassembly_outdir = os.path.join(reassembly_outdir_base, contig_name)
-        reassembly_outfile = os.path.join(reassembly_outdir, f'{contig_name}.fasta')
+        contig_fasta_filepath = os.path.join(reassembly_outdir, f'{contig_name}.fasta')
+        reassembly_outfile = os.path.join(reassembly_outdir, f'{contig_name}_stitched.fasta')
         os.makedirs(reassembly_outdir, exist_ok=True)
 
         # Get contig sequence as a SeqRecord
@@ -341,6 +346,9 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
             for record in SeqIO.parse(fasta_handle):
                 if record.name == contig_name:
                     contig_record = record
+
+        with open(contig_fasta_filepath) as fasta_handle:
+            SeqIO.write(contig_record, 'fasta')
 
         # TODO - allow user to customize these lengths
         length_cutoffs = [100000, 90000, 80000, 70000, 60000, 50000, 20000, 10000, 5000, 2000]
@@ -373,6 +381,7 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
             # Define some folder and filenames for this attempt
             length_outdir = os.path.join(reassembly_outdir, f'L{length_cutoff}')
             bed_filepath = os.path.join(length_outdir, 'ends.bed')
+            ends_fastq_filepath = os.path.join(length_outdir, 'ends.fastq.gz')
             flye_length_outdir = os.path.join(length_outdir, 'assembly')
             merge_dir = os.path.join(length_outdir, 'merge')
             log_dir = os.path.join(reassembly_outdir, 'logs', f'L{length_cutoff}')
@@ -382,31 +391,54 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
             # Make a BED file
             generate_bed_file(contig_record, bed_filepath, length_threshold=length_cutoff)
 
-            # TODO - finish code for getting reads for that region
-            # # TODO - consider adding option to split long reads in half if they go around a short circular contig, like in circlator
-            #       samtools view -@ "${threads}" -L "${regions}" -b "${bam_file}" 2>> "${verbose}" | \
-            #         samtools fastq -0 "${fastq}" -n -@ "${threads}" 2>> "${verbose}"
+            with open(verbose_logfile, 'w') as logfile_handle:
+
+                # TODO - consider adding option to split long reads in half if they go around a short circular contig, like in circlator
+                samtools_view = subprocess.run(['samtools', 'view', '-@', threads, '-L', bed_filepath, '-b',
+                                                bam_filepath],
+                                               check=True, stdout=subprocess.PIPE, stderr=logfile_handle)
+                subprocess.run(['samtools', 'fastq', '-0', ends_fastq_filepath, '-n', '-@', threads], check=True,
+                               input=samtools_view.stdout, stderr=logfile_handle)
+
+                # samtools view -@ "${threads}" -L "${regions}" -b "${bam_file}" 2>> "${verbose}" | \
+                #   samtools fastq -0 "${fastq}" -n -@ "${threads}" 2>> "${verbose}"
 
             if flye_read_error == 0:
 
-                # TODO - finish command
+                flye_args = ['flye', f'--{flye_read_mode}', ends_fastq_filepath, '-o', flye_length_outdir, '-t',
+                             threads]
+
                 # flye "--${flye_read_mode}" "${fastq}" -o "${flye_length_outdir}" \
                 #           -t "${threads}" >> "${verbose}" 2>&1
 
             else:
 
-                # TODO - finish command
+                flye_args = ['flye', f'--{flye_read_mode}', ends_fastq_filepath, '-o', flye_length_outdir,
+                             '--read_error', flye_read_error, '-t', threads]
+
                 # flye "--${flye_read_mode}" "${fastq}" -o "${flye_length_outdir}" --read_error "${flye_read_error}" \
                 #           -t "${threads}" >> "${verbose}" 2>&1
+
+            with open(verbose_logfile, 'w') as logfile_handle:
+                # TODO - add error handling if flye fails
+                subprocess.run(flye_args, check=True, stderr=logfile_handle)
 
             shutil.copy(os.path.join(flye_length_outdir, 'assembly_info.txt'), log_dir)
 
             os.makedirs(merge_dir, exist_ok=True)
 
-            # TODO - finish command
-            # circlator merge --verbose --min_id "${circlator_min_id}" --min_length "${circlator_min_length}" \
-            #         --ref_end "${circlator_ref_end}" --reassemble_end "${circlator_reassemble_end}" \
-            #         "${assembly}" "${reassembly_dir}/assembly.fasta" "${merge_dir}/merge" >> "${verbose}" 2>&1
+            with open(verbose_logfile, 'w') as logfile_handle:
+                # TODO - double check the vars here are correct
+                subprocess.run(['circlator', 'merge', '--verbose', '--mid_id', circlator_min_id, '--min_length',
+                                circlator_min_length, '--ref_end', circlator_ref_end, '--reassemble_end',
+                                circlator_reassemble_end, contig_fasta_filepath,
+                                os.path.join(flye_length_outdir, 'assembly.fasta'), os.path.join(merge_dir, 'merge')],
+                               check=True, stderr=logfile_handle)
+
+                # circlator merge --verbose --min_id "${circlator_min_id}" --min_length "${circlator_min_length}" \
+                #         --ref_end "${circlator_ref_end}" --reassemble_end "${circlator_reassemble_end}" \
+                #         "${assembly}" "${reassembly_dir}/assembly.fasta" "${merge_dir}/merge" >> "${verbose}" 2>&1
+
             shutil.copy(os.path.join(merge_dir, 'merge.circularise.log'), log_dir)
             shutil.copy(os.path.join(merge_dir, 'merge.circularise_details.log'), log_dir)
 
@@ -414,15 +446,17 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
 
                 logger.info('End repair: successfully linked contig ends')
 
-                # Rotate to midpoint so that the stitched ends can be polished more effectively (especially stich points)
-                # TODO - sometimes small contigs are already rotated far from original origin. Stitch point hards to find. Does circlator report stitch point?
+                # Rotate to midpoint so that the stitched points around the midpoint can be polished more effectively
+                # TODO - sometimes small contigs are already rotated far from original origin. Stitch point is
+                #  hard to find. Does circlator report stitch point?
                 rotate_contig_to_midpoint(os.path.join(merge_dir, 'merge.fasta'), reassembly_outfile)
 
-                # TODO - fix this code and also make sure to initialize the unsorted outfile first - consider if this can all be done within Python
-                subprocess.run(['cat', reassembly_outfile, '>>', end_repaired_contigs_filepath_unsorted])
+                # Append the contig onto the main repaired contig output file
+                with open(reassembly_outfile) as input_handle:
+                    with open(end_repaired_contigs_filepath_unsorted, 'a') as append_handle:
+                        append_handle.write(input_handle.read())
 
                 # Cleanup
-                # TODO - clean up path "${outdir}/circlator_logs/${contig}.log"
                 shutil.copy(os.path.join(merge_dir, 'merge.circularise_details.log'),
                             os.path.join(circlator_logdir, f'{contig_name}.log'))
                 shutil.rmtree(reassembly_outdir)
@@ -442,15 +476,20 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
                      f'and verbose logs for more details.')
         sys.exit(1)
 
-    # TODO - the final contigs will not be sorted
-    # with open(end_repaired_contigs_filepath_unsorted) as circular_handle:
-    #     with open(assembly_fasta_filepath) as linear_handle:
-    #         with open(end_repaired_contigs_filepath, 'w') as output_handle:
-    #             shutil.copyfileobj(circular_handle, output_handle)
+    # TODO - consider doing this within Python; also confirm that the code below works
+    #  It would be ideal to open and sort the files at the same time
+    with open(end_repaired_contigs_filepath_unsorted, 'a') as append_handle:
 
-    shutil.move(end_repaired_contigs_filepath_unsorted, end_repaired_contigs_filepath)
-    # TODO - fix this code
-    subprocess.run(['seqtk','subseq',assembly_fasta_filepath,linear_contig_list_filepath,'>>',end_repaired_contigs_filepath])
+        subprocess.run(['seqtk', 'subseq', assembly_fasta_filepath, linear_contig_list_filepath],
+                       check=True, stdout=append_handle)
+
+    # Sort the contigs
+    sort_order = []
+    with open(assembly_fasta_filepath) as fasta_handle:
+        for record in SeqIO.parse(fasta_handle):
+            sort_order.append(record.name)
+
+    sort_fasta(end_repaired_contigs_filepath_unsorted, end_repaired_contigs_filepath, sort_order=sort_order)
 
     # Clean up temp files
     os.remove(bam_filepath)
