@@ -9,12 +9,14 @@ import time
 import argparse
 import logging
 import shutil
+import shlex
 import subprocess
 from Bio import SeqIO
 import pandas as pd
 
 # GLOBAL VARIABLES
 SCRIPT_VERSION = '0.2.0'
+DEPENDENCY_NAMES = ['flye', 'minimap2', 'samtools', 'circlator', 'seqtk']
 
 # Set up the logger
 logging.basicConfig(format='[ %(asctime)s UTC ]: %(levelname)s: %(message)s')
@@ -45,7 +47,280 @@ def check_dependency(dependency_name, dependency_type='shell'):
 
     dependency_message = f'{dependency_type} : {dependency_name}'
 
+    # TODO: Consider reporting the path to the dependency for downstream analysis
     return dependency_message
+
+
+def parse_assembly_info_file(assembly_info_filepath, return_type='circular', linear_contig_list_filepath=None,
+                             circular_contig_list_filepath=None):
+    """
+    List circular and linear contigs from the Flye assembly info file
+
+    :param assembly_info_filepath: path to assembly_info.txt output by Flye
+    :param return_type: whether to return a list of 'circular' or 'linear' contigs
+    :param linear_contig_list_filepath: output filepath to list the names of linear contigs
+    :param circular_contig_list_filepath: output filepath to list the names of circular contigs
+    :return: list of contig names, either circular or linear depending on return_type
+    """
+
+    logger.debug('Loading assembly info file')
+    assembly_info = pd.read_csv(assembly_info_filepath, sep='\t')
+
+    circular_contigs = assembly_info[assembly_info['circ.'] == 'Y'][['#seq_name', 'length', 'circ.']]
+    linear_contigs = assembly_info[assembly_info['circ.'] == 'N'][['#seq_name', 'length', 'circ.']]
+
+    if linear_contig_list_filepath is not None:
+        logger.debug('Exporting linear contig list')
+        linear_contigs['#seq_name'].to_csv(linear_contig_list_filepath, index=False, header=None)
+
+    if circular_contig_list_filepath is not None:
+        logger.debug('Exporting circular contig list')
+        circular_contigs['#seq_name'].to_csv(circular_contig_list_filepath, index=False, header=None)
+
+    if return_type == 'circular':
+        output_list = list(circular_contigs['#seq_name'])
+    elif return_type == 'linear':
+        output_list = list(linear_contigs['#seq_name'])
+    else:
+        logger.error(f'return_type must be "circular" or "linear"; you provided "{return_type}"')
+        raise RuntimeError
+
+    return output_list
+
+
+def generate_bed_file(contig_seqrecord, bed_filepath, length_threshold=100000):
+    """
+    Generates a BED file for the desired contig for the desired bp threshold around that contig's ends
+
+    :param contig_seqrecord: SeqRecord for the contig of interest
+    :param bed_filepath: desired output filepath for the BED file
+    :param length_threshold: length (bp) around the contig end to target in the BED file
+    :return: writes BED file to the bed_filepath
+    """
+
+    contig_name = contig_seqrecord.name
+    contig_length = len(contig_seqrecord.seq)
+
+    logger.debug('Making BED file with end proximity threshold of ' + str(length_threshold))
+
+    if contig_length < length_threshold:
+        logger.warning(f'Contig length ({contig_length}) is less than the supplied length threshold '
+                       f'({length_threshold}), so the BED file will be for the whole contig.')
+
+        contigs = [contig_name]
+        starts = [0]
+        stops = [contig_length]
+
+    else:
+        half_threshold = int(length_threshold / 2)
+
+        contigs = [contig_name, contig_name]
+        starts = [0, contig_length - half_threshold]
+        stops = [half_threshold, contig_length]
+
+    end_regions = pd.DataFrame({'contig': contigs, 'start': starts, 'stop': stops})
+
+    end_regions.to_csv(bed_filepath, sep='\t', header=None, index=False)
+
+
+def map_long_reads(contig_filepath, long_read_filepath, output_bam_filepath, log_filepath, append_log: bool = True,
+                   threads=1, thread_mem=1):
+    """
+    Maps long reads (via minimap2) to contigs and sorts/indexes the resulting BAM file
+
+    :param contig_filepath: file containing contigs to map the reads to (FastA)
+    :param long_read_filepath: file containing long reads to map to the contigs (FastQ; compression is OK)
+    :param output_bam_filepath: path to the BAM file to be saved
+    :param log_filepath: path to the log file to be saved
+    :param append_log: whether to log should append onto an existing file (True) or overwrite an existing file (False);
+                       this setting is only relevant if the log file at log_filepath already exists
+    :param threads: number of threads to use for read mapping
+    :param thread_mem: memory in GB per thread (to use for samtools)
+    :return: output_bam_filepath and log_filepath are saved to disk; nothing is returned.
+    """
+
+    if append_log is True:
+        write_mode = 'a'
+    elif append_log is False:
+        write_mode = 'w'
+    else:
+        raise ValueError
+
+    with open(log_filepath, write_mode) as logfile_handle:
+        with open(output_bam_filepath, 'w') as bam_handle:
+
+            # TODO - add support for different flags like -ax for pacbio
+            minimap_args = ['minimap2', '-t', threads, '-ax', 'map-ont', contig_filepath, long_read_filepath]
+            logger.debug(f'{shlex.join(minimap_args)} | \\')
+            minimap = subprocess.run(minimap_args, check=True, stdout=subprocess.PIPE, stderr=logfile_handle)
+
+            samtools_view_args = ['samtools', 'view', '-b', '-@', threads]
+            logger.debug(f'{shlex.join(minimap_args)} | \\')
+            samtools_view = subprocess.run(samtools_view_args, check=True, input=minimap.stdout,
+                                           stdout=subprocess.PIPE, stderr=logfile_handle)
+
+            samtools_sort_args = ['samtools', 'sort', '-@', threads, '-m', f'{thread_mem}G']
+            logger.debug(shlex.join(samtools_sort_args))
+            samtools_sort = subprocess.run(samtools_sort_args, check=True, input=samtools_view.stdout,
+                                           stdout=bam_handle, stderr=logfile_handle)
+
+        samtools_index_args = ['samtools', 'index', '-@', threads, output_bam_filepath]
+        logger.debug(shlex.join(samtools_index_args))
+        samtools_index = subprocess.run(samtools_index_args, check=True, stderr=logfile_handle)
+
+    logger.debug('Read mapping finished')
+
+
+def get_selected_reads(bam_filepath, bed_filepath, output_ends_fastq_filepath, log_filepath,
+                       append_log: bool = True, threads=1):
+    """
+    Pulls mapped reads from a BAM file that were mapped to regions defined in a BED file and saves to FastQ
+
+    :param bam_filepath: BAM file containing mapped reads to a reference; needs to be sorted and indexed I think
+    :param bed_filepath: BED file containing the regions of contigs to recover reads for
+    :param output_ends_fastq_filepath: path to the FastQ file to be saved (.fastq.gz extension saves as Gzipped FastQ)
+    :param log_filepath: path to the log file to be saved
+    :param append_log: whether to log should append onto an existing file (True) or overwrite an existing file (False);
+                       this setting is only relevant if the log file at log_filepath already exists
+    :param threads: number of threads to use for read mapping
+    :return: output_ends_fastq_filepath is saved to disk; nothing is returned.
+    """
+
+    if append_log is True:
+        write_mode = 'a'
+    elif append_log is False:
+        write_mode = 'w'
+    else:
+        raise ValueError
+
+    with open(log_filepath, write_mode) as logfile_handle:
+
+        # TODO - consider adding option to split long reads in half if they go around a short circular contig, like in circlator
+        samtools_view_args = ['samtools', 'view', '-@', threads, '-L', bed_filepath, '-b', bam_filepath]
+        logger.debug(f'{shlex.join(samtools_view_args)} | \\')
+        samtools_view = subprocess.run(samtools_view_args, check=True, stdout=subprocess.PIPE, stderr=logfile_handle)
+
+        samtools_fastq_args = ['samtools', 'fastq', '-0', output_ends_fastq_filepath, '-n', '-@', threads]
+        logger.debug(shlex.join(samtools_fastq_args))
+        samtools_fastq = subprocess.run(samtools_fastq_args, check=True, input=samtools_view.stdout,
+                                        stderr=logfile_handle)
+
+        # TODO - delete this CLI code reference once I confirm the Python code works
+        # samtools view -@ "${threads}" -L "${regions}" -b "${bam_file}" 2>> "${verbose}" | \
+        #   samtools fastq -0 "${fastq}" -n -@ "${threads}" 2>> "${verbose}"
+
+
+def run_flye(fastq_filepath, flye_outdir, flye_read_mode, flye_read_error, log_filepath,
+             append_log: bool = True, threads=1):
+    """
+    Pulls mapped reads from a BAM file that were mapped to regions defined in a BED file and saves to FastQ
+
+    :param fastq_filepath: path to the input read FastQ file (gzipped is OK)
+    :param flye_outdir: directory to save Flye output to
+    :param flye_read_mode: type of raw reads, either 'nano-raw' or 'nano-hq'
+    :param flye_read_error: expected error rate of reads as a proportion; specify 0 to use default Flye settings
+    :param log_filepath: path to the log file to be saved
+    :param append_log: whether to log should append onto an existing file (True) or overwrite an existing file (False);
+                       this setting is only relevant if the log file at log_filepath already exists
+    :param threads: number of threads to use for read mapping
+    :return: flye output is saved to disk at flye_outdir; nothing is returned.
+    """
+
+    if append_log is True:
+        write_mode = 'a'
+    elif append_log is False:
+        write_mode = 'w'
+    else:
+        raise ValueError
+
+    flye_args = ['flye', f'--{flye_read_mode}', fastq_filepath, '-o', flye_outdir, '-t', threads]
+
+    if flye_read_error != 0:
+
+        flye_args.append('--read_error')
+        flye_args.append(flye_read_error)
+
+    with open(log_filepath, write_mode) as logfile_handle:
+        # TODO - add error handling if flye fails
+        logger.debug(shlex.join(flye_args))
+        subprocess.run(flye_args, check=True, stderr=logfile_handle)
+
+        # TODO - delete CLI code example once I confirm Python is working
+        # flye "--${flye_read_mode}" "${fastq}" -o "${flye_length_outdir}" --read_error "${flye_read_error}" \
+        #           -t "${threads}" >> "${verbose}" 2>&1
+
+
+def run_circlator_merge(original_contig_filepath, patch_contig_filepath, merge_outdir, circlator_min_id,
+                        circlator_min_length, circlator_ref_end, circlator_reassemble_end,
+                        log_filepath, append_log: bool = True):
+    """
+    Pulls mapped reads from a BAM file that were mapped to regions defined in a BED file and saves to FastQ
+
+    :param original_contig_filepath: path to the original (non-stitched) contig file (FastA)
+    :param patch_contig_filepath: path to the contig(s) that should span the circularization point in the original
+                                  contig (FastA)
+    :param merge_outdir: directory to save merge output to
+    :param circlator_min_id: Percent identity threshold for circlator merge
+    :param circlator_min_length: Minimum required overlap (bp) between original and merge contigs
+    :param circlator_ref_end: Minimum required overlap (bp) between original and merge contigs
+    :param circlator_reassemble_end: Minimum distance (bp) between end of merge contig and nucmer hit
+    :param log_filepath: path to the log file to be saved
+    :param append_log: whether to log should append onto an existing file (True) or overwrite an existing file (False);
+                       this setting is only relevant if the log file at log_filepath already exists
+    :return: circlator merge output is saved to disk at merge_outdir; nothing is returned.
+    """
+
+    if append_log is True:
+        write_mode = 'a'
+    elif append_log is False:
+        write_mode = 'w'
+    else:
+        raise ValueError
+
+    os.makedirs(merge_outdir, exist_ok=True)
+
+    with open(log_filepath, write_mode) as logfile_handle:
+
+        circlator_merge_args = ['circlator', 'merge', '--verbose', '--mid_id', circlator_min_id, '--min_length',
+                                circlator_min_length, '--ref_end', circlator_ref_end, '--reassemble_end',
+                                circlator_reassemble_end, original_contig_filepath, patch_contig_filepath,
+                                os.path.join(merge_outdir, 'merge')]
+        logger.debug(shlex.join(circlator_merge_args))
+        subprocess.run(circlator_merge_args, check=True, stderr=logfile_handle)
+
+        # TODO - delete CLI example once I confirm Python is working
+        # circlator merge --verbose --min_id "${circlator_min_id}" --min_length "${circlator_min_length}" \
+        #         --ref_end "${circlator_ref_end}" --reassemble_end "${circlator_reassemble_end}" \
+        #         "${assembly}" "${reassembly_dir}/assembly.fasta" "${merge_dir}/merge" >> "${verbose}" 2>&1
+
+
+def check_circlator_success(circlator_logfile):
+    """
+    Checks the circlator log file to see if contig stitching was successful
+
+    :param circlator_logfile: path to the circlator log file
+    :return: Boolean of whether the contigs were successfully stitched or not
+    """
+
+    logger.debug('Loading circlator logfile')
+    circlator_info = pd.read_csv(circlator_logfile, sep='\t')[['#Contig', 'stitched']]
+
+    # TODO - check I understood this properly when making edits (look at a real file as an example)
+    # If a row is '1', it means it was stitched properly, but if '0', it means it was not stitched.
+    # So if all rows are 1 (i.e., the sum of rows / # of rows is 1), it means everything was stiched properly.
+    if circlator_info['stitched'].sum() / circlator_info.shape[0] == 1:
+        logger.debug('Everything is stitched.')
+        result = True
+
+    elif circlator_info['stitched'].sum() >= 0:
+        logger.debug('Not everything is stitched.')
+        result = False
+
+    else:
+        logger.error('File processing error. # of non-stitched contigs is not >=0. Exiting...')
+        raise RuntimeError
+
+    return result
 
 
 def rotate_contig_to_midpoint(contig_fasta_filepath, output_filepath):
@@ -176,114 +451,14 @@ def sort_fasta(input_multi_fasta, output_fasta, sort_order, low_memory=True):
         raise RuntimeError
 
 
-def parse_assembly_info_file(assembly_info_filepath, return_type='circular', linear_contig_list_filepath=None,
-                             circular_contig_list_filepath=None):
-    """
-    List circular and linear contigs from the Flye assembly info file
-
-    :param assembly_info_filepath: path to assembly_info.txt output by Flye
-    :param return_type: whether to return a list of 'circular' or 'linear' contigs
-    :param linear_contig_list_filepath: output filepath to list the names of linear contigs
-    :param circular_contig_list_filepath: output filepath to list the names of circular contigs
-    :return: list of contig names, either circular or linear depending on return_type
-    """
-
-    logger.debug('Loading assembly info file')
-    assembly_info = pd.read_csv(assembly_info_filepath, sep='\t')
-
-    circular_contigs = assembly_info[assembly_info['circ.'] == 'Y'][['#seq_name', 'length', 'circ.']]
-    linear_contigs = assembly_info[assembly_info['circ.'] == 'N'][['#seq_name', 'length', 'circ.']]
-
-    if linear_contig_list_filepath is not None:
-        logger.debug('Exporting linear contig list')
-        linear_contigs['#seq_name'].to_csv(linear_contig_list_filepath, index=False, header=None)
-
-    if circular_contig_list_filepath is not None:
-        logger.debug('Exporting circular contig list')
-        circular_contigs['#seq_name'].to_csv(circular_contig_list_filepath, index=False, header=None)
-
-    if return_type == 'circular':
-        output_list = list(circular_contigs['#seq_name'])
-    elif return_type == 'linear':
-        output_list = list(linear_contigs['#seq_name'])
-    else:
-        logger.error(f'return_type must be "circular" or "linear"; you provided "{return_type}"')
-        raise RuntimeError
-
-    return output_list
-
-
-def generate_bed_file(contig_seqrecord, bed_filepath, length_threshold=100000):
-    """
-    Generates a BED file for the desired contig for the desired bp threshold around that contig's ends
-
-    :param contig_seqrecord: SeqRecord for the contig of interest
-    :param bed_filepath: desired output filepath for the BED file
-    :param length_threshold: length (bp) around the contig end to target in the BED file
-    :return: writes BED file to the bed_filepath
-    """
-
-    contig_name = contig_seqrecord.name
-    contig_length = len(contig_seqrecord.seq)
-
-    logger.debug('Making BED file with end proximity threshold of ' + str(length_threshold))
-
-    if contig_length < length_threshold:
-        logger.warning(f'Contig length ({contig_length}) is less than the supplied length threshold '
-                       f'({length_threshold}), so the BED file will be for the whole contig.')
-
-        contigs = [contig_name]
-        starts = [0]
-        stops = [contig_length]
-
-    else:
-        half_threshold = int(length_threshold / 2)
-
-        contigs = [contig_name, contig_name]
-        starts = [0, contig_length - half_threshold]
-        stops = [half_threshold, contig_length]
-
-    end_regions = pd.DataFrame({'contig': contigs, 'start': starts, 'stop': stops})
-
-    end_regions.to_csv(bed_filepath, sep='\t', header=None, index=False)
-
-
-def check_circlator_logfile(circlator_logfile):
-    """
-    Checks the circlator log file to see if contig stitching was successful
-
-    :param circlator_logfile: path to the circlator log file
-    :return: Boolean of whether the contigs were successfully stitched or not
-    """
-
-    logger.debug('Loading circlator logfile')
-    circlator_info = pd.read_csv(circlator_logfile, sep='\t')[['#Contig', 'stitched']]
-
-    # TODO - check I understood this properly when making edits (look at a real file as an example)
-    # If a row is '1', it means it was stitched properly, but if '0', it means it was not stitched.
-    # So if all rows are 1 (i.e., the sum of rows / # of rows is 1), it means everything was stiched properly.
-    if circlator_info['stitched'].sum() / circlator_info.shape[0] == 1:
-        logger.debug('Everything is stitched.')
-        result = True
-
-    elif circlator_info['stitched'].sum() >= 0:
-        logger.debug('Not everything is stitched.')
-        result = False
-
-    else:
-        logger.error('File processing error. # of non-stitched contigs is not >=0. Exiting...')
-        raise RuntimeError
-
-    return result
-
-
 def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, output_dir,
                    flye_read_mode, flye_read_error, circlator_min_id, circlator_min_length,
                    circlator_ref_end, circlator_reassemble_end, threads, thread_mem):
 
-    # Variable names
+    # Define core file names and directory strutures
+    # These will be the files and folders in the main output directory:
     end_repaired_contigs_filepath = os.path.join(output_dir, 'repaired.fasta')
-    end_repaired_contigs_filepath_unsorted = f'{end_repaired_contigs_filepath}.tmp'  # TODO - initialize this file
+    end_repaired_contigs_filepath_unsorted = f'{end_repaired_contigs_filepath}.tmp'
     verbose_logfile = os.path.join(output_dir, 'verbose.log')
     bam_filepath = os.path.join(output_dir, 'long_read.bam')
     circlator_logdir = os.path.join(output_dir, 'circlator_logs')
@@ -295,7 +470,6 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
         logger.warning(f'Output directory already exists: "{output_dir}"; files may be overwritten.')
 
     os.makedirs(output_dir, exist_ok=True)
-    os.makedirs(circlator_logdir, exist_ok=True)
 
     # Get lists of circular contigs in RAM while saving linear contig list to file
     circular_contig_names = parse_assembly_info_file(assembly_info_filepath, return_type='circular',
@@ -310,24 +484,19 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
         logger.info('Pipeline finished.')
         sys.exit(0)
 
-    logger.info('Mapping reads to all contigs')
-
     # Initialize the repaired contigs FastA file (so it will overwrite an old file rather than just append later)
     with open(end_repaired_contigs_filepath_unsorted, 'w') as output_handle:
         output_handle.write('')
 
-    with open(verbose_logfile, 'w') as logfile_handle:
-        with open(bam_filepath, 'w') as bam_handle:
+    # Make other base directories
+    os.makedirs(circlator_logdir, exist_ok=True)
+    os.makedirs(reassembly_outdir_base, exists_ok=True)
 
-            # TODO - add support for different flags like -ax for pacbio
-            minimap = subprocess.run(['minimap2','-t',threads,'-ax','map-ont',assembly_fasta_filepath,long_read_filepath],
-                                     check=True, stdout=subprocess.PIPE, stderr=logfile_handle)
-            samtools_view = subprocess.run(['samtools','view','-b','-@',threads], check=True, input=minimap.stdout,
-                                           stdout=subprocess.PIPE, stderr=logfile_handle)
-            subprocess.run(['samtools','sort','-@',threads,'-m',f'{thread_mem}G'], check=True,
-                           input=samtools_view.stdout, stdout=bam_handle, stderr=logfile_handle)
-
-        subprocess.run(['samtools','index','-@',threads,bam_filepath], check=True, stderr=logfile_handle)
+    # Start the main workflow from here:
+    logger.info('Mapping reads to all contigs')
+    map_long_reads(contig_filepath=assembly_fasta_filepath, long_read_filepath=long_read_filepath,
+                   output_bam_filepath=bam_filepath, log_filepath=verbose_logfile, append_log=False,
+                   threads=threads, thread_mem=thread_mem)
 
     failed_contigs = 0
 
@@ -335,22 +504,29 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
 
         logger.info(f'End repair: {contig_name}')
 
-        # Output dir setup
+        # Define temp files and folders that will be generated for this contig during stitching
         reassembly_outdir = os.path.join(reassembly_outdir_base, contig_name)
-        contig_fasta_filepath = os.path.join(reassembly_outdir, f'{contig_name}.fasta')
+        log_dir_base = os.path.join(reassembly_outdir, 'logs')
+        original_contig_fasta_filepath = os.path.join(reassembly_outdir, f'{contig_name}.fasta')
         reassembly_outfile = os.path.join(reassembly_outdir, f'{contig_name}_stitched.fasta')
-        os.makedirs(reassembly_outdir, exist_ok=True)
 
-        # Get contig sequence as a SeqRecord
+        os.makedirs(reassembly_outdir, exist_ok=True)
+        os.makedirs(log_dir_base, exist_ok=True)
+
+        # TODO - separate this as a function and make generic for subsetting sequences; can then be used in place of
+        #  seqtk subseq later in the pipeline perhaps
+        # Get the original (pre-stitched) contig sequence as a SeqRecord
         with open(assembly_fasta_filepath) as fasta_handle:
             for record in SeqIO.parse(fasta_handle):
                 if record.name == contig_name:
                     contig_record = record
 
-        with open(contig_fasta_filepath) as fasta_handle:
+        with open(original_contig_fasta_filepath) as fasta_handle:
             SeqIO.write(contig_record, 'fasta')
 
-        # TODO - allow user to customize these lengths
+        # TODO - allow user to customize the desired length_cutoffs
+        # Keep trying to stitch the contig, iterating over different sizes of the region around the contig ends to
+        #   target, until stitching works
         length_cutoffs = [100000, 90000, 80000, 70000, 60000, 50000, 20000, 10000, 5000, 2000]
         assembly_attempts = 0
         linked_ends = False
@@ -362,8 +538,8 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
 
                 logger.warning(f'End repair: {contig_name}: FAILED to linked contig ends')
                 failed_contigs = failed_contigs + 1
-                os.makedirs(os.path.join(output_dir, 'troubleshooting'))
-                shutil.move(log_dir, os.path.join(output_dir, 'troubleshooting', contig_name))
+                os.makedirs(os.path.join(output_dir, 'troubleshooting'), exist_ok=True)
+                shutil.move(log_dir_base, os.path.join(output_dir, 'troubleshooting', contig_name))
                 shutil.rmtree(reassembly_outdir)
 
                 break
@@ -376,73 +552,43 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
                              f'contig is shorter than this ({len(contig_record.seq)} bp)')
                 continue
 
-            logger.debug(f'Starting reassembly with a length cutoff of {length_cutoff}')
+            logger.debug(f'Starting reassembly with a length cutoff of {length_cutoff} bp')
 
-            # Define some folder and filenames for this attempt
+            # Define folders and filenames that will be used for this length cutoff iteration
             length_outdir = os.path.join(reassembly_outdir, f'L{length_cutoff}')
             bed_filepath = os.path.join(length_outdir, 'ends.bed')
             ends_fastq_filepath = os.path.join(length_outdir, 'ends.fastq.gz')
             flye_length_outdir = os.path.join(length_outdir, 'assembly')
             merge_dir = os.path.join(length_outdir, 'merge')
-            log_dir = os.path.join(reassembly_outdir, 'logs', f'L{length_cutoff}')
+            log_dir = os.path.join(log_dir_base, f'L{length_cutoff}')
+
             os.makedirs(length_outdir, exist_ok=True)
             os.makedirs(log_dir, exist_ok=True)
 
-            # Make a BED file
+            # Get reads for the selected region around the contig ends
             generate_bed_file(contig_record, bed_filepath, length_threshold=length_cutoff)
+            get_selected_reads(bam_filepath=bam_filepath, bed_filepath=bed_filepath,
+                               output_ends_fastq_filepath=ends_fastq_filepath, log_filepath=verbose_logfile,
+                               append_log=True, threads=threads)
 
-            with open(verbose_logfile, 'w') as logfile_handle:
-
-                # TODO - consider adding option to split long reads in half if they go around a short circular contig, like in circlator
-                samtools_view = subprocess.run(['samtools', 'view', '-@', threads, '-L', bed_filepath, '-b',
-                                                bam_filepath],
-                                               check=True, stdout=subprocess.PIPE, stderr=logfile_handle)
-                subprocess.run(['samtools', 'fastq', '-0', ends_fastq_filepath, '-n', '-@', threads], check=True,
-                               input=samtools_view.stdout, stderr=logfile_handle)
-
-                # samtools view -@ "${threads}" -L "${regions}" -b "${bam_file}" 2>> "${verbose}" | \
-                #   samtools fastq -0 "${fastq}" -n -@ "${threads}" 2>> "${verbose}"
-
-            if flye_read_error == 0:
-
-                flye_args = ['flye', f'--{flye_read_mode}', ends_fastq_filepath, '-o', flye_length_outdir, '-t',
-                             threads]
-
-                # flye "--${flye_read_mode}" "${fastq}" -o "${flye_length_outdir}" \
-                #           -t "${threads}" >> "${verbose}" 2>&1
-
-            else:
-
-                flye_args = ['flye', f'--{flye_read_mode}', ends_fastq_filepath, '-o', flye_length_outdir,
-                             '--read_error', flye_read_error, '-t', threads]
-
-                # flye "--${flye_read_mode}" "${fastq}" -o "${flye_length_outdir}" --read_error "${flye_read_error}" \
-                #           -t "${threads}" >> "${verbose}" 2>&1
-
-            with open(verbose_logfile, 'w') as logfile_handle:
-                # TODO - add error handling if flye fails
-                subprocess.run(flye_args, check=True, stderr=logfile_handle)
-
+            # Assemble the reads to get (hopefully) a joined contig end
+            run_flye(fastq_filepath=ends_fastq_filepath, flye_outdir=flye_length_outdir,
+                     flye_read_mode=flye_read_mode, flye_read_error=flye_read_error, log_filepath=verbose_logfile,
+                     append_log=True, threads=threads)
             shutil.copy(os.path.join(flye_length_outdir, 'assembly_info.txt'), log_dir)
 
-            os.makedirs(merge_dir, exist_ok=True)
-
-            with open(verbose_logfile, 'w') as logfile_handle:
-                # TODO - double check the vars here are correct
-                subprocess.run(['circlator', 'merge', '--verbose', '--mid_id', circlator_min_id, '--min_length',
-                                circlator_min_length, '--ref_end', circlator_ref_end, '--reassemble_end',
-                                circlator_reassemble_end, contig_fasta_filepath,
-                                os.path.join(flye_length_outdir, 'assembly.fasta'), os.path.join(merge_dir, 'merge')],
-                               check=True, stderr=logfile_handle)
-
-                # circlator merge --verbose --min_id "${circlator_min_id}" --min_length "${circlator_min_length}" \
-                #         --ref_end "${circlator_ref_end}" --reassemble_end "${circlator_reassemble_end}" \
-                #         "${assembly}" "${reassembly_dir}/assembly.fasta" "${merge_dir}/merge" >> "${verbose}" 2>&1
+            # Stitch the joined contig end onto the original assembly
+            run_circlator_merge(original_contig_filepath=original_contig_fasta_filepath,
+                                patch_contig_filepath=os.path.join(flye_length_outdir, 'assembly.fasta'),
+                                merge_outdir=merge_dir, circlator_min_id=circlator_min_id,
+                                circlator_min_length=circlator_min_length, circlator_ref_end=circlator_ref_end,
+                                circlator_reassemble_end=circlator_reassemble_end, log_filepath=verbose_logfile,
+                                append_log=True)
 
             shutil.copy(os.path.join(merge_dir, 'merge.circularise.log'), log_dir)
             shutil.copy(os.path.join(merge_dir, 'merge.circularise_details.log'), log_dir)
 
-            if check_circlator_logfile(os.path.join(merge_dir, 'merge.circularise.log')) is True:
+            if check_circlator_success(os.path.join(merge_dir, 'merge.circularise.log')) is True:
 
                 logger.info('End repair: successfully linked contig ends')
 
@@ -522,6 +668,10 @@ def main(args):
         logger.setLevel(logging.DEBUG)
     else:
         logger.setLevel(logging.INFO)
+
+    # Check dependencies
+    for dependency_name in DEPENDENCY_NAMES:
+        check_dependency(dependency_name)
 
     # Startup messages
     logger.info('Running ' + os.path.basename(sys.argv[0]))
