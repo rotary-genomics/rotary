@@ -24,31 +24,22 @@ logging.Formatter.converter = time.gmtime
 logger = logging.getLogger(__name__)
 
 
-def check_dependency(dependency_name, dependency_type='shell'):
+def check_dependency(dependency_name):
     """
-    Checks if a required dependency is present
+    Checks if a required shell dependency is present
 
     :param dependency_name: name of the dependency
-    :param dependency_type: specify the dependency type - currently only 'shell' command is available
-    :return: string of the dependency type and name
+    :return: path to the dependency
     """
 
-    if dependency_type == 'shell':
+    dependency_path = shutil.which(dependency_name)
 
-        if shutil.which(dependency_name) is None:
+    if dependency_path is None:
 
-            logger.error(f'Dependency not found: {dependency_name}')
-            raise RuntimeError
-
-    else:
-
-        logger.error(f'Available dependency types are "shell" and "python" - you provided "{dependency_type}"')
+        logger.error(f'Dependency not found: {dependency_name}')
         raise RuntimeError
 
-    dependency_message = f'{dependency_type} : {dependency_name}'
-
-    # TODO: Consider reporting the path to the dependency for downstream analysis
-    return dependency_message
+    return dependency_path
 
 
 def parse_assembly_info_file(assembly_info_filepath, return_type='circular'):
@@ -141,8 +132,8 @@ def generate_bed_file(contig_seqrecord, bed_filepath, length_threshold=100000):
     end_regions.to_csv(bed_filepath, sep='\t', header=None, index=False)
 
 
-def map_long_reads(contig_filepath, long_read_filepath, output_bam_filepath, log_filepath, append_log: bool = True,
-                   threads=1, thread_mem=1):
+def map_long_reads(contig_filepath, long_read_filepath, output_bam_filepath, log_filepath, dependency_dict,
+                   append_log: bool = True, threads=1, thread_mem=1):
     """
     Maps long reads (via minimap2) to contigs and sorts/indexes the resulting BAM file
 
@@ -150,6 +141,7 @@ def map_long_reads(contig_filepath, long_read_filepath, output_bam_filepath, log
     :param long_read_filepath: file containing long reads to map to the contigs (FastQ; compression is OK)
     :param output_bam_filepath: path to the BAM file to be saved
     :param log_filepath: path to the log file to be saved
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
     :param append_log: whether to log should append onto an existing file (True) or overwrite an existing file (False);
                        this setting is only relevant if the log file at log_filepath already exists
     :param threads: number of threads to use for read mapping
@@ -168,28 +160,29 @@ def map_long_reads(contig_filepath, long_read_filepath, output_bam_filepath, log
         with open(output_bam_filepath, 'w') as bam_handle:
 
             # TODO - add support for different flags like -ax for pacbio
-            minimap_args = ['minimap2', '-t', threads, '-ax', 'map-ont', contig_filepath, long_read_filepath]
+            minimap_args = [dependency_dict['minimap2'], '-t', threads, '-ax', 'map-ont', contig_filepath,
+                            long_read_filepath]
             logger.debug(f'{shlex.join(minimap_args)} | \\')
             minimap = subprocess.run(minimap_args, check=True, stdout=subprocess.PIPE, stderr=logfile_handle)
 
-            samtools_view_args = ['samtools', 'view', '-b', '-@', threads]
+            samtools_view_args = [dependency_dict['samtools'], 'view', '-b', '-@', threads]
             logger.debug(f'{shlex.join(minimap_args)} | \\')
             samtools_view = subprocess.run(samtools_view_args, check=True, input=minimap.stdout,
                                            stdout=subprocess.PIPE, stderr=logfile_handle)
 
-            samtools_sort_args = ['samtools', 'sort', '-@', threads, '-m', f'{thread_mem}G']
+            samtools_sort_args = [dependency_dict['samtools'], 'sort', '-@', threads, '-m', f'{thread_mem}G']
             logger.debug(shlex.join(samtools_sort_args))
             samtools_sort = subprocess.run(samtools_sort_args, check=True, input=samtools_view.stdout,
                                            stdout=bam_handle, stderr=logfile_handle)
 
-        samtools_index_args = ['samtools', 'index', '-@', threads, output_bam_filepath]
+        samtools_index_args = [dependency_dict['samtools'], 'index', '-@', threads, output_bam_filepath]
         logger.debug(shlex.join(samtools_index_args))
         samtools_index = subprocess.run(samtools_index_args, check=True, stderr=logfile_handle)
 
     logger.debug('Read mapping finished')
 
 
-def get_selected_reads(bam_filepath, bed_filepath, output_ends_fastq_filepath, log_filepath,
+def get_selected_reads(bam_filepath, bed_filepath, output_ends_fastq_filepath, log_filepath, dependency_dict,
                        append_log: bool = True, threads=1):
     """
     Pulls mapped reads from a BAM file that were mapped to regions defined in a BED file and saves to FastQ
@@ -198,6 +191,7 @@ def get_selected_reads(bam_filepath, bed_filepath, output_ends_fastq_filepath, l
     :param bed_filepath: BED file containing the regions of contigs to recover reads for
     :param output_ends_fastq_filepath: path to the FastQ file to be saved (.fastq.gz extension saves as Gzipped FastQ)
     :param log_filepath: path to the log file to be saved
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
     :param append_log: whether to log should append onto an existing file (True) or overwrite an existing file (False);
                        this setting is only relevant if the log file at log_filepath already exists
     :param threads: number of threads to use for read mapping
@@ -214,11 +208,13 @@ def get_selected_reads(bam_filepath, bed_filepath, output_ends_fastq_filepath, l
     with open(log_filepath, write_mode) as logfile_handle:
 
         # TODO - consider adding option to split long reads in half if they go around a short circular contig, like in circlator
-        samtools_view_args = ['samtools', 'view', '-@', threads, '-L', bed_filepath, '-b', bam_filepath]
+        samtools_view_args = [dependency_dict['samtools'], 'view', '-@', threads, '-L', bed_filepath, '-b',
+                              bam_filepath]
         logger.debug(f'{shlex.join(samtools_view_args)} | \\')
         samtools_view = subprocess.run(samtools_view_args, check=True, stdout=subprocess.PIPE, stderr=logfile_handle)
 
-        samtools_fastq_args = ['samtools', 'fastq', '-0', output_ends_fastq_filepath, '-n', '-@', threads]
+        samtools_fastq_args = [dependency_dict['samtools'], 'fastq', '-0', output_ends_fastq_filepath, '-n', '-@',
+                               threads]
         logger.debug(shlex.join(samtools_fastq_args))
         samtools_fastq = subprocess.run(samtools_fastq_args, check=True, input=samtools_view.stdout,
                                         stderr=logfile_handle)
@@ -228,7 +224,7 @@ def get_selected_reads(bam_filepath, bed_filepath, output_ends_fastq_filepath, l
         #   samtools fastq -0 "${fastq}" -n -@ "${threads}" 2>> "${verbose}"
 
 
-def run_flye(fastq_filepath, flye_outdir, flye_read_mode, flye_read_error, log_filepath,
+def run_flye(fastq_filepath, flye_outdir, flye_read_mode, flye_read_error, log_filepath, dependency_dict,
              append_log: bool = True, threads=1):
     """
     Pulls mapped reads from a BAM file that were mapped to regions defined in a BED file and saves to FastQ
@@ -238,6 +234,7 @@ def run_flye(fastq_filepath, flye_outdir, flye_read_mode, flye_read_error, log_f
     :param flye_read_mode: type of raw reads, either 'nano-raw' or 'nano-hq'
     :param flye_read_error: expected error rate of reads as a proportion; specify 0 to use default Flye settings
     :param log_filepath: path to the log file to be saved
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
     :param append_log: whether to log should append onto an existing file (True) or overwrite an existing file (False);
                        this setting is only relevant if the log file at log_filepath already exists
     :param threads: number of threads to use for read mapping
@@ -251,7 +248,7 @@ def run_flye(fastq_filepath, flye_outdir, flye_read_mode, flye_read_error, log_f
     else:
         raise ValueError
 
-    flye_args = ['flye', f'--{flye_read_mode}', fastq_filepath, '-o', flye_outdir, '-t', threads]
+    flye_args = [dependency_dict['flye'], f'--{flye_read_mode}', fastq_filepath, '-o', flye_outdir, '-t', threads]
 
     if flye_read_error != 0:
 
@@ -270,7 +267,7 @@ def run_flye(fastq_filepath, flye_outdir, flye_read_mode, flye_read_error, log_f
 
 def run_circlator_merge(original_contig_filepath, patch_contig_filepath, merge_outdir, circlator_min_id,
                         circlator_min_length, circlator_ref_end, circlator_reassemble_end,
-                        log_filepath, append_log: bool = True):
+                        log_filepath, dependency_dict, append_log: bool = True):
     """
     Pulls mapped reads from a BAM file that were mapped to regions defined in a BED file and saves to FastQ
 
@@ -283,6 +280,7 @@ def run_circlator_merge(original_contig_filepath, patch_contig_filepath, merge_o
     :param circlator_ref_end: Minimum required overlap (bp) between original and merge contigs
     :param circlator_reassemble_end: Minimum distance (bp) between end of merge contig and nucmer hit
     :param log_filepath: path to the log file to be saved
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
     :param append_log: whether to log should append onto an existing file (True) or overwrite an existing file (False);
                        this setting is only relevant if the log file at log_filepath already exists
     :return: circlator merge output is saved to disk at merge_outdir; nothing is returned.
@@ -299,7 +297,8 @@ def run_circlator_merge(original_contig_filepath, patch_contig_filepath, merge_o
 
     with open(log_filepath, write_mode) as logfile_handle:
 
-        circlator_merge_args = ['circlator', 'merge', '--verbose', '--mid_id', circlator_min_id, '--min_length',
+        circlator_merge_args = [dependency_dict['circlator'], 'merge', '--verbose', '--mid_id', circlator_min_id,
+                                '--min_length',
                                 circlator_min_length, '--ref_end', circlator_ref_end, '--reassemble_end',
                                 circlator_reassemble_end, original_contig_filepath, patch_contig_filepath,
                                 os.path.join(merge_outdir, 'merge')]
@@ -384,7 +383,7 @@ def rotate_contig_to_midpoint(contig_fasta_filepath, output_filepath):
 
 def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, output_dir,
                    flye_read_mode, flye_read_error, length_cutoffs, circlator_min_id, circlator_min_length,
-                   circlator_ref_end, circlator_reassemble_end, threads, thread_mem):
+                   circlator_ref_end, circlator_reassemble_end, threads, thread_mem, dependency_dict):
 
     # Define core file names and directory structures
     # These will be the files and folders in the main output directory:
@@ -427,8 +426,8 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
     # Start the main workflow from here:
     logger.info('Mapping reads to all contigs')
     map_long_reads(contig_filepath=assembly_fasta_filepath, long_read_filepath=long_read_filepath,
-                   output_bam_filepath=bam_filepath, log_filepath=verbose_logfile, append_log=False,
-                   threads=threads, thread_mem=thread_mem)
+                   output_bam_filepath=bam_filepath, log_filepath=verbose_logfile, dependency_dict=dependency_dict,
+                   append_log=False, threads=threads, thread_mem=thread_mem)
 
     failed_contigs = 0
     for contig_name in circular_contig_names:
@@ -500,12 +499,12 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
             generate_bed_file(contig_record, bed_filepath, length_threshold=length_cutoff)
             get_selected_reads(bam_filepath=bam_filepath, bed_filepath=bed_filepath,
                                output_ends_fastq_filepath=ends_fastq_filepath, log_filepath=verbose_logfile,
-                               append_log=True, threads=threads)
+                               dependency_dict=dependency_dict, append_log=True, threads=threads)
 
             # Assemble the reads to get (hopefully) a joined contig end
             run_flye(fastq_filepath=ends_fastq_filepath, flye_outdir=flye_length_outdir,
                      flye_read_mode=flye_read_mode, flye_read_error=flye_read_error, log_filepath=verbose_logfile,
-                     append_log=True, threads=threads)
+                     dependency_dict=dependency_dict, append_log=True, threads=threads)
             shutil.copy(os.path.join(flye_length_outdir, 'assembly_info.txt'), log_dir)
 
             # Stitch the joined contig end onto the original assembly
@@ -514,7 +513,7 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
                                 merge_outdir=merge_dir, circlator_min_id=circlator_min_id,
                                 circlator_min_length=circlator_min_length, circlator_ref_end=circlator_ref_end,
                                 circlator_reassemble_end=circlator_reassemble_end, log_filepath=verbose_logfile,
-                                append_log=True)
+                                dependency_dict=dependency_dict, append_log=True)
 
             shutil.copy(os.path.join(merge_dir, 'merge.circularise.log'), log_dir)
             shutil.copy(os.path.join(merge_dir, 'merge.circularise_details.log'), log_dir)
@@ -589,8 +588,11 @@ def main(args):
         logger.setLevel(logging.INFO)
 
     # Check dependencies
+    dependency_paths = []
     for dependency_name in DEPENDENCY_NAMES:
-        check_dependency(dependency_name)
+        dependency_paths.append(check_dependency(dependency_name))
+
+    dependency_dict = dict(zip(DEPENDENCY_NAMES, dependency_paths))
 
     # Startup messages
     logger.info('Running ' + os.path.basename(sys.argv[0]))
@@ -610,11 +612,14 @@ def main(args):
     logger.info(f'Threads: {threads}')
     logger.info(f'Memory per thread (GB): {thread_mem}')
     logger.info(f'Verbose logging: {verbose}')
+    logger.info('### DEPENDENCIES ###')
+    for key, value in dependency_dict.items():
+        logger.info(f'{key}: {value}')
     logger.info('################')
 
     run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, output_dir,
                    flye_read_mode, flye_read_error, length_cutoffs, circlator_min_id, circlator_min_length,
-                   circlator_ref_end, circlator_reassemble_end, threads, thread_mem)
+                   circlator_ref_end, circlator_reassemble_end, threads, thread_mem, dependency_dict)
 
     logger.info(os.path.basename(sys.argv[0]) + ': done.')
 
