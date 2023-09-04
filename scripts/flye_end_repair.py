@@ -51,15 +51,12 @@ def check_dependency(dependency_name, dependency_type='shell'):
     return dependency_message
 
 
-def parse_assembly_info_file(assembly_info_filepath, return_type='circular', linear_contig_list_filepath=None,
-                             circular_contig_list_filepath=None):
+def parse_assembly_info_file(assembly_info_filepath, return_type='circular'):
     """
     List circular and linear contigs from the Flye assembly info file
 
     :param assembly_info_filepath: path to assembly_info.txt output by Flye
     :param return_type: whether to return a list of 'circular' or 'linear' contigs
-    :param linear_contig_list_filepath: output filepath to list the names of linear contigs
-    :param circular_contig_list_filepath: output filepath to list the names of circular contigs
     :return: list of contig names, either circular or linear depending on return_type
     """
 
@@ -68,14 +65,6 @@ def parse_assembly_info_file(assembly_info_filepath, return_type='circular', lin
 
     circular_contigs = assembly_info[assembly_info['circ.'] == 'Y'][['#seq_name', 'length', 'circ.']]
     linear_contigs = assembly_info[assembly_info['circ.'] == 'N'][['#seq_name', 'length', 'circ.']]
-
-    if linear_contig_list_filepath is not None:
-        logger.debug('Exporting linear contig list')
-        linear_contigs['#seq_name'].to_csv(linear_contig_list_filepath, index=False, header=None)
-
-    if circular_contig_list_filepath is not None:
-        logger.debug('Exporting circular contig list')
-        circular_contigs['#seq_name'].to_csv(circular_contig_list_filepath, index=False, header=None)
 
     if return_type == 'circular':
         output_list = list(circular_contigs['#seq_name'])
@@ -86,6 +75,35 @@ def parse_assembly_info_file(assembly_info_filepath, return_type='circular', lin
         raise RuntimeError
 
     return output_list
+
+
+def subset_sequences(input_fasta_filepath, subset_sequence_ids):
+    """
+    Given an input FastA file, subsets the file to the provided sequence IDs. The output can be saved as a FastA file
+    or saved in RAM as a SeqRecord. The order of records can optionally be sorted to be in the same order as the input
+    IDs.
+
+    :param input_fasta_filepath: Path(s) to the input FastA file(s); provide a list if multiple FastAs are desired
+    :param subset_sequence_ids: list of names of the sequences to keep. If any names are in the list that aren't in the
+                                input file, the function will not return them. In the case of conflicting IDs between
+                                the multiple input FastA's, the script will take the first record with the correct name
+                                and WILL NOT throw a warning.
+    :return: generator of a SeqRecord object for the subset sequences
+    """
+
+    # Get the original (pre-stitched) contig sequence as a SeqRecord
+    with open(input_fasta_filepath) as fasta_handle:
+
+        for record in SeqIO.parse(fasta_handle, 'fasta'):
+
+            if len(subset_sequence_ids) == 0:
+                break
+
+            if record.name in subset_sequence_ids:
+
+                subset_sequence_ids.remove(record.name)
+
+                yield record
 
 
 def generate_bed_file(contig_seqrecord, bed_filepath, length_threshold=100000):
@@ -364,106 +382,18 @@ def rotate_contig_to_midpoint(contig_fasta_filepath, output_filepath):
         SeqIO.write(contig_record, output_handle, 'fasta')
 
 
-def sort_fasta(input_multi_fasta, output_fasta, sort_order, low_memory=True):
-    """
-    Sorts entries in a multi-FastA file in the specified sequence order
-
-    :param input_multi_fasta: filepath to a FastA file (1 or more entries)
-    :param output_fasta: path to write the output sorted FastA file
-    :param sort_order: list of contig names for sorting.
-                       If sort_order is missing entries in input_multi_fasta, then those entries are not returned.
-                       If sort_order has entries not in input_multi_fasta, then those entries are not returned.
-    :param low_memory: whether to run in low memory mode (uses more disk).
-                       In high memory mode, will load the whole FastA file into RAM
-    :return: writes the output FastA file to disk
-    """
-
-    if low_memory is False:
-
-        contig_names = []
-        contig_records = []
-
-        with open(input_multi_fasta) as fasta_handle:
-            for record in SeqIO.parse(fasta_handle, 'fasta'):
-
-                contig_names.append(record.name)
-                contig_records.append(record)
-
-        # Load the names and positions of the sequences as a DataFrame
-        sequence_positions = pd.DataFrame({'contig_name': contig_names}).reset_index()
-
-        # Sort/subset the DataFrame based on the provided sort order list
-        sequence_positions_sorted = sequence_positions\
-            .set_index('contig_name')\
-            .reindex(sort_order)\
-            .reset_index()
-        sequence_positions_sorted = sequence_positions_sorted[
-            sequence_positions_sorted['index'].isna() == False]
-
-        # Write output in the desired order
-        with open(output_fasta, 'w') as output_handle:
-            for record_index in sequence_positions_sorted['index'].apply(int):
-
-                logger.debug(f'Writing record index {record_index}')
-                record = contig_records[record_index]
-
-                SeqIO.write(record, output_handle, 'fasta')
-
-    elif low_memory is True:
-
-        # First read only the contig names (not sequences)
-        contig_names = []
-
-        with open(input_multi_fasta) as fasta_handle:
-            for record in SeqIO.parse(fasta_handle, 'fasta'):
-
-                contig_names.append(record.name)
-
-        # Load the names and positions of the sequences as a DataFrame
-        sequence_positions = pd.DataFrame({'contig_name': contig_names}).reset_index()
-
-        # Sort/subset the DataFrame based on the provided sort order list
-        sequence_positions_sorted = sequence_positions \
-            .set_index('contig_name') \
-            .reindex(sort_order) \
-            .reset_index()
-        sequence_positions_sorted = sequence_positions_sorted[
-            sequence_positions_sorted['index'].isna() == False]
-
-        # Write output in the desired order, reading each sequence on demand
-        with open(output_fasta, 'w') as output_handle:
-            for record_index in sequence_positions_sorted['index'].apply(int):
-
-                with open(input_multi_fasta) as fasta_handle:
-
-                    record_count = 0
-                    for record in SeqIO.parse(fasta_handle, 'fasta'):
-
-                        if record_count == record_index:
-                            logger.debug(f'Writing record index {record_index}')
-                            SeqIO.write(record, output_handle, 'fasta')
-
-                        record_count = record_count + 1
-
-    else:
-
-        logger.error(f'low_memory mode should be True or False; you provided {low_memory}')
-        raise RuntimeError
-
-
 def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, output_dir,
-                   flye_read_mode, flye_read_error, circlator_min_id, circlator_min_length,
+                   flye_read_mode, flye_read_error, length_cutoffs, circlator_min_id, circlator_min_length,
                    circlator_ref_end, circlator_reassemble_end, threads, thread_mem):
 
-    # Define core file names and directory strutures
+    # Define core file names and directory structures
     # These will be the files and folders in the main output directory:
     end_repaired_contigs_filepath = os.path.join(output_dir, 'repaired.fasta')
-    end_repaired_contigs_filepath_unsorted = f'{end_repaired_contigs_filepath}.tmp'
     verbose_logfile = os.path.join(output_dir, 'verbose.log')
     bam_filepath = os.path.join(output_dir, 'long_read.bam')
     circlator_logdir = os.path.join(output_dir, 'circlator_logs')
-    linear_contig_list_filepath = os.path.join(output_dir, 'linear.list')
     reassembly_outdir_base = os.path.join(output_dir, 'contigs')
+    circular_contig_tmp_fasta = os.path.join(reassembly_outdir_base, 'circular_input.fasta')
 
     # Check output dir
     if os.path.isdir(output_dir):
@@ -471,24 +401,26 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # Get lists of circular contigs in RAM while saving linear contig list to file
-    circular_contig_names = parse_assembly_info_file(assembly_info_filepath, return_type='circular',
-                                                     linear_contig_list_filepath=linear_contig_list_filepath)
+    # Get lists of circular contigs
+    circular_contig_names = parse_assembly_info_file(assembly_info_filepath, return_type='circular')
 
     # No need to run the pipeline if there are no circular contigs
     if len(circular_contig_names) == 0:
 
         logger.info('No circular contigs. Will copy the input file and finish early.')
         shutil.copyfile(assembly_fasta_filepath, end_repaired_contigs_filepath)
-        os.remove(linear_contig_list_filepath)
         logger.info('Pipeline finished.')
         sys.exit(0)
 
+    # Subset circular contigs from the full file and save to disk
+    with open(circular_contig_tmp_fasta, 'w') as output_handle:
+        for record in subset_sequences(assembly_fasta_filepath, circular_contig_names):
+            SeqIO.write(record, output_handle, 'fasta')
+
     # Initialize the repaired contigs FastA file (so it will overwrite an old file rather than just append later)
-    with open(end_repaired_contigs_filepath_unsorted, 'w') as output_handle:
+    with open(end_repaired_contigs_filepath, 'w') as output_handle:
         output_handle.write('')
 
-    # Make other base directories
     os.makedirs(circlator_logdir, exist_ok=True)
     os.makedirs(reassembly_outdir_base, exists_ok=True)
 
@@ -499,7 +431,6 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
                    threads=threads, thread_mem=thread_mem)
 
     failed_contigs = 0
-
     for contig_name in circular_contig_names:
 
         logger.info(f'End repair: {contig_name}')
@@ -513,21 +444,21 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
         os.makedirs(reassembly_outdir, exist_ok=True)
         os.makedirs(log_dir_base, exist_ok=True)
 
-        # TODO - separate this as a function and make generic for subsetting sequences; can then be used in place of
-        #  seqtk subseq later in the pipeline perhaps
-        # Get the original (pre-stitched) contig sequence as a SeqRecord
-        with open(assembly_fasta_filepath) as fasta_handle:
-            for record in SeqIO.parse(fasta_handle):
-                if record.name == contig_name:
-                    contig_record = record
+        # Get the original (pre-stitched) contig sequence as a SeqRecord and save as FastA
+        contig_records = []
+        with open(original_contig_fasta_filepath, 'w') as output_handle:
+            for record in subset_sequences(circular_contig_tmp_fasta, [contig_name]):
+                contig_records.append(record)
+                SeqIO.write(record, output_handle, 'fasta')
 
-        with open(original_contig_fasta_filepath) as fasta_handle:
-            SeqIO.write(contig_record, 'fasta')
+        if len(contig_records) > 1:
+            logger.error(f'Got more than one contig for {contig_name}')
+            raise RuntimeError
 
-        # TODO - allow user to customize the desired length_cutoffs
+        contig_record = contig_records[0]
+
         # Keep trying to stitch the contig, iterating over different sizes of the region around the contig ends to
         #   target, until stitching works
-        length_cutoffs = [100000, 90000, 80000, 70000, 60000, 50000, 20000, 10000, 5000, 2000]
         assembly_attempts = 0
         linked_ends = False
 
@@ -599,7 +530,7 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
 
                 # Append the contig onto the main repaired contig output file
                 with open(reassembly_outfile) as input_handle:
-                    with open(end_repaired_contigs_filepath_unsorted, 'a') as append_handle:
+                    with open(end_repaired_contigs_filepath, 'a') as append_handle:
                         append_handle.write(input_handle.read())
 
                 # Cleanup
@@ -613,35 +544,22 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
 
     if failed_contigs > 0:
 
-        # TODO - allow user to optionally keep going
-        shutil.move(end_repaired_contigs_filepath_unsorted, end_repaired_contigs_filepath)
-
         logger.error(f'{failed_contigs} contigs could not be circularized. A partial output file including '
                      f'successfully circularized contigs (and no linear contigs) is available at '
                      f'{end_repaired_contigs_filepath} for debugging. Exiting with error status. See temporary files '
                      f'and verbose logs for more details.')
         sys.exit(1)
 
-    # TODO - consider doing this within Python; also confirm that the code below works
-    #  It would be ideal to open and sort the files at the same time
-    with open(end_repaired_contigs_filepath_unsorted, 'a') as append_handle:
+    linear_contig_names = parse_assembly_info_file(assembly_info_filepath, return_type='linear')
 
-        subprocess.run(['seqtk', 'subseq', assembly_fasta_filepath, linear_contig_list_filepath],
-                       check=True, stdout=append_handle)
+    with open(end_repaired_contigs_filepath, 'a') as append_handle:
 
-    # Sort the contigs
-    sort_order = []
-    with open(assembly_fasta_filepath) as fasta_handle:
-        for record in SeqIO.parse(fasta_handle):
-            sort_order.append(record.name)
-
-    sort_fasta(end_repaired_contigs_filepath_unsorted, end_repaired_contigs_filepath, sort_order=sort_order)
+        for record in subset_sequences(assembly_fasta_filepath, linear_contig_names):
+            SeqIO.write(record, append_handle, 'fasta')
 
     # Clean up temp files
     os.remove(bam_filepath)
     os.remove(f'{bam_filepath}.bai')
-    os.remove(linear_contig_list_filepath)
-    os.remove(end_repaired_contigs_filepath_unsorted)
     shutil.rmtree(reassembly_outdir_base)
 
     logger.info(f'End repair finished. Output contigs saved at {end_repaired_contigs_filepath}.')
@@ -655,6 +573,7 @@ def main(args):
     output_dir = args.output_dir
     flye_read_mode = args.flye_read_mode
     flye_read_error = args.flye_read_error
+    length_cutoffs = [int(x) for x in args.length_cutoffs.split(',')]
     circlator_min_id = args.circlator_min_id
     circlator_min_length = args.circlator_min_length
     circlator_ref_end = args.circlator_ref_end
@@ -683,6 +602,7 @@ def main(args):
     logger.info(f'Output directory: {output_dir}')
     logger.info(f'Flye read mode: {flye_read_mode}')
     logger.info(f'Flye read error: {flye_read_error}')
+    logger.info(f'Length cutoffs to test (bp): {length_cutoffs}')
     logger.info(f'Circlator min. ID: {circlator_min_id}')
     logger.info(f'Circlator min. length: {circlator_min_length}')
     logger.info(f'Circlator ref. end: {circlator_ref_end}')
@@ -693,7 +613,7 @@ def main(args):
     logger.info('################')
 
     run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, output_dir,
-                   flye_read_mode, flye_read_error, circlator_min_id, circlator_min_length,
+                   flye_read_mode, flye_read_error, length_cutoffs, circlator_min_id, circlator_min_length,
                    circlator_ref_end, circlator_reassemble_end, threads, thread_mem)
 
     logger.info(os.path.basename(sys.argv[0]) + ': done.')
@@ -714,6 +634,9 @@ if __name__ == '__main__':
     parser.add_argument('-F', '--flye_read_error', required=False, default=0, type=float,
                         help='Expected error rate of input reads, expressed as proportion (e.g., 0.03) '
                              '[0 = use flye defaults]')
+    parser.add_argument('-c', '--length_cutoffs', required=False,
+                        default='100000,90000,80000,70000,60000,50000,20000,10000,5000,2000', type=str,
+                        help='Comma-separated list of length thresholds for reassembly around the contig ends (bp)')
     parser.add_argument('-i', '--circlator_min_id', required=False, default=99, type=float,
                         help='Percent identity threshold for circlator merge')
     parser.add_argument('-l', '--circlator_min_length', required=False, default=10000, type=int,
