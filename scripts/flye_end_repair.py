@@ -16,7 +16,7 @@ import pandas as pd
 
 # GLOBAL VARIABLES
 SCRIPT_VERSION = '0.2.0'
-DEPENDENCY_NAMES = ['flye', 'minimap2', 'samtools', 'circlator', 'seqtk']
+DEPENDENCY_NAMES = ['flye', 'minimap2', 'samtools', 'circlator']
 
 # Set up the logger
 logging.basicConfig(format='[ %(asctime)s UTC ]: %(levelname)s: %(message)s')
