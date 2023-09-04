@@ -19,7 +19,7 @@ SCRIPT_VERSION = '0.2.0'
 DEPENDENCY_NAMES = ['flye', 'minimap2', 'samtools', 'circlator']
 
 # Set up the logger
-logging.basicConfig(format='[ %(asctime)s UTC ]: %(levelname)s: %(message)s')
+logging.basicConfig(format='[ %(asctime)s UTC ]: %(module)s: %(funcName)s: %(levelname)s: %(message)s')
 logging.Formatter.converter = time.gmtime
 logger = logging.getLogger(__name__)
 
@@ -42,26 +42,59 @@ def check_dependency(dependency_name):
     return dependency_path
 
 
-def parse_assembly_info_file(assembly_info_filepath, return_type='circular'):
+def parse_assembly_info_file(assembly_info_filepath, info_type, return_type='circular'):
     """
     List circular and linear contigs from the Flye assembly info file
 
     :param assembly_info_filepath: path to assembly_info.txt output by Flye
+    :param info_type: whether the info file is in 'flye' format (assembly_info.txt) or 'custom'.
+                      'custom' info files are tab-separated, have no headers, and have two columns: contig name and
+                      contig type, either 'circular' or 'linear'.
     :param return_type: whether to return a list of 'circular' or 'linear' contigs
     :return: list of contig names, either circular or linear depending on return_type
     """
 
     logger.debug('Loading assembly info file')
-    assembly_info = pd.read_csv(assembly_info_filepath, sep='\t')
 
-    circular_contigs = assembly_info[assembly_info['circ.'] == 'Y'][['#seq_name', 'length', 'circ.']]
-    linear_contigs = assembly_info[assembly_info['circ.'] == 'N'][['#seq_name', 'length', 'circ.']]
+    if info_type == 'flye':
+
+        assembly_info = pd.read_csv(assembly_info_filepath, sep='\t')
+
+        circular_contigs = assembly_info[assembly_info['circ.'] == 'Y'][['#seq_name', 'length', 'circ.']]
+        linear_contigs = assembly_info[assembly_info['circ.'] == 'N'][['#seq_name', 'length', 'circ.']]
+
+    elif info_type == 'custom':
+
+        assembly_info = pd.read_csv(assembly_info_filepath, sep='\t', header=None)
+        assembly_info.columns = ['#seq_name', 'status']
+
+        expected_statuses = {'circular', 'linear'}
+        available_status_types = set(assembly_info['status'])
+        unexpected_statuses = available_status_types.difference(expected_statuses)
+
+        if len(unexpected_statuses) != 0:
+            logger.warning(f'Some entries in the assembly info file had unexpected contig statuses, i.e.: '
+                           f'{", ".join(unexpected_statuses)}')
+            logger.warning('These entries will be treated as linear contigs... they will not be rotated and will be '
+                           'returned as-is at the end of the script. Please make sure you did not make a typo or '
+                           'include a header for your custom assembly info file.')
+
+        circular_contigs = assembly_info[assembly_info['status'] == 'circular']
+        linear_contigs = assembly_info[assembly_info['status'] != 'circular']
+
+    else:
+        raise ValueError
 
     if return_type == 'circular':
+
         output_list = list(circular_contigs['#seq_name'])
+
     elif return_type == 'linear':
+
         output_list = list(linear_contigs['#seq_name'])
+
     else:
+
         logger.error(f'return_type must be "circular" or "linear"; you provided "{return_type}"')
         raise RuntimeError
 
@@ -227,7 +260,7 @@ def get_selected_reads(bam_filepath, bed_filepath, output_ends_fastq_filepath, l
 def run_flye(fastq_filepath, flye_outdir, flye_read_mode, flye_read_error, log_filepath, dependency_dict,
              append_log: bool = True, threads=1):
     """
-    Pulls mapped reads from a BAM file that were mapped to regions defined in a BED file and saves to FastQ
+    Runs Flye to assemble the reads in the input FastQ file. This function allows Flye to fail without raising an error.
 
     :param fastq_filepath: path to the input read FastQ file (gzipped is OK)
     :param flye_outdir: directory to save Flye output to
@@ -238,7 +271,7 @@ def run_flye(fastq_filepath, flye_outdir, flye_read_mode, flye_read_error, log_f
     :param append_log: whether to log should append onto an existing file (True) or overwrite an existing file (False);
                        this setting is only relevant if the log file at log_filepath already exists
     :param threads: number of threads to use for read mapping
-    :return: flye output is saved to disk at flye_outdir; nothing is returned.
+    :return: return code of Flye (0 if it finished successfully).
     """
 
     if append_log is True:
@@ -256,13 +289,17 @@ def run_flye(fastq_filepath, flye_outdir, flye_read_mode, flye_read_error, log_f
         flye_args.append(flye_read_error)
 
     with open(log_filepath, write_mode) as logfile_handle:
-        # TODO - add error handling if flye fails
         logger.debug(shlex.join(flye_args))
-        subprocess.run(flye_args, check=True, stderr=logfile_handle)
+        flye_run = subprocess.run(flye_args, check=False, stderr=logfile_handle)
 
         # TODO - delete CLI code example once I confirm Python is working
         # flye "--${flye_read_mode}" "${fastq}" -o "${flye_length_outdir}" --read_error "${flye_read_error}" \
         #           -t "${threads}" >> "${verbose}" 2>&1
+
+    if flye_run.returncode != 0:
+        logger.warning(f'Flye did not finish successfully; see log for details at "{log_filepath}"')
+
+    return flye_run.returncode
 
 
 def run_circlator_merge(original_contig_filepath, patch_contig_filepath, merge_outdir, circlator_min_id,
@@ -381,9 +418,10 @@ def rotate_contig_to_midpoint(contig_fasta_filepath, output_filepath):
         SeqIO.write(contig_record, output_handle, 'fasta')
 
 
-def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, output_dir,
-                   flye_read_mode, flye_read_error, length_cutoffs, circlator_min_id, circlator_min_length,
-                   circlator_ref_end, circlator_reassemble_end, threads, thread_mem, dependency_dict):
+def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, assembly_info_type, output_dir,
+                   flye_read_mode, flye_read_error, length_cutoffs, keep_failed_contigs, circlator_min_id,
+                   circlator_min_length, circlator_ref_end, circlator_reassemble_end, threads, thread_mem,
+                   dependency_dict):
 
     # Define core file names and directory structures
     # These will be the files and folders in the main output directory:
@@ -401,7 +439,7 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
     os.makedirs(output_dir, exist_ok=True)
 
     # Get lists of circular contigs
-    circular_contig_names = parse_assembly_info_file(assembly_info_filepath, return_type='circular')
+    circular_contig_names = parse_assembly_info_file(assembly_info_filepath, assembly_info_type, return_type='circular')
 
     # No need to run the pipeline if there are no circular contigs
     if len(circular_contig_names) == 0:
@@ -429,7 +467,7 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
                    output_bam_filepath=bam_filepath, log_filepath=verbose_logfile, dependency_dict=dependency_dict,
                    append_log=False, threads=threads, thread_mem=thread_mem)
 
-    failed_contigs = 0
+    failed_contig_names = []
     for contig_name in circular_contig_names:
 
         logger.info(f'End repair: {contig_name}')
@@ -467,7 +505,7 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
             if assembly_attempts > len(length_cutoffs)-1:
 
                 logger.warning(f'End repair: {contig_name}: FAILED to linked contig ends')
-                failed_contigs = failed_contigs + 1
+                failed_contig_names.append(contig_name)
                 os.makedirs(os.path.join(output_dir, 'troubleshooting'), exist_ok=True)
                 shutil.move(log_dir_base, os.path.join(output_dir, 'troubleshooting', contig_name))
                 shutil.rmtree(reassembly_outdir)
@@ -502,9 +540,17 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
                                dependency_dict=dependency_dict, append_log=True, threads=threads)
 
             # Assemble the reads to get (hopefully) a joined contig end
-            run_flye(fastq_filepath=ends_fastq_filepath, flye_outdir=flye_length_outdir,
-                     flye_read_mode=flye_read_mode, flye_read_error=flye_read_error, log_filepath=verbose_logfile,
-                     dependency_dict=dependency_dict, append_log=True, threads=threads)
+            flye_exit_status = run_flye(fastq_filepath=ends_fastq_filepath, flye_outdir=flye_length_outdir,
+                                        flye_read_mode=flye_read_mode, flye_read_error=flye_read_error,
+                                        log_filepath=verbose_logfile, dependency_dict=dependency_dict, append_log=True,
+                                        threads=threads)
+
+            if flye_exit_status != 0:
+
+                # TODO - confirm I don't need to copy or move any files for the script to keep going
+                logger.warning('Continuing to next length threshold')
+                continue
+
             shutil.copy(os.path.join(flye_length_outdir, 'assembly_info.txt'), log_dir)
 
             # Stitch the joined contig end onto the original assembly
@@ -541,15 +587,31 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
 
             assembly_attempts = assembly_attempts + 1
 
-    if failed_contigs > 0:
+    # Check for contigs that could not be circularized
+    if len(failed_contig_names) != 0:
 
-        logger.error(f'{failed_contigs} contigs could not be circularized. A partial output file including '
-                     f'successfully circularized contigs (and no linear contigs) is available at '
-                     f'{end_repaired_contigs_filepath} for debugging. Exiting with error status. See temporary files '
-                     f'and verbose logs for more details.')
-        sys.exit(1)
+        if keep_failed_contigs is False:
 
-    linear_contig_names = parse_assembly_info_file(assembly_info_filepath, return_type='linear')
+            logger.error(f'{len(failed_contig_names)} contigs could not be circularized. A partial output file '
+                         f'including successfully circularized contigs (and no linear contigs) is available at '
+                         f'{end_repaired_contigs_filepath} for debugging. Exiting with error status. See temporary '
+                         f'files and verbose logs for more details.')
+            sys.exit(1)
+
+        elif keep_failed_contigs is True:
+
+            logger.warning(f'{len(failed_contig_names)} contigs could not be circularized. The original versions of '
+                           f'these contigs will be included in the final output file')
+            logger.warning(f'Names of contigs that could not be circularized: {", ".join(failed_contig_names)}')
+
+        else:
+            raise ValueError
+
+    # Get the linear contigs and append them to the repaired contigs file
+    linear_contig_names = parse_assembly_info_file(assembly_info_filepath, assembly_info_type, return_type='linear')
+
+    if keep_failed_contigs is True:
+        linear_contig_names.append(failed_contig_names)
 
     with open(end_repaired_contigs_filepath, 'a') as append_handle:
 
@@ -563,16 +625,21 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
 
     logger.info(f'End repair finished. Output contigs saved at {end_repaired_contigs_filepath}.')
 
+    if len(failed_contig_names) != 1:
+        logger.warning(f'{len(failed_contig_names)} contigs could not be circularized - see above for details')
+
 
 def main(args):
     # Set user variables
     long_read_filepath = args.long_reads
     assembly_fasta_filepath = args.assembly_fasta
     assembly_info_filepath = args.assembly_info
+    assembly_info_type = 'custom' if args.custom_assembly_info_file is True else 'flye'
     output_dir = args.output_dir
     flye_read_mode = args.flye_read_mode
     flye_read_error = args.flye_read_error
     length_cutoffs = [int(x) for x in args.length_cutoffs.split(',')]
+    keep_failed_contigs = args.keep_failed_contigs
     circlator_min_id = args.circlator_min_id
     circlator_min_length = args.circlator_min_length
     circlator_ref_end = args.circlator_ref_end
@@ -601,10 +668,12 @@ def main(args):
     logger.info(f'Long read filepath: {long_read_filepath}')
     logger.info(f'Assembly FastA filepath: {assembly_fasta_filepath}')
     logger.info(f'Assembly info filepath: {assembly_info_filepath}')
+    logger.info(f'Use a custom assembly info file: {args.custom_assembly_info_file}')
     logger.info(f'Output directory: {output_dir}')
     logger.info(f'Flye read mode: {flye_read_mode}')
     logger.info(f'Flye read error: {flye_read_error}')
     logger.info(f'Length cutoffs to test (bp): {length_cutoffs}')
+    logger.info(f'Keep going if some contigs cannot be re-circularized?: {args.keep_failed_contigs}')
     logger.info(f'Circlator min. ID: {circlator_min_id}')
     logger.info(f'Circlator min. length: {circlator_min_length}')
     logger.info(f'Circlator ref. end: {circlator_ref_end}')
@@ -617,9 +686,10 @@ def main(args):
         logger.info(f'{key}: {value}')
     logger.info('################')
 
-    run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, output_dir,
-                   flye_read_mode, flye_read_error, length_cutoffs, circlator_min_id, circlator_min_length,
-                   circlator_ref_end, circlator_reassemble_end, threads, thread_mem, dependency_dict)
+    run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, assembly_info_type, output_dir,
+                   flye_read_mode, flye_read_error, length_cutoffs, keep_failed_contigs, circlator_min_id,
+                   circlator_min_length, circlator_ref_end, circlator_reassemble_end, threads, thread_mem,
+                   dependency_dict)
 
     logger.info(os.path.basename(sys.argv[0]) + ': done.')
 
@@ -642,6 +712,20 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--length_cutoffs', required=False,
                         default='100000,90000,80000,70000,60000,50000,20000,10000,5000,2000', type=str,
                         help='Comma-separated list of length thresholds for reassembly around the contig ends (bp)')
+    parser.add_argument('-k', '--keep_going_with_failed_contigs', required=False, default=False, type=bool,
+                        choices=[True, False],
+                        help='Set this flag to True to continue running this script even if some contigs '
+                             'cannot be circularized and end-repaired. The original (non-repaired) versions of those '
+                             'contigs will be output')
+    parser.add_argument('-C', '--custom_assembly_info_file', required=False, default=False, type=bool,
+                        choices=[True, False],
+                        help='Whether to use a custom tab-separated file to specify the circular vs. linear status of '
+                             'each contig in the assembly or to use the assembly_info.txt file output by Flye '
+                             '(default). Set to True to use the custom tab-separated file, provided in place of '
+                             'assembly.txt as a positional argument. The custom-tab separated file must have the '
+                             'following format: no headers; first column is the contig names; second column is the '
+                             'status of the contigs, either "circular" or "linear". Any contig names not in this file '
+                             'will be dropped by the script!')
     parser.add_argument('-i', '--circlator_min_id', required=False, default=99, type=float,
                         help='Percent identity threshold for circlator merge')
     parser.add_argument('-l', '--circlator_min_length', required=False, default=10000, type=int,
