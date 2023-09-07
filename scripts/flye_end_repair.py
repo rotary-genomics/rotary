@@ -85,6 +85,15 @@ def parse_assembly_info_file(assembly_info_filepath, info_type, return_type='cir
     else:
         raise ValueError
 
+    # Check for duplicate sequence IDs
+    if assembly_info['#seq_name'].drop_duplicates().shape[0] < assembly_info['#seq_name'].shape[0]:
+
+        duplicated_ids = set(assembly_info['#seq_name'][assembly_info['#seq_name'].duplicated() == True])
+
+        logger.error(f'Some sequence IDs are duplicated in the input assembly info file: {", ".join(duplicated_ids)}')
+
+        raise RuntimeError
+
     if return_type == 'circular':
 
         output_list = list(circular_contigs['#seq_name'])
@@ -104,30 +113,40 @@ def parse_assembly_info_file(assembly_info_filepath, info_type, return_type='cir
 def subset_sequences(input_fasta_filepath, subset_sequence_ids):
     """
     Given an input FastA file, subsets the file to the provided sequence IDs. The output can be saved as a FastA file
-    or saved in RAM as a SeqRecord. The order of records can optionally be sorted to be in the same order as the input
-    IDs.
+    or saved in RAM as a SeqRecord.
 
-    :param input_fasta_filepath: Path(s) to the input FastA file(s); provide a list if multiple FastAs are desired
+    :param input_fasta_filepath: Path to the input FastA file
     :param subset_sequence_ids: list of names of the sequences to keep. If any names are in the list that aren't in the
-                                input file, the function will not return them. In the case of conflicting IDs between
-                                the multiple input FastA's, the script will take the first record with the correct name
-                                and WILL NOT throw a warning.
+                                input file, the function will not return them. The script will raise an error if any
+                                duplicate sequence names are detected in the input FastA file.
     :return: generator of a SeqRecord object for the subset sequences
     """
+
+    sequence_names = []
 
     # Get the original (pre-stitched) contig sequence as a SeqRecord
     with open(input_fasta_filepath) as fasta_handle:
 
         for record in SeqIO.parse(fasta_handle, 'fasta'):
 
-            if len(subset_sequence_ids) == 0:
-                break
+            sequence_names.append(record.name)
 
             if record.name in subset_sequence_ids:
 
                 subset_sequence_ids.remove(record.name)
 
                 yield record
+
+    # Raise an error if there are duplicate sequence names
+    if len(set(sequence_names)) < len(sequence_names):
+
+        sequence_names_series = pd.Series(sequence_names)
+        duplicates_names = set(sequence_names_series[sequence_names_series.duplicated() == True])
+
+        logger.error(f'Duplicate sequence IDs were detected in the input FastA file "{input_fasta_filepath}": '
+                     f'{", ".join(duplicates_names)}')
+
+        raise RuntimeError
 
 
 def generate_bed_file(contig_seqrecord, bed_filepath, length_threshold=100000):
@@ -205,12 +224,12 @@ def map_long_reads(contig_filepath, long_read_filepath, output_bam_filepath, log
 
             samtools_sort_args = [dependency_dict['samtools'], 'sort', '-@', threads, '-m', f'{thread_mem}G']
             logger.debug(shlex.join(samtools_sort_args))
-            samtools_sort = subprocess.run(samtools_sort_args, check=True, input=samtools_view.stdout,
-                                           stdout=bam_handle, stderr=logfile_handle)
+            subprocess.run(samtools_sort_args, check=True, input=samtools_view.stdout,
+                           stdout=bam_handle, stderr=logfile_handle)
 
         samtools_index_args = [dependency_dict['samtools'], 'index', '-@', threads, output_bam_filepath]
         logger.debug(shlex.join(samtools_index_args))
-        samtools_index = subprocess.run(samtools_index_args, check=True, stderr=logfile_handle)
+        subprocess.run(samtools_index_args, check=True, stderr=logfile_handle)
 
     logger.debug('Read mapping finished')
 
@@ -240,7 +259,8 @@ def get_selected_reads(bam_filepath, bed_filepath, output_ends_fastq_filepath, l
 
     with open(log_filepath, write_mode) as logfile_handle:
 
-        # TODO - consider adding option to split long reads in half if they go around a short circular contig, like in circlator
+        # TODO - consider adding option to split long reads in half if they go around a short circular contig,
+        #  like in circlator
         samtools_view_args = [dependency_dict['samtools'], 'view', '-@', threads, '-L', bed_filepath, '-b',
                               bam_filepath]
         logger.debug(f'{shlex.join(samtools_view_args)} | \\')
@@ -249,8 +269,8 @@ def get_selected_reads(bam_filepath, bed_filepath, output_ends_fastq_filepath, l
         samtools_fastq_args = [dependency_dict['samtools'], 'fastq', '-0', output_ends_fastq_filepath, '-n', '-@',
                                threads]
         logger.debug(shlex.join(samtools_fastq_args))
-        samtools_fastq = subprocess.run(samtools_fastq_args, check=True, input=samtools_view.stdout,
-                                        stderr=logfile_handle)
+        subprocess.run(samtools_fastq_args, check=True, input=samtools_view.stdout,
+                       stderr=logfile_handle)
 
         # TODO - delete this CLI code reference once I confirm the Python code works
         # samtools view -@ "${threads}" -L "${regions}" -b "${bam_file}" 2>> "${verbose}" | \
@@ -426,9 +446,8 @@ def rotate_contig_to_midpoint(contig_fasta_filepath, output_filepath, append=Fal
         SeqIO.write(contig_record, output_handle, 'fasta')
 
 
-def link_contig_ends(contig_record, bam_filepath, length_outdir, length_cutoff, flye_read_mode, flye_read_error,
-                     circlator_min_id, circlator_min_length, circlator_ref_end, circlator_reassemble_end,
-                     threads, verbose_logfile, dependency_dict):
+def link_contig_ends(contig_record, bam_filepath, length_outdir, length_cutoff, cli_tool_settings_dict,
+                     dependency_dict, verbose_logfile, threads):
     """
     Attempt to span the ends of an input contig via assembling reads mapped within x bp of the contig ends
 
@@ -438,15 +457,12 @@ def link_contig_ends(contig_record, bam_filepath, length_outdir, length_cutoff, 
     :param length_outdir: Output directory for the analysis; will be created by the function, although it can exist
                           before the function is run
     :param length_cutoff: bp region around the contig ends to subset for the assembly
-    :param flye_read_mode: see definition under argparse flag
-    :param flye_read_error: see definition under argparse flag
-    :param circlator_min_id: see definition under argparse flag
-    :param circlator_min_length: see definition under argparse flag
-    :param circlator_ref_end: see definition under argparse flag
-    :param circlator_reassemble_end: see definition under argparse flag
-    :param threads: parallel processor threads to use for the analysis
-    :param verbose_logfile: path to a logfile where shell script logs will be added
     :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
+    :param cli_tool_settings_dict: dictionary containing the following CLI tool settings, as defined in main(), as keys:
+                                   flye_read_mode, flye_read_error, circlator_min_id, circlator_min_length,
+                                   circlator_ref_end, circlator_reassemble_end
+    :param verbose_logfile: path to a logfile where shell script logs will be added
+    :param threads: parallel processor threads to use for the analysis
     :return: exit status code for Flye
     """
 
@@ -466,7 +482,8 @@ def link_contig_ends(contig_record, bam_filepath, length_outdir, length_cutoff, 
 
     # Assemble the reads to get (hopefully) a joined contig end
     flye_exit_status = run_flye(fastq_filepath=ends_fastq_filepath, flye_outdir=flye_length_outdir,
-                                flye_read_mode=flye_read_mode, flye_read_error=flye_read_error,
+                                flye_read_mode=cli_tool_settings_dict['flye_read_mode'],
+                                flye_read_error=cli_tool_settings_dict['flye_read_error'],
                                 log_filepath=verbose_logfile, dependency_dict=dependency_dict, append_log=True,
                                 threads=threads)
 
@@ -483,10 +500,11 @@ def link_contig_ends(contig_record, bam_filepath, length_outdir, length_cutoff, 
         #        hard to find. Does circlator report stitch point?
         run_circlator_merge(original_contig_filepath=original_contig_fasta_filepath,
                             patch_contig_filepath=os.path.join(flye_length_outdir, 'assembly.fasta'),
-                            merge_outdir=merge_dir, circlator_min_id=circlator_min_id,
-                            circlator_min_length=circlator_min_length, circlator_ref_end=circlator_ref_end,
-                            circlator_reassemble_end=circlator_reassemble_end, log_filepath=verbose_logfile,
-                            dependency_dict=dependency_dict, append_log=True)
+                            merge_outdir=merge_dir, circlator_min_id=cli_tool_settings_dict['circlator_min_id'],
+                            circlator_min_length=cli_tool_settings_dict['circlator_min_length'],
+                            circlator_ref_end=cli_tool_settings_dict['circlator_ref_end'],
+                            circlator_reassemble_end=cli_tool_settings_dict['circlator_reassemble_end'],
+                            log_filepath=verbose_logfile, dependency_dict=dependency_dict, append_log=True)
 
     else:
 
@@ -496,9 +514,8 @@ def link_contig_ends(contig_record, bam_filepath, length_outdir, length_cutoff, 
     return flye_exit_status
 
 
-def iterate_linking_contig_ends(contig_record, bam_filepath, reassembly_outdir, length_cutoffs, flye_read_mode,
-                                flye_read_error, circlator_min_id, circlator_min_length, circlator_ref_end,
-                                circlator_reassemble_end, threads, verbose_logfile, dependency_dict):
+def iterate_linking_contig_ends(contig_record, bam_filepath, reassembly_outdir, length_cutoffs, cli_tool_settings_dict,
+                                dependency_dict, verbose_logfile, threads):
     """
     Iteratively attempts to stitch contig ends using different length thresholds for link_contig_ends.
     Wrapper of link_contig_ends.
@@ -509,15 +526,12 @@ def iterate_linking_contig_ends(contig_record, bam_filepath, reassembly_outdir, 
     :param reassembly_outdir: Output directory for the analysis; will be created by the function, although it can exist
                               before the function is run
     :param length_cutoffs: list of bp regions around the contig ends to attempt to subset for the assembly
-    :param flye_read_mode: see definition under argparse flag
-    :param flye_read_error: see definition under argparse flag
-    :param circlator_min_id: see definition under argparse flag
-    :param circlator_min_length: see definition under argparse flag
-    :param circlator_ref_end: see definition under argparse flag
-    :param circlator_reassemble_end: see definition under argparse flag
-    :param threads: parallel processor threads to use for the analysis
-    :param verbose_logfile: path to a logfile where shell script logs will be added
+    :param cli_tool_settings_dict: dictionary containing the following CLI tool settings, as defined in main(), as keys:
+                                   flye_read_mode, flye_read_error, circlator_min_id, circlator_min_length,
+                                   circlator_ref_end, circlator_reassemble_end
     :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
+    :param verbose_logfile: path to a logfile where shell script logs will be added
+    :param threads: parallel processor threads to use for the analysis
     :return: boolean of whether end linkage was successful (True) or not (False)
     """
 
@@ -550,9 +564,8 @@ def iterate_linking_contig_ends(contig_record, bam_filepath, reassembly_outdir, 
         logger.debug(f'Starting reassembly with a length cutoff of {length_cutoff} bp')
         length_outdir = os.path.join(reassembly_outdir, 'tmp', f'L{length_cutoff}')
 
-        flye_exit_status = link_contig_ends(contig_record, bam_filepath, length_outdir, length_cutoff, flye_read_mode,
-                                            flye_read_error, circlator_min_id, circlator_min_length, circlator_ref_end,
-                                            circlator_reassemble_end, threads, verbose_logfile, dependency_dict)
+        flye_exit_status = link_contig_ends(contig_record, bam_filepath, length_outdir, length_cutoff,
+                                            cli_tool_settings_dict, dependency_dict, verbose_logfile, threads)
 
         # Stop early if Flye fails
         if flye_exit_status != 0:
@@ -586,10 +599,82 @@ def iterate_linking_contig_ends(contig_record, bam_filepath, reassembly_outdir, 
     return linked_ends
 
 
+def stitch_all_contigs(circular_contig_tmp_fasta, bam_filepath, reassembly_outdir_base, end_repaired_contigs_filepath,
+                       length_cutoffs, cli_tool_settings_dict, dependency_dict, verbose_logfile, threads):
+    """
+    Run the iterate_linking_contig_ends function on all contigs in an input FastA file, i.e., attempt to stich the ends
+    of all the contigs (assumed circular) in the file.
+
+    :param circular_contig_tmp_fasta: Input FastA file of circular contigs to be stitched
+    :param bam_filepath: Path to a BAM file with mapping information of long reads to the contigs (it is OK if this file
+                         also contains mappings to other contigs outside those in the input file)
+    :param end_repaired_contigs_filepath: Path (to be overwritten by this funtion) to save the end repaired contigs
+    :param reassembly_outdir_base: Temp directory to save re-assembly and stitching files to
+    :param length_cutoffs: list of bp regions around the contig ends to attempt to subset for the assembly
+    :param cli_tool_settings_dict: dictionary containing the following CLI tool settings, as defined in main(), as keys:
+                                   flye_read_mode, flye_read_error, circlator_min_id, circlator_min_length,
+                                   circlator_ref_end, circlator_reassemble_end
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
+    :param verbose_logfile: path to a logfile where shell script logs will be added
+    :param threads: parallel processor threads to use for the analysis
+    :return: Writes stitched contigs to end_repaired_contigs_filepath. Returns a list of the names of any contigs that
+             could not be stiched successfully (list length will be zero if all contigs stitched successfully)
+    """
+
+    # Initialize the repaired contigs FastA file (so it will overwrite an old file rather than just append later)
+    with open(end_repaired_contigs_filepath, 'w') as output_handle:
+        output_handle.write('')
+
+    # Make the tmp directory for output files
+    os.makedirs(reassembly_outdir_base, exist_ok=True)
+
+    failed_contig_names = []
+
+    with open(circular_contig_tmp_fasta) as fasta_handle:
+
+        for contig_record in SeqIO.parse(fasta_handle, 'fasta'):
+
+            logger.info(f'End repair: {contig_record.name}')
+
+            # Define temp files and folders that will be generated for this contig during stitching
+            reassembly_outdir = os.path.join(reassembly_outdir_base, contig_record.name)
+
+            end_linkage_complete = iterate_linking_contig_ends(contig_record, bam_filepath, reassembly_outdir,
+                                                               length_cutoffs, cli_tool_settings_dict, dependency_dict,
+                                                               verbose_logfile, threads)
+
+            if end_linkage_complete is False:
+
+                logger.warning(f'End repair: {contig_record.name}: FAILED to linked contig ends')
+                os.makedirs(os.path.join(reassembly_outdir_base, 'troubleshooting'), exist_ok=True)
+                shutil.move(os.path.join(reassembly_outdir, 'logs'),
+                            os.path.join(reassembly_outdir_base, 'troubleshooting', contig_record.name))
+
+                # TODO - consider rotating the failed contig to midpoint and leaving a copy, if requested by the user
+
+                failed_contig_names.append(contig_record.name)
+
+            elif end_linkage_complete is True:
+
+                # Append the successful contig onto the main file
+                with open(os.path.join(reassembly_outdir, 'stitched.fasta')) as input_handle:
+                    with open(end_repaired_contigs_filepath, 'a') as append_handle:
+                        append_handle.write(input_handle.read())
+
+                os.makedirs(os.path.join(reassembly_outdir_base, 'log_summary'), exist_ok=True)
+                shutil.move(os.path.join(reassembly_outdir, 'logs', f'{contig_record.name}_circlator_final.log'),
+                            os.path.join(reassembly_outdir_base, 'log_summary', f'{contig_record.name}.log'))
+
+                shutil.rmtree(reassembly_outdir)
+
+            else:
+                raise ValueError
+
+    return failed_contig_names
+
+
 def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, assembly_info_type, output_dir,
-                   flye_read_mode, flye_read_error, length_cutoffs, keep_failed_contigs, circlator_min_id,
-                   circlator_min_length, circlator_ref_end, circlator_reassemble_end, threads, thread_mem,
-                   dependency_dict):
+                   length_cutoffs, keep_failed_contigs, cli_tool_settings_dict, dependency_dict, threads, thread_mem):
 
     # Define core file names and directory structures
     # These will be the files and folders in the main output directory:
@@ -622,69 +707,25 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
         for record in subset_sequences(assembly_fasta_filepath, circular_contig_names):
             SeqIO.write(record, output_handle, 'fasta')
 
-    # Initialize the repaired contigs FastA file (so it will overwrite an old file rather than just append later)
-    with open(end_repaired_contigs_filepath, 'w') as output_handle:
-        output_handle.write('')
-
-    os.makedirs(circlator_logdir, exist_ok=True)
-    os.makedirs(reassembly_outdir_base, exists_ok=True)
-
     # Start the main workflow from here:
     logger.info('Mapping reads to all contigs')
     map_long_reads(contig_filepath=assembly_fasta_filepath, long_read_filepath=long_read_filepath,
                    output_bam_filepath=bam_filepath, log_filepath=verbose_logfile, dependency_dict=dependency_dict,
                    append_log=False, threads=threads, thread_mem=thread_mem)
 
-    failed_contig_names = []
-    for contig_name in circular_contig_names:
+    failed_contig_names = stitch_all_contigs(circular_contig_tmp_fasta, bam_filepath, reassembly_outdir_base,
+                                             end_repaired_contigs_filepath, length_cutoffs, cli_tool_settings_dict,
+                                             dependency_dict, verbose_logfile, threads)
 
-        logger.info(f'End repair: {contig_name}')
-
-        # Define temp files and folders that will be generated for this contig during stitching
-        reassembly_outdir = os.path.join(reassembly_outdir_base, contig_name)
-
-        # Get the original (pre-stitched) contig sequence as a SeqRecord and save as FastA
-        contig_records = []
-        for record in subset_sequences(circular_contig_tmp_fasta, [contig_name]):
-            contig_records.append(record)
-
-        if len(contig_records) > 1:
-            logger.error(f'Got more than one contig for {contig_name}')
-            raise RuntimeError
-
-        contig_record = contig_records[0]
-
-        # TODO - make this function more compact and understandable. Some parts might need to be put back here.
-        end_linkage_complete = iterate_linking_contig_ends(contig_record, bam_filepath, reassembly_outdir,
-                                                           length_cutoffs, flye_read_mode, flye_read_error,
-                                                           circlator_min_id, circlator_min_length, circlator_ref_end,
-                                                           circlator_reassemble_end, threads, verbose_logfile,
-                                                           dependency_dict)
-
-        if end_linkage_complete is False:
-            logger.warning(f'End repair: {contig_name}: FAILED to linked contig ends')
-            os.makedirs(os.path.join(output_dir, 'troubleshooting'), exist_ok=True)
-            shutil.move(os.path.join(reassembly_outdir, 'logs'),
-                        os.path.join(output_dir, 'troubleshooting', contig_record.name))
-
-            # TODO - consider rotating the failed contig to midpoint and leaving a copy, if requested by the user
-
-            failed_contig_names.append(contig_name)
-
-        elif end_linkage_complete is True:
-
-            # Append the successful contig onto the main file
-            with open(os.path.join(reassembly_outdir, 'stitched.fasta')) as input_handle:
-                with open(end_repaired_contigs_filepath, 'a') as append_handle:
-                    append_handle.write(input_handle.read())
-
-            shutil.move(os.path.join(reassembly_outdir, 'logs', f'{contig_name}_circlator_final.log'),
-                        os.path.join(circlator_logdir, f'{contig_name}.log'))
-
-        shutil.rmtree(reassembly_outdir)
+    os.makedirs(circlator_logdir, exist_ok=True)
+    shutil.move(os.path.join(reassembly_outdir_base, 'log_summary'), circlator_logdir)
 
     # Check for contigs that could not be circularized
     if len(failed_contig_names) != 0:
+
+        if os.path.isdir(os.path.join(reassembly_outdir_base, 'troubleshooting')):
+            shutil.move(os.path.join(reassembly_outdir_base, 'troubleshooting'),
+                        os.path.join(output_dir, 'troubleshooting'))
 
         if keep_failed_contigs is False:
 
@@ -726,20 +767,21 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
 
 
 def main(args):
+
     # Set user variables
     long_read_filepath = args.long_reads
     assembly_fasta_filepath = args.assembly_fasta
     assembly_info_filepath = args.assembly_info
     assembly_info_type = 'custom' if args.custom_assembly_info_file is True else 'flye'
     output_dir = args.output_dir
-    flye_read_mode = args.flye_read_mode
-    flye_read_error = args.flye_read_error
     length_cutoffs = [int(x) for x in args.length_cutoffs.split(',')]
     keep_failed_contigs = args.keep_failed_contigs
-    circlator_min_id = args.circlator_min_id
-    circlator_min_length = args.circlator_min_length
-    circlator_ref_end = args.circlator_ref_end
-    circlator_reassemble_end = args.circlator_reassemble_end
+    cli_tool_settings_dict = {'flye_read_mode': args.flye_read_mode,
+                              'flye_read_error': args.flye_read_error,
+                              'circlator_min_id': args.circlator_min_id,
+                              'circlator_min_length': args.circlator_min_length,
+                              'circlator_ref_end': args.circlator_ref_end,
+                              'circlator_reassemble_end': args.circlator_reassemble_end}
     threads = args.threads
     thread_mem = args.thread_mem
     verbose = args.verbose
@@ -766,14 +808,14 @@ def main(args):
     logger.info(f'Assembly info filepath: {assembly_info_filepath}')
     logger.info(f'Use a custom assembly info file: {args.custom_assembly_info_file}')
     logger.info(f'Output directory: {output_dir}')
-    logger.info(f'Flye read mode: {flye_read_mode}')
-    logger.info(f'Flye read error: {flye_read_error}')
     logger.info(f'Length cutoffs to test (bp): {length_cutoffs}')
     logger.info(f'Keep going if some contigs cannot be re-circularized?: {args.keep_failed_contigs}')
-    logger.info(f'Circlator min. ID: {circlator_min_id}')
-    logger.info(f'Circlator min. length: {circlator_min_length}')
-    logger.info(f'Circlator ref. end: {circlator_ref_end}')
-    logger.info(f'Circlator reassembly end: {circlator_reassemble_end}')
+    logger.info(f'Flye read mode: {cli_tool_settings_dict["flye_read_mode"]}')
+    logger.info(f'Flye read error: {cli_tool_settings_dict["flye_read_error"]}')
+    logger.info(f'Circlator min. ID: {cli_tool_settings_dict["circlator_min_id"]}')
+    logger.info(f'Circlator min. length: {cli_tool_settings_dict["circlator_min_length"]}')
+    logger.info(f'Circlator ref. end: {cli_tool_settings_dict["circlator_ref_end"]}')
+    logger.info(f'Circlator reassembly end: {cli_tool_settings_dict["circlator_reassemble_end"]}')
     logger.info(f'Threads: {threads}')
     logger.info(f'Memory per thread (GB): {thread_mem}')
     logger.info(f'Verbose logging: {verbose}')
@@ -783,9 +825,7 @@ def main(args):
     logger.info('################')
 
     run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, assembly_info_type, output_dir,
-                   flye_read_mode, flye_read_error, length_cutoffs, keep_failed_contigs, circlator_min_id,
-                   circlator_min_length, circlator_ref_end, circlator_reassemble_end, threads, thread_mem,
-                   dependency_dict)
+                   length_cutoffs, keep_failed_contigs, cli_tool_settings_dict, dependency_dict, threads, thread_mem)
 
     logger.info(os.path.basename(sys.argv[0]) + ': done.')
 
@@ -800,13 +840,13 @@ if __name__ == '__main__':
     parser.add_argument('assembly_info.txt', dest='assembly_info_filepath', help='Assembly info file from Flye')
     parser.add_argument('output_dir',
                         help='Output directory path (might overwrite contents if the dir already exists!)')
-    parser.add_argument('-f', '--flye_read_mode', required=False, default='nano-hq', choices=['nano-hq','nano-raw'],
+    parser.add_argument('-f', '--flye_read_mode', required=False, default='nano-hq', choices=['nano-hq', 'nano-raw'],
                         help='Type of input reads for Flye')
     parser.add_argument('-F', '--flye_read_error', required=False, default=0, type=float,
                         help='Expected error rate of input reads, expressed as proportion (e.g., 0.03) '
                              '[0 = use flye defaults]')
     parser.add_argument('-c', '--length_cutoffs', required=False,
-                        default='100000,90000,80000,70000,60000,50000,20000,10000,5000,2000', type=str,
+                        default='100000,75000,50000,25000,5000,2500,1000', type=str,
                         help='Comma-separated list of length thresholds for reassembly around the contig ends (bp)')
     parser.add_argument('-k', '--keep_going_with_failed_contigs', required=False, default=False, type=bool,
                         choices=[True, False],
@@ -838,4 +878,3 @@ if __name__ == '__main__':
                         help='Enable for verbose logging.')
     command_line_args = parser.parse_args()
     main(command_line_args)
-
