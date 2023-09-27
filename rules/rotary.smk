@@ -1,18 +1,18 @@
 # rotary, a snakemake-based Nanopore genome assembly workflow
 # Copyright Jackson M. Tsuji, Institute of Low Temperature Science, Hokkaido University, 2022
 
+import itertools
 import os
 import sys
-import shutil
-import pandas as pd
-import itertools
-from snakemake.utils import logger, min_version, update_config
 
-VERSION="0.2.0-beta4"
-VERSION_POLYPOLISH="0.5.0"
-VERSION_DFAST="1.2.18"
-VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
-VERSION_GTDB="207" # See https://data.gtdb.ecogenomic.org/releases/
+import pandas as pd
+from snakemake.utils import min_version
+
+VERSION = "0.2.0-beta4"
+VERSION_POLYPOLISH = "0.5.0"
+VERSION_DFAST = "1.2.18"
+VERSION_EGGNOG = "5.0.0"  # See http://eggnog5.embl.de/#/app/downloads
+VERSION_GTDB = "207"  # See https://data.gtdb.ecogenomic.org/releases/
 
 # Specify the minimum snakemake version allowable
 min_version("7.0")
@@ -32,9 +32,9 @@ rule all:
 
 rule install_internal_scripts:
     output:
-        end_repair=os.path.join(config.get("db_dir"), "rotary-" + VERSION, "scripts", "flye_end_repair.sh"),
-        end_repair_utils=os.path.join(config.get("db_dir"), "rotary-" + VERSION, "scripts", "flye_end_repair_utils.py"),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "internal_scripts_" + VERSION)
+        end_repair=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"scripts","flye_end_repair.sh"),
+        end_repair_utils=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"scripts","flye_end_repair_utils.py"),
+        install_finished=os.path.join(config.get("db_dir"),"checkpoints","internal_scripts_" + VERSION)
     log:
         "logs/download/install_internal_scripts.log"
     benchmark:
@@ -52,15 +52,15 @@ rule install_internal_scripts:
 
 rule install_polypolish:
     output:
-        polypolish_filter=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH, "polypolish_insert_filter.py"),
-        polypolish=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH, "polypolish"),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "polypolish_" + VERSION_POLYPOLISH)
+        polypolish_filter=os.path.join(config.get("db_dir"),"polypolish_" + VERSION_POLYPOLISH,"polypolish_insert_filter.py"),
+        polypolish=os.path.join(config.get("db_dir"),"polypolish_" + VERSION_POLYPOLISH,"polypolish"),
+        install_finished=os.path.join(config.get("db_dir"),"checkpoints","polypolish_" + VERSION_POLYPOLISH)
     log:
         "logs/download/install_polypolish.log"
     benchmark:
         "benchmarks/download/install_polypolish.txt"
     params:
-        db_dir=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH),
+        db_dir=os.path.join(config.get("db_dir"),"polypolish_" + VERSION_POLYPOLISH),
         url="https://github.com/rrwick/Polypolish/releases/download/v" + VERSION_POLYPOLISH + "/polypolish-linux-x86_64-musl-v" + VERSION_POLYPOLISH + ".tar.gz"
     shell:
         """
@@ -73,13 +73,13 @@ rule install_polypolish:
 # TODO - does not check the HMM version, only ID. If the HMM version updates, it won't automatically re-download
 rule download_hmm:
     output:
-        hmm=os.path.join(config.get("db_dir"), "hmm", config.get("start_hmm_pfam_id") + ".hmm")
+        hmm=os.path.join(config.get("db_dir"),"hmm",config.get("start_hmm_pfam_id") + ".hmm")
     log:
         "logs/download/hmm_download.log"
     benchmark:
         "benchmarks/download/hmm_download.txt"
     params:
-        db_dir=os.path.join(config.get("db_dir"), "hmm"),
+        db_dir=os.path.join(config.get("db_dir"),"hmm"),
         url="https://pfam.xfam.org/family/" + config.get("start_hmm_pfam_id") + "/hmm"
     shell:
         """
@@ -90,8 +90,8 @@ rule download_hmm:
 
 rule download_dfast_db:
     output:
-        db=directory(os.path.join(config.get("db_dir"), "dfast_" + VERSION_DFAST)),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "dfast_" + VERSION_DFAST)
+        db=directory(os.path.join(config.get("db_dir"),"dfast_" + VERSION_DFAST)),
+        install_finished=os.path.join(config.get("db_dir"),"checkpoints","dfast_" + VERSION_DFAST)
     conda:
         "../envs/annotation_dfast.yaml"
     log:
@@ -99,7 +99,7 @@ rule download_dfast_db:
     benchmark:
         "benchmarks/download/dfast_db_download.txt"
     params:
-        db_dir=os.path.join(config.get("db_dir"), "dfast_" + VERSION_DFAST)
+        db_dir=os.path.join(config.get("db_dir"),"dfast_" + VERSION_DFAST)
     shell:
         """
         mkdir -p {params.db_dir}
@@ -111,8 +111,8 @@ rule download_dfast_db:
 
 rule download_eggnog_db:
     output:
-        db=directory(os.path.join(config.get("db_dir"), "eggnog_" + VERSION_EGGNOG)),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "eggnog_" + VERSION_EGGNOG)
+        db=directory(os.path.join(config.get("db_dir"),"eggnog_" + VERSION_EGGNOG)),
+        install_finished=os.path.join(config.get("db_dir"),"checkpoints","eggnog_" + VERSION_EGGNOG)
     conda:
         "../envs/eggnog.yaml"
     log:
@@ -120,7 +120,7 @@ rule download_eggnog_db:
     benchmark:
         "benchmarks/download/eggnog_db_download.txt"
     params:
-        db_dir=os.path.join(config.get("db_dir"), "eggnog_" + VERSION_EGGNOG)
+        db_dir=os.path.join(config.get("db_dir"),"eggnog_" + VERSION_EGGNOG)
     shell:
         """
         mkdir -p {params.db_dir}
@@ -133,16 +133,16 @@ rule download_eggnog_db:
 # TODO - if there is an error during download, the initial_download_dir is not deleted during cleanup
 rule download_gtdb_db:
     output:
-        db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "GTDB_" + VERSION_GTDB + "_download")
+        db=directory(os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB)),
+        install_finished=os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB + "_download")
     log:
         "logs/download/gtdb_db_download.log"
     benchmark:
         "benchmarks/download/gtdb_db_download.txt"
     params:
         db_dir_root=os.path.join(config.get("db_dir")),
-        initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB + "_v2"),
-        db_dir=os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB),
+        initial_download_dir=os.path.join(config.get("db_dir"),"release" + VERSION_GTDB + "_v2"),
+        db_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB),
         url="https://data.gtdb.ecogenomic.org/releases/release" + VERSION_GTDB + "/" + VERSION_GTDB + ".0/auxillary_files/gtdbtk_r" + VERSION_GTDB + "_v2_data.tar.gz"
     shell:
         """
@@ -162,9 +162,9 @@ rule download_gtdb_db:
 
 rule setup_gtdb:
     input:
-        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_download")
+        os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB + "_download")
     output:
-        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_setup")
+        os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB + "_setup")
     conda:
         "../envs/gtdbtk.yaml"
     log:
@@ -185,9 +185,9 @@ rule setup_gtdb:
 
 rule validate_gtdb:
     input:
-        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_setup")
+        os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB + "_setup")
     output:
-        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_validate")
+        os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB + "_validate")
     conda:
         "../envs/gtdbtk.yaml"
     log:
@@ -222,8 +222,8 @@ rule nanopore_qc_filter:
     resources:
         mem=config.get("memory")
     params:
-        minlength = config.get("minlength"),
-        minavgquality = config.get("minavgquality")
+        minlength=config.get("minlength"),
+        minavgquality=config.get("minavgquality")
     shell:
         """
         reformat.sh in={input} out={output} minlength={params.minlength} minavgquality={params.minavgquality} \
@@ -263,7 +263,7 @@ rule qc_long_length_stats:
     benchmark:
         "benchmarks/qc/qc_long_length_stats.benchmark.txt"
     run:
-        length_hist = pd.read_csv(input[0], sep='\t')
+        length_hist = pd.read_csv(input[0],sep='\t')
 
         lengths = []
 
@@ -273,14 +273,14 @@ rule qc_long_length_stats:
 
         lengths = pd.Series(lengths)
 
-        length_stats = pd.DataFrame({'Total reads':   [lengths.shape[0]],
-                                     'Mean length':   [round(lengths.mean(),2)],
+        length_stats = pd.DataFrame({'Total reads': [lengths.shape[0]],
+                                     'Mean length': [round(lengths.mean(),2)],
                                      'Median length': [lengths.median()],
-                                     'Min length':    [lengths.min()],
-                                     'Max length':    [lengths.max()]})\
-          .transpose()
+                                     'Min length': [lengths.min()],
+                                     'Max length': [lengths.max()]}) \
+            .transpose()
 
-        length_stats.to_csv(output[0], sep='\t', header=None, index=True)
+        length_stats.to_csv(output[0],sep='\t',header=None,index=True)
 
 
 rule qc_long:
@@ -557,7 +557,6 @@ if (config.get("qc_short_r1") != "None") & \
             samtools coverage {output.mapping} > {output.coverage}
             """
 
-
 if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_cutoff_long_read") != "None"):
     filtration_method.append("long_read")
 
@@ -594,7 +593,7 @@ if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_
 rule summarize_contigs_by_coverage:
     input:
         expand("polish/cov_filter/{type}_coverage.tsv",
-          type=filtration_method)
+            type=filtration_method)
     output:
         "polish/cov_filter/filtered_contigs.list"
     params:
@@ -605,22 +604,23 @@ rule summarize_contigs_by_coverage:
     run:
         # Filter a samtools coverage file by meandepth and evenness. Returns a pandas series of the contig names.
         def filter_coverage_data(coverage_file, meandepth, evenness):
-            coverage_data = pd.read_csv(coverage_file, sep='\t')
+            coverage_data = pd.read_csv(coverage_file,sep='\t')
 
             coverage_filtered = coverage_data[ \
                 (coverage_data['meandepth'] >= meandepth) & \
                 (coverage_data['coverage'] >= evenness)]
 
-            return(coverage_filtered['#rname'])
+            return (coverage_filtered['#rname'])
+
 
         input_list = list(input)
 
         if len(input_list) == 1:
             if input_list[0] == "polish/cov_filter/short_read_coverage.tsv":
-                contigs = filter_coverage_data(input_list[0], params.meandepth_short, params.evenness_short)
+                contigs = filter_coverage_data(input_list[0],params.meandepth_short,params.evenness_short)
 
             elif input_list[0] == "polish/cov_filter/long_read_coverage.tsv":
-                contigs = filter_coverage_data(input_list[0], params.meandepth_long, params.evenness_long)
+                contigs = filter_coverage_data(input_list[0],params.meandepth_long,params.evenness_long)
 
             else:
                 sys.exit("One unexpected coverage file detected in 'polish/cov_filter'.")
@@ -628,12 +628,12 @@ rule summarize_contigs_by_coverage:
         elif len(input_list) == 2:
             input_list.sort()
 
-            if (input_list[0] != "polish/cov_filter/long_read_coverage.tsv") |\
+            if (input_list[0] != "polish/cov_filter/long_read_coverage.tsv") | \
                     (input_list[1] != "polish/cov_filter/short_read_coverage.tsv"):
                 sys.exit("At least one unexpected coverage file detected in 'polish/cov_filter'.")
 
-            set1 = set(filter_coverage_data(input_list[0], params.meandepth_long, params.evenness_long))
-            set2 = set(filter_coverage_data(input_list[1], params.meandepth_short, params.evenness_short))
+            set1 = set(filter_coverage_data(input_list[0],params.meandepth_long,params.evenness_long))
+            set2 = set(filter_coverage_data(input_list[1],params.meandepth_short,params.evenness_short))
 
             contigs = pd.Series(set1.union(set2))
 
@@ -672,13 +672,13 @@ else:
 
 
 rule symlink_polish:
-        input:
-            "polish/cov_filter/filtered_contigs.fasta"
-        output:
-            "polish/polish.fasta"
-        run:
-            source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
-            os.symlink(source_relpath,str(output))
+    input:
+        "polish/cov_filter/filtered_contigs.fasta"
+    output:
+        "polish/polish.fasta"
+    run:
+        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+        os.symlink(source_relpath,str(output))
 
 
 rule polish:
@@ -699,22 +699,22 @@ checkpoint split_circular_and_linear_contigs:
     output:
         directory("circularize/filter/lists")
     run:
-        coverage_filtered_contigs = pd.read_csv(input.filter_list, header=None)[0]
+        coverage_filtered_contigs = pd.read_csv(input.filter_list,header=None)[0]
 
-        assembly_info = pd.read_csv(input.assembly_stats, sep='\t')
+        assembly_info = pd.read_csv(input.assembly_stats,sep='\t')
         assembly_info_filtered = assembly_info[assembly_info['#seq_name'].isin(coverage_filtered_contigs)]
 
         circular_contigs = assembly_info_filtered[assembly_info_filtered['circ.'] == 'Y']
         linear_contigs = assembly_info_filtered[assembly_info_filtered['circ.'] == 'N']
 
-        os.makedirs(output[0], exist_ok=True)
+        os.makedirs(output[0],exist_ok=True)
 
         # Only output files if there is >=1 entry
         if circular_contigs.shape[0] >= 1:
-            circular_contigs['#seq_name'].to_csv(os.path.join(output[0], 'circular.list'), header=None, index=False)
+            circular_contigs['#seq_name'].to_csv(os.path.join(output[0],'circular.list'),header=None,index=False)
 
         if linear_contigs.shape[0] >= 1:
-            linear_contigs['#seq_name'].to_csv(os.path.join(output[0], 'linear.list'), header=None, index=False)
+            linear_contigs['#seq_name'].to_csv(os.path.join(output[0],'linear.list'),header=None,index=False)
 
 
 # Makes separate files for circular and linear contigs as needed
@@ -735,7 +735,7 @@ rule get_polished_contigs:
 rule search_contig_start:
     input:
         contigs="circularize/filter/circular.fasta",
-        hmm=os.path.join(config.get("db_dir"), "hmm", config.get("start_hmm_pfam_id") + ".hmm")
+        hmm=os.path.join(config.get("db_dir"),"hmm",config.get("start_hmm_pfam_id") + ".hmm")
     output:
         orf_predictions=temp("circularize/identify/circular.faa"),
         gene_predictions=temp("circularize/identify/circular.ffn"),
@@ -776,7 +776,7 @@ rule process_start_genes:
     log:
         "logs/circularize/process_start_genes.log"
     run:
-        with open(input[0], 'r') as hmmsearch_results_raw:
+        with open(input[0],'r') as hmmsearch_results_raw:
             line_count = len(hmmsearch_results_raw.readlines())
 
         if line_count == 0:
@@ -785,7 +785,7 @@ rule process_start_genes:
 
         else:
             # Load HMM search results
-            hmmsearch_results = hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None)[[0, 2, 3, 4]]
+            hmmsearch_results = hmmsearch_results = pd.read_csv(input[0],sep='\s+',header=None)[[0, 2, 3, 4]]
 
             hmmsearch_results.columns = ['orf', 'hmm_name', 'hmm_accession', 'evalue']
 
@@ -835,7 +835,7 @@ rule process_start_genes:
                         # Relies on the dataframe having already been sorted by e-value above
                         start_orf_ids.append(multistart_orf_ids[0])
 
-        pd.Series(start_orf_ids).to_csv(output[0], header=None, index=False)
+        pd.Series(start_orf_ids).to_csv(output[0],header=None,index=False)
 
 
 rule get_start_genes:
@@ -942,7 +942,7 @@ def aggregate_contigs(wildcards):
     checkpoint_output = checkpoints.split_circular_and_linear_contigs.get(**wildcards).output[0]
 
     return expand("circularize/combine/{circular_or_linear}.fasta",
-                  circular_or_linear=glob_wildcards(os.path.join("circularize/filter/lists", "{i}.list")).i)
+        circular_or_linear=glob_wildcards(os.path.join("circularize/filter/lists","{i}.list")).i)
 
 
 # TODO - consider sorting contigs by length (or by circular and then by length)
@@ -1027,9 +1027,9 @@ rule run_eggnog:
     benchmark:
         "benchmarks/annotation/eggnog.txt"
     params:
-        outdir = "annotation/eggnog",
+        outdir="annotation/eggnog",
         tmpdir="annotation/eggnog/tmp",
-        db=directory(os.path.join(config.get("db_dir"), "eggnog_" + VERSION_EGGNOG)),
+        db=directory(os.path.join(config.get("db_dir"),"eggnog_" + VERSION_EGGNOG)),
         sensmode=config.get("eggnog_sensmode")
     threads:
         config.get("threads",1)
@@ -1046,7 +1046,7 @@ rule run_eggnog:
 rule run_gtdbtk:
     input:
         genome="annotation/dfast/genome.fna",
-        setup_finished=os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_validate")
+        setup_finished=os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB + "_validate")
     output:
         batchfile=temp("annotation/gtdbtk/batchfile.tsv"),
         annotation="annotation/gtdbtk/gtdbtk.summary.tsv"
@@ -1058,7 +1058,7 @@ rule run_gtdbtk:
         "benchmarks/annotation/gtdbtk.txt"
     params:
         outdir="annotation/gtdbtk/run_files",
-        db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
+        db=directory(os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB)),
         genome_id=config.get("sample_id"),
         gtdbtk_mode="--full_tree" if config.get("gtdbtk_mode") == "full_tree" else ""
     threads:
@@ -1074,7 +1074,6 @@ rule run_gtdbtk:
 
 
 if config.get("qc_short_r1") != "None":
-
     # TODO - clarify name compared to previous mapping step
     rule calculate_final_short_read_coverage:
         input:
@@ -1148,10 +1147,10 @@ rule symlink_logs:
         stats="stats"
     run:
         source_relpath = os.path.relpath(str(params.logs),os.path.dirname(str(output.logs)))
-        os.symlink(source_relpath, str(output.logs))
+        os.symlink(source_relpath,str(output.logs))
 
         source_relpath = os.path.relpath(str(params.stats),os.path.dirname(str(output.stats)))
-        os.symlink(source_relpath, str(output.stats))
+        os.symlink(source_relpath,str(output.stats))
 
 
 # TODO - can I remove the use of cd?
@@ -1188,5 +1187,5 @@ rule annotation:
         temp(touch("checkpoints/annotation"))
 
 
-# TODO - add nice summaries of reads removed during QC, polishing stats, assembly stats, circular vs. non.
-#        These aren't in the final ZIP summary at the moment.
+    # TODO - add nice summaries of reads removed during QC, polishing stats, assembly stats, circular vs. non.
+    #        These aren't in the final ZIP summary at the moment.

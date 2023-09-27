@@ -3,5 +3,5 @@ channels:
   - bioconda
   - defaults
 dependencies:
-#  - toulligqc=2.2.1
+  #  - toulligqc=2.2.1
   - bbmap=38.18
