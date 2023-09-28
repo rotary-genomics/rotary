@@ -1,0 +1,15 @@
+[project]
+name = "Rotary"
+version = "TODO"
+description = "Rotary is a snakemake-based scalable pipeline for hybrid assembly of microbial genomes using Nanopore and Illumina data."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [
+  {name = "TODO", email = "TODO"},
+  {name = "TODO", email = "TODO"},
+]
+keywords = ["TODO", "TODO"]
+dependencies = [
+  "TODO",
+]
