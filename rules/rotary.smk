@@ -80,11 +80,11 @@ rule download_hmm:
         "benchmarks/download/hmm_download.txt"
     params:
         db_dir=os.path.join(config.get("db_dir"), "hmm"),
-        url="https://pfam.xfam.org/family/" + config.get("start_hmm_pfam_id") + "/hmm"
+        url="http://pfam-legacy.xfam.org/family/" + config.get("start_hmm_pfam_id") + "/hmm"
     shell:
         """
         mkdir -p {params.db_dir}
-        wget -O {output.hmm} {params.url} 2> {log}
+        wget -O {output.hmm} --no-check-certificate {params.url} 2> {log}
         """
 
 
