@@ -1066,8 +1066,8 @@ rule run_gtdbtk:
     shell:
         """
         printf "{input.genome}\t{params.genome_id}\n" > {output.batchfile}
-        gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {params.outdir} \
-          {params.gtdbtk_mode} --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
+        gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {params.outdir} {params.gtdbtk_mode} \
+           --skip_ani_screen --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
         head -n 1 {params.outdir}/gtdbtk.*.summary.tsv | sort -u > {output.annotation}
         tail -n +2 {params.outdir}/gtdbtk.*.summary.tsv >> {output.annotation}
         """
