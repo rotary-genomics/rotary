@@ -209,7 +209,7 @@ rule build_gtdb_mash_ref_database:
     input:
         os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_validate")
     output:
-        ref_msh_file=os.path.join(config.get("db_dir"),"Mash_GTDB_" + VERSION_GTDB_COMPLETE, 'mash', 'gtdb_ref_sketch.msh')
+        ref_msh_file=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash', 'gtdb_ref_sketch.msh')
     conda:
         "../envs/gtdbtk.yaml"
     log:
@@ -1072,7 +1072,7 @@ rule run_gtdbtk:
     input:
         genome="annotation/dfast/genome.fna",
         setup_finished=os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_validate"),
-        ref_genome_path_list=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash', 'ref_mash_genomes.txt')
+        ref_msh_file=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash', 'gtdb_ref_sketch.msh')
     output:
         batchfile=temp("annotation/gtdbtk/batchfile.tsv"),
         annotation="annotation/gtdbtk/gtdbtk.summary.tsv"
