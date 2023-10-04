@@ -141,7 +141,7 @@ rule download_gtdb_db:
         "benchmarks/download/gtdb_db_download.txt"
     params:
         db_dir_root=os.path.join(config.get("db_dir")),
-        initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB_COMPLETE),
+        initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB_MAIN),
         db_dir=os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB_COMPLETE),
         url="https://data.gtdb.ecogenomic.org/releases/release" + VERSION_GTDB_MAIN + "/" + VERSION_GTDB_COMPLETE + "/auxillary_files/gtdbtk_r" + VERSION_GTDB_MAIN + "_data.tar.gz"
     shell:
