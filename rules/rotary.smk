@@ -205,6 +205,31 @@ rule validate_gtdb:
         touch {output}
         """
 
+rule build_gtdb_mash_ref_database:
+    input:
+        os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_validate")
+    output:
+        ref_msh_file=os.path.join(config.get("db_dir"),"Mash_GTDB_" + VERSION_GTDB_COMPLETE, 'mash', 'gtdb_ref_sketch.msh')
+    conda:
+        "../envs/gtdbtk.yaml"
+    log:
+        "logs/download/gtdb_db_mash.log"
+    benchmark:
+        "benchmarks/download/gtdb_mash.txt"
+    threads:
+        config.get("threads",1)
+    params:
+        fast_ani_genomes_dir= os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE, 'fastani', 'database'),
+        ref_genome_path_list=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash', 'ref_mash_genomes.txt')
+    shell:
+        """
+        find {params.fast_ani_genomes_dir} -name *_genomic.fna.gz -type f > {params.ref_genome_path_list}
+        mash sketch -l {params.ref_genome_path_list} -p {threads} -o {output.ref_msh_file} -k 16 -s 5000 > {log} 2>&1  
+        rm {params.ref_genome_path_list}   
+
+        touch {output}
+        """
+
 
 rule nanopore_qc_filter:
     input:
@@ -1046,7 +1071,8 @@ rule run_eggnog:
 rule run_gtdbtk:
     input:
         genome="annotation/dfast/genome.fna",
-        setup_finished=os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_validate")
+        setup_finished=os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_validate"),
+        ref_genome_path_list=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash', 'ref_mash_genomes.txt')
     output:
         batchfile=temp("annotation/gtdbtk/batchfile.tsv"),
         annotation="annotation/gtdbtk/gtdbtk.summary.tsv"
@@ -1067,7 +1093,7 @@ rule run_gtdbtk:
         """
         printf "{input.genome}\t{params.genome_id}\n" > {output.batchfile}
         gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {params.outdir} {params.gtdbtk_mode} \
-           --mash_db {params.outdir}/{params.genome_id}_sketch.msh --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
+           --mash_db {input.ref_msh_file} --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
         head -n 1 {params.outdir}/gtdbtk.*.summary.tsv | sort -u > {output.annotation}
         tail -n +2 {params.outdir}/gtdbtk.*.summary.tsv >> {output.annotation}
         """
