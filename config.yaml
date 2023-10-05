@@ -67,9 +67,9 @@ evenness_cutoff_short_read: 95
 evenness_cutoff_long_read: "None"
 
 ## Circularization
-# Download the following HMM from Pfam to look for a start gene
-# DnaA is PF00308
-start_hmm_pfam_id: "PF00308"
+# Download the following HMM to use for a start gene.
+# RpoB is TIGR02013.1.
+hmm_url: "https://ftp.ncbi.nlm.nih.gov/hmm/current/hmm_PGAP.HMM/TIGR02013.1.HMM"
 hmmsearch_evalue: 1e-40
 
 ## Annotation
