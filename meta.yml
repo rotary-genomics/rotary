@@ -1,0 +1,29 @@
+package:
+  name: rotary
+  version: "0.3.0"
+
+source:
+  path: .
+
+requirements:
+  host:
+    - python
+    - poetry
+  run:
+    - python=3.9
+    - pandas=1.4
+    - snakemake=7
+    - mamba
+    - wget
+
+build:
+  script: poetry install
+
+test:
+  commands:
+    - rotary -h
+
+about:
+  home: https://github.com/jmtsuji/rotary
+  license: BSD 3
+  license_file: LICENSE

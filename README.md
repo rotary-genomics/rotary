@@ -10,7 +10,7 @@ Assembly/annotation workflow for Nanopore-based microbial genome data containing
 ```bash
 git clone https://github.com/jmtsuji/rotary.git
 
-conda env create -n rotary --file=rotary/envs/rotary.yaml
+conda env create -n rotary --file=rotary/envs/enviroment.yaml
 
 cp rotary/config.yaml myconfig.yaml # Edit this file, especially the first few lines
 
@@ -61,7 +61,7 @@ The pipeline performs long read QC, assembly, end repair, polishing, contig rota
 
 ```bash
 git clone https://github.com/jmtsuji/rotary.git
-conda env create -n rotary --file=rotary/envs/rotary.yaml
+conda env create -n rotary --file=rotary/envs/enviroment.yaml
 ```
 
 ### 2. Copy and fill out the config (YAML) file (`config.yaml`).
