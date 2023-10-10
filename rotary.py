@@ -19,27 +19,72 @@ def main(args):
     :param args: The command line arguments.
     """
     output_dir_path = get_cli_arg_path(args, 'output_dir')
-    database_dir_path = get_cli_arg_path(args, 'database_dir')
     config_path = get_cli_arg_path(args, 'config')
+    database_dir_path = get_cli_arg_path(args, 'database_dir')
 
+    os.makedirs(output_dir_path, exist_ok=True)
 
     if hasattr(args, 'run'):
         jobs = args.jobs
         snakemake_args = args.snakemake_args
 
         if hasattr(args, 'long'):
-            print('has input files')
             long_path =  get_cli_arg_path(args, 'long')
             left_path = get_cli_arg_path(args, 'left')
             right_path = get_cli_arg_path(args, 'right')
-            sample = Sample(long_path=long_path,short_path_one=left_path,short_path_two=right_path)
+            sequencing_files = [SequencingFile(path) for path in [long_path, left_path, right_path]]
+            sample = Sample(long_file=sequencing_files[0],
+                            short_file_one=sequencing_files[1],
+                            short_file_two=sequencing_files[2])
             create_sample_tsv(output_dir_path, [sample])
         else:
             print('has directory')
     elif hasattr(args, 'init'):
-        print('entered init')
+        init(args, output_dir_path)
     else:
         parser.print_help()
+
+
+def init(args, output_dir_path):
+    """
+    Runs code for the init command-line mode. Sets up a rotary project directory.
+
+    :param args: The command-line arguments.
+    :param output_dir_path: The path to the output Rotary directory.
+    """
+    input_path = get_cli_arg_path(args, 'input_dir')
+    fastq_files = []
+    for file in os.listdir(input_path):
+        if 'fastq' in file:
+            file = SequencingFile(file_path=(os.path.join(input_path, file)))
+            fastq_files.append(file)
+    samples_files = {}
+    for file in fastq_files:
+        identifier = file.identifier
+        if identifier in samples_files.keys():
+            samples_files[identifier].append(file)
+        else:
+            samples_files[identifier] = [file]
+    samples = []
+    for identifier, sequencing_files in samples_files.items():
+        if len(sequencing_files) != 3:
+            raise ValueError('Sample {} should have three sequencing files'.format(identifier))
+
+        long_file = None
+        left_short_file = None
+        right_short_file = None
+        for file in sequencing_files:
+            if file.r_value == 'R1':
+                left_short_file = file
+            elif file.r_value == 'R2':
+                right_short_file = file
+            else:
+                long_file = file
+
+        sample = Sample(long_file, left_short_file, right_short_file)
+        samples.append(sample)
+    create_sample_tsv(output_dir_path, samples)
+
 
 def create_sample_tsv(output_dir_path, samples):
     """
@@ -53,44 +98,54 @@ def create_sample_tsv(output_dir_path, samples):
         header = ['sample_id', 'long-read','short-read_R1', 'short-read_R2']
         tsv_writer.writerow(header)
         for current_sample in samples:
-            row = [current_sample.identifier, current_sample.long_read_file_path,
-                   current_sample.short_read_left_file_path, current_sample.short_read_right_file_path]
-            tsv_writer.writerow(row)
+            tsv_writer.writerow(current_sample.sample_file_row)
+
+class SequencingFile(object):
+    """
+    An object representing a series a FASTQ file.
+    """
+    def __init__(self, file_path):
+        self.path = file_path
+        self.name = os.path.basename(self.path)
+
+        if 'fastq' not in self.name:
+            raise ValueError('{} is not a fastq file.'.format(self.name))
+
+        if '_' in self.name:
+            identifier, remaining = self.name.split('_', 1)  # Split on first _ if found.
+        else:
+            identifier, remaining = self.name.split('.', 1)  # Split on file extension . if _ not found.
+
+        self.identifier = identifier
+
+        # Check the remainder of the file name (e.g. _blam_blam_blam_R1.fastq.gz) for R1 or R2
+        r_value = short_read_r_regex.findall(remaining)
+        if r_value:
+            self.r_value = r_value[0].upper()
+        else:
+            self.r_value = None
 
 class Sample(object):
     """
     An object representing a series of FASTQ files that all belong to the same sample.
     """
-    def __init__(self, long_path, short_path_one, short_path_two):
-        file_paths = [long_path, short_path_one, short_path_two]
-        file_names = [os.path.basename(path) for path in file_paths]
-
-        for name in file_names:
-            if 'fastq' not in name:
-                raise ValueError('{} is not a fastq file.'.format(name))
-
-        # Split file names into two lists that either contain the sample identifier of
-        # each file name or the remaining part of the file name after the identifier is removed.
-        current_id = None
-        identifiers = []
-        file_name_no_identifier = []
-        for file in file_names:
-            if '_' in file:
-                current_id, remaining = file.split('_', 1) # Split on first _ if found.
-            else:
-                current_id, remaining = file.split('.', 1) # Split on file extension . if _ not found.
-            identifiers.append(current_id)
-            file_name_no_identifier.append(remaining)
+    def __init__(self, long_file: SequencingFile, short_file_one: SequencingFile, short_file_two: SequencingFile):
+        sequencing_files = [long_file, short_file_one, short_file_two]
+        identifiers = [file.identifier for file in sequencing_files]
 
         # The identifiers should all be the same. If not raise and exception.
         if len(set(identifiers)) == 1:
-            self.identifier = current_id
+            self.identifier = identifiers[0]
         else:
             raise ValueError('Sample identifiers of the input fastq files do not match: {}'.format(identifiers))
 
         # Check for R1 or R2 in the file names with identifier removed.
-        r_matches = [short_read_r_regex.findall(name) for name in file_name_no_identifier]
+        r_matches = [file.r_value for file in sequencing_files]
         long_r_value, short_one_r_value, short_two_r_value = r_matches
+
+        long_path = long_file.path
+        short_path_one = short_file_one.path
+        short_path_two = short_file_two.path
 
         # The long read file should not have a R1 or R2.
         if not long_r_value:
@@ -99,11 +154,9 @@ class Sample(object):
             raise ValueError("The long-read file ({}) should not have an R designator.".format(long_path))
 
         # The short read files should both have R1s or R2s.
-        if short_one_r_value and short_two_r_value:
-            short_one_r_value = short_one_r_value[0].upper()
-            short_two_r_value = short_two_r_value[0].upper()
-        else:
-            raise ValueError("Short-read file '{}' or '{}' is missing its R designator.".format(short_path_one,short_path_two))
+        if not short_one_r_value or not short_two_r_value:
+            raise ValueError("Short-read file '{}' or '{}' is missing its R designator.".format(short_path_one,
+                                                                                                short_path_two))
 
         # The short read files should not have the same R1 or R2.
         if short_one_r_value == short_two_r_value:
@@ -117,6 +170,14 @@ class Sample(object):
         else:
             self.short_read_left_file_path = short_path_two
             self.short_read_right_file_path = short_path_one
+
+    @property
+    def sample_file_row(self):
+        """
+        :return: Returns a list containing the sample identifier and the paths to sample's the input files.
+        """
+        return [self.identifier, self.long_read_file_path, self.short_read_left_file_path, self.short_read_right_file_path]
+
 
 def get_cli_arg_path(args, argument):
     """
@@ -190,7 +251,7 @@ if __name__ == '__main__':
     parser_init.add_argument('-i', '--input_dir', metavar='PATH', required=True,
                              help='path to a directory containing Oxford Nanopore long-read and Illumina short-read .fastq(.gz) files')
 
-    parser_run.set_defaults(init=True)
+    parser_init.set_defaults(init=True)
 
     cli_args = parser.parse_args()
     main(cli_args)
