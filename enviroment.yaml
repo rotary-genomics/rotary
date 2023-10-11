@@ -8,3 +8,4 @@ dependencies:
   - snakemake=7
   - mamba
   - wget
+  - ruamel.yaml

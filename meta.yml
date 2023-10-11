@@ -15,6 +15,7 @@ requirements:
     - snakemake=7
     - mamba
     - wget
+    - ruamel.yaml
 
 build:
   script: poetry install
