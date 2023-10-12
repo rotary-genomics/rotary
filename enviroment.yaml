@@ -9,3 +9,4 @@ dependencies:
   - mamba
   - wget
   - ruamel.yaml
+  - psutil

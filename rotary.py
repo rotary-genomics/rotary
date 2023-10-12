@@ -10,6 +10,8 @@ import argparse
 import os
 import csv
 import re
+
+import psutil
 from ruamel.yaml import YAML
 
 yaml = YAML()
@@ -30,13 +32,19 @@ def main(args):
     os.makedirs(output_dir_path, exist_ok=True)
 
     if not config_path:
-        default_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
-        config_path = default_config_path
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
 
     with open(config_path) as config_file:
         config = yaml.load(config_file)
 
-    '''
+    if database_dir_path:
+        config['db_dir'] = database_dir_path
+    else:
+        config['db_dir'] = os.path.join(output_dir_path, 'databases')
+
+    config['threads'] = os.cpu_count()
+    config['memory'] = round(psutil.virtual_memory().total / (1024 ** 3))
+
     if hasattr(args, 'run'):
         print('blam')
     elif hasattr(args, 'run_one'):
@@ -49,11 +57,19 @@ def main(args):
                         short_file_two=sequencing_files[2])
         create_sample_tsv(output_dir_path, [sample])
 
+        config['sample_id'] = sample.identifier
+        config['longreads'] = sample.long_read_path
+        config['qc_short_r1'] = sample.short_read_left_path
+        config['qc_short_r2'] = sample.short_read_right_path
+
+        output_directory_config_path = os.path.join(output_dir_path, 'config.yaml')
+        with open(output_directory_config_path, 'w') as config_file:
+            yaml.dump(config, config_file)
+
     elif hasattr(args, 'init'):
         init(args, output_dir_path)
     else:
-        parser.print_help() 
-    '''
+        parser.print_help()
 
 def init(args, output_dir_path):
     """
@@ -163,7 +179,7 @@ class Sample(object):
 
         # The long read file should not have a R1 or R2.
         if not long_r_value:
-            self.long_read_file_path = long_path
+            self.long_read_path = long_path
         else:
             raise ValueError("The long-read file ({}) should not have an R designator.".format(long_path))
 
@@ -179,18 +195,18 @@ class Sample(object):
 
         # Assign the file with R1 to the left file path and the file with R2 to the right filepath.
         if short_one_r_value == 'R1':
-            self.short_read_left_file_path = short_path_one
-            self.short_read_right_file_path = short_path_two
+            self.short_read_left_path = short_path_one
+            self.short_read_right_path = short_path_two
         else:
-            self.short_read_left_file_path = short_path_two
-            self.short_read_right_file_path = short_path_one
+            self.short_read_left_path = short_path_two
+            self.short_read_right_path = short_path_one
 
     @property
     def sample_file_row(self):
         """
         :return: Returns a list containing the sample identifier and the paths to sample's the input files.
         """
-        return [self.identifier, self.long_read_file_path, self.short_read_left_file_path, self.short_read_right_file_path]
+        return [self.identifier, self.long_read_path, self.short_read_left_path, self.short_read_right_path]
 
 
 def get_cli_arg_path(args, argument):

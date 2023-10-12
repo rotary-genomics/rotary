@@ -16,6 +16,7 @@ requirements:
     - mamba
     - wget
     - ruamel.yaml
+    - psutil
 
 build:
   script: poetry install
