@@ -79,4 +79,4 @@ hmmsearch_evalue: 1e-40
 gtdbtk_mode: "default"
 # EggNOG annotation sensitivity mode (using DIAMOND)
 #    Options: fast, mid-sensitive, sensitive, more-sensitive, very-sensitive, ultra-sensitive
-eggnog_sensmode: "ultra-sensitive"
+eggnog_sensmode: "sensitive"
