@@ -26,8 +26,12 @@ def main(args):
     output_dir_path = get_cli_arg_path(args, 'output_dir')
     config_path = get_cli_arg_path(args, 'config')
     database_dir_path = get_cli_arg_path(args, 'database_dir')
-    jobs = args.jobs
-    snakemake_args = args.snakemake_args
+
+    if hasattr(args, 'jobs'):
+        jobs = args.jobs
+
+    if hasattr(args, 'snakemake_args'):
+        snakemake_args = args.snakemake_args
 
     os.makedirs(output_dir_path, exist_ok=True)
 
@@ -45,37 +49,94 @@ def main(args):
     config['threads'] = os.cpu_count()
     config['memory'] = round(psutil.virtual_memory().total / (1024 ** 3))
 
+    # Check for the presence of the run configuration files in the output directory.
+    run_files = ['config.yaml', 'samples.tsv']
+    run_file_presences = check_for_files(directory_path=output_dir_path,
+                                         file_names=run_files)
+
+    if run_file_presences == [False, False]:
+        has_run_files = False
+    elif run_file_presences == [True, True]:
+        has_run_files = True
+    else:
+        raise ValueError('The output directory is missing a run configuration file: {}'.format(zip(run_files,
+                                                                                                   run_file_presences)))
+    existing_message = 'Existing run configuration files {} in the output directory.'.format(run_files)
+
     if hasattr(args, 'run'):
-        print('blam')
+        if has_run_files:
+            print('starting run')
+        else:
+            raise FileNotFoundError('Missing run configuration files {}, run either the run_one or init subcommands.'.format(run_files))
     elif hasattr(args, 'run_one'):
-        long_path = get_cli_arg_path(args, 'long')
-        left_path = get_cli_arg_path(args, 'left')
-        right_path = get_cli_arg_path(args, 'right')
-        sequencing_files = [SequencingFile(path) for path in [long_path, left_path, right_path]]
-        sample = Sample(long_file=sequencing_files[0],
-                        short_file_one=sequencing_files[1],
-                        short_file_two=sequencing_files[2])
-        create_sample_tsv(output_dir_path, [sample])
-
-        config['sample_id'] = sample.identifier
-        config['longreads'] = sample.long_read_path
-        config['qc_short_r1'] = sample.short_read_left_path
-        config['qc_short_r2'] = sample.short_read_right_path
-
-        output_directory_config_path = os.path.join(output_dir_path, 'config.yaml')
-        with open(output_directory_config_path, 'w') as config_file:
-            yaml.dump(config, config_file)
-
+        if has_run_files:
+            raise FileExistsError(existing_message)
+        else:
+            run_one(args, config, output_dir_path)
     elif hasattr(args, 'init'):
-        init(args, output_dir_path)
+        if has_run_files:
+            raise FileExistsError(existing_message)
+        else:
+            init(args, config, output_dir_path)
     else:
         parser.print_help()
 
-def init(args, output_dir_path):
+def check_for_files(directory_path, file_names: list =None):
+    """
+    Checks if there are specific files in a given directory.
+
+    :param directory_path: The path to the directory to check.
+    :param file_names: A list of file names to check for in the output directory.
+    :return: A list of true/false values for if each file is present.
+    """
+
+    run_paths = [os.path.join(directory_path, file_name) for file_name in file_names]
+
+    return [os.path.exists(path) for path in run_paths]
+
+
+def write_config_file(config, output_dir_path):
+    """
+    Write the updated config to the output directory.
+
+    :param config: The config information as produced by ruamel.yaml parsing of a config.yaml file.
+    :param output_dir_path: The path to the output directory.
+    :return: The absolute path the output config file.
+    """
+    output_directory_config_path = os.path.join(output_dir_path, 'config.yaml')
+    with open(output_directory_config_path, 'w') as config_file:
+        yaml.dump(config, config_file)
+
+    return output_directory_config_path
+
+def run_one(args, config, output_dir_path):
+    """
+    Run the Rotary workflow in a single sample.
+
+    :param args: The command-line arguments.
+    :param config: The config information as produced by ruamel.yaml parsing of a config.yaml file.
+    :param output_dir_path: The path to the output Rotary directory.
+    """
+    long_path = get_cli_arg_path(args, 'long')
+    left_path = get_cli_arg_path(args, 'left')
+    right_path = get_cli_arg_path(args, 'right')
+    sequencing_files = [SequencingFile(path) for path in [long_path, left_path, right_path]]
+    sample = Sample(long_file=sequencing_files[0],
+                    short_file_one=sequencing_files[1],
+                    short_file_two=sequencing_files[2])
+    create_sample_tsv(output_dir_path, [sample])
+    config['sample_id'] = sample.identifier
+    config['longreads'] = sample.long_read_path
+    config['qc_short_r1'] = sample.short_read_left_path
+    config['qc_short_r2'] = sample.short_read_right_path
+    config_path = write_config_file(output_dir_path=output_dir_path, config=config)
+
+def init(args, config, output_dir_path):
     """
     Runs code for the init command-line mode. Sets up a rotary project directory.
 
     :param args: The command-line arguments.
+    :param config: The config information as produced by ruamel.yaml parsing of a config.yaml file.
     :param output_dir_path: The path to the output Rotary directory.
     """
     input_path = get_cli_arg_path(args, 'input_dir')
@@ -114,6 +175,8 @@ def init(args, output_dir_path):
         samples.append(sample)
 
     create_sample_tsv(output_dir_path, samples)
+
+    config_path = write_config_file(config, output_dir_path)
 
 
 def create_sample_tsv(output_dir_path, samples):
