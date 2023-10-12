@@ -32,8 +32,8 @@ rule all:
 
 rule install_internal_scripts:
     output:
-        end_repair=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"scripts","flye_end_repair.sh"),
-        end_repair_utils=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"scripts","flye_end_repair_utils.py"),
+        end_repair=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"rotary","flye_end_repair.sh"),
+        end_repair_utils=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"rotary","flye_end_repair_utils.py"),
         install_finished=os.path.join(config.get("db_dir"),"checkpoints","internal_scripts_" + VERSION)
     log:
         "logs/download/install_internal_scripts.log"
@@ -322,8 +322,8 @@ rule assembly_end_repair:
         qc_long_reads="qc_long/nanopore_qc.fastq.gz",
         assembly="assembly/flye/assembly.fasta",
         info="assembly/flye/assembly_info.txt",
-        end_repair=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"scripts","flye_end_repair.sh"),
-        end_repair_utils=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"scripts","flye_end_repair_utils.py"),
+        end_repair=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"rotary","flye_end_repair.sh"),
+        end_repair_utils=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"rotary","flye_end_repair_utils.py"),
         install_finished=os.path.join(config.get("db_dir"),"checkpoints","internal_scripts_" + VERSION)
     output:
         assembly="assembly/end_repair/repaired.fasta",

@@ -1,19 +1,28 @@
-[tool.poetry]
+[project]
 name = "Rotary"
 version = "0.3.0"
 description = "Rotary is a snakemake-based scalable pipeline for hybrid assembly of microbial genomes using Nanopore and Illumina data."
 authors = [
-  {name = "TODO", email = "TODO"},
-  {name = "TODO", email = "TODO"},
+  "Jackson Tsuji",
+  "Lee Bergstrand"
 ]
 license = "LICENSE"
 readme = "README.md"
 
-[tool.poetry.dependencies]
-python = "3.9"
-pandas='1.4'
-snakemake='7'
+dependencies = [
+  "python=3.9.*",
+  'pandas=1.4.*',
+  'snakemake=7.*',
+  'ruamel.yaml=0.17.35',
+  'psutil=5.9.5'
+]
+
+[tool.setuptools.packages]
+find = {}
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+rotary = "scripts:rotary:main"

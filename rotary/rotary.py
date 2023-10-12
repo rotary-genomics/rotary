@@ -175,8 +175,7 @@ def init(args, config, output_dir_path):
         samples.append(sample)
 
     create_sample_tsv(output_dir_path, samples)
-
-    config_path = write_config_file(config, output_dir_path)
+    write_config_file(config, output_dir_path)
 
 
 def create_sample_tsv(output_dir_path, samples):
