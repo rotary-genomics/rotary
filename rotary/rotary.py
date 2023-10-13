@@ -10,6 +10,8 @@ import csv
 import os
 import sys
 
+from sh import snakemake
+
 import psutil
 from ruamel.yaml import YAML
 
@@ -120,6 +122,46 @@ def run_one(args, config, output_dir_path):
     config['qc_short_r1'] = sample.short_read_left_path
     config['qc_short_r2'] = sample.short_read_right_path
     config_path = write_config_file(output_dir_path=output_dir_path, config=config)
+    conda_env_directory = os.path.join(output_dir_path, 'conda_env')
+    os.makedirs(conda_env_directory, exist_ok=True)
+    run_snakemake(config_path, output_dir_path, conda_env_directory)
+
+
+def run_snakemake(config_path, output_dir_path, conda_env_directory):
+    """
+    Run the snakemake Workflow.
+
+    :param conda_env_directory: Path to the conda environment directory.
+    :param output_dir_path: Path to the output directory.
+    :param config_path: The path to the config file.
+    """
+    snake_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rules', 'rotary.smk')
+
+    '''
+    # Example of running the snakemake file directly for reference.
+    snakemake --snakefile rotary/rules/rotary.smk \
+  --configfile myconfig.yaml \
+  --directory output_dir \
+  --conda-prefix conda_envs \
+  --jobs 20 \
+  --use-conda \
+  --conda-frontend mamba \
+  --rerun-incomplete \
+  --reason \
+  --printshellcmds 2>&1 | \
+  tee rotary.log
+    '''
+
+    for output_line in snakemake('--snakefile', snake_file_path,
+                                 '--configfile', config_path,
+                                 '--directory', output_dir_path,
+                                 '--conda-prefix', conda_env_directory,
+                                 '--conda-frontend', 'mamba',
+                                 '--use-conda',  '--reason',
+                                 '--rerun-incomplete',
+                                 '--printshellcmds', '--dry-run',
+                                 _iter=True):
+        print(output_line)
 
 
 def init(args, config, output_dir_path):

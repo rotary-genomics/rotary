@@ -11,10 +11,12 @@ license = {file = "LICENSE"}
 readme = "README.md"
 
 dependencies = [
-  "pandas ~=1.4",
-  "snakemake ~=7.32",
-  "ruamel.yaml ~=0.17",
-  "psutil ~=5.9"
+    "pandas ~=1.4",
+    "snakemake ~=7.32",
+    "ruamel.yaml ~=0.17",
+    "psutil ~=5.9",
+    "sh ~=2.0",
+
 ]
 
 [tool.setuptools.packages]
