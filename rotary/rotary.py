@@ -10,6 +10,7 @@ import argparse
 import os
 import csv
 import re
+import sys
 
 import psutil
 from ruamel.yaml import YAML
@@ -35,7 +36,12 @@ def main():
     if hasattr(args, 'snakemake_args'):
         snakemake_args = args.snakemake_args
 
-    os.makedirs(output_dir_path, exist_ok=True)
+    try:
+        os.makedirs(output_dir_path, exist_ok=True)
+    except TypeError:
+        # Catches error that occurs if you run just 'rotary' rather than 'rotary -h'
+        parser.print_help()
+        sys.exit()
 
     if not config_path:
         config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
