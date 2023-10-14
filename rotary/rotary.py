@@ -10,7 +10,7 @@ import csv
 import os
 import sys
 
-from sh import snakemake
+from sh import snakemake, ErrorReturnCode
 
 import psutil
 from ruamel.yaml import YAML
@@ -149,17 +149,21 @@ def run_rotary_workflow(config_path, output_dir_path, conda_env_directory, jobs=
     snake_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rules', 'rotary.smk')
 
     snakemake_args = ['--snakefile', snake_file_path, '--configfile', config_path, '--directory',
-                          output_dir_path, '--conda-prefix', conda_env_directory, '--conda-frontend',
-                          'mamba', '--jobs', jobs, '--use-conda', '--reason', '--rerun-incomplete',
-                          '--printshellcmds']
+                      output_dir_path, '--conda-prefix', conda_env_directory, '--conda-frontend',
+                      'mamba', '--jobs', jobs, '--use-conda', '--reason', '--rerun-incomplete',
+                      '--printshellcmds']
 
     if snakemake_custom_args:
         snakemake_args = snakemake_args + snakemake_custom_args
 
     base_snakemake = snakemake.bake(*snakemake_args)
 
-    for output_line in  base_snakemake(_iter=True):
-        print(output_line)
+    try:
+        for output_line in  base_snakemake(_iter=True):
+            print(output_line)
+    except ErrorReturnCode as error:
+        print(error.stderr)
+        sys.exit()
 
 
 def init(args, config, output_dir_path):
