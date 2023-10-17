@@ -7,28 +7,27 @@ Assembly/annotation workflow for Nanopore-based microbial genome data containing
 
 ## Quick start
 
+### Install
 ```bash
 git clone https://github.com/jmtsuji/rotary.git
 
-conda env create -n rotary --file=rotary/envs/enviroment.yaml
-
-cp rotary/config.yaml myconfig.yaml # Edit this file, especially the first few lines
+conda env create -n rotary --file=rotary/enviroment.yaml
 
 conda activate rotary
 
-mkdir -p output_dir conda_envs
+cd rotary
 
-snakemake --snakefile rotary/rules/rotary.smk \
-  --configfile myconfig.yaml \
-  --directory output_dir \
-  --conda-prefix conda_envs \
-  --jobs 20 \
-  --use-conda \
-  --conda-frontend mamba \
-  --rerun-incomplete \
-  --reason \
-  --printshellcmds 2>&1 | \
-  tee rotary.log
+pip install --editable .
+```
+
+### Run One Sample
+```bash
+mkdir output_dir
+mkdir rotary_db_dir
+
+cd output_dir
+
+rotary run_one -l s1_long.fastq.gz -r1 s1_R1.fastq.gz -r2 s1_R2.fastq.gz -d ../rotary_db_dir
 ```
 
 ## Description
