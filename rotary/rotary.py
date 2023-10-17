@@ -62,8 +62,13 @@ def main():
         parser.print_help()
         sys.exit()
 
-    if not config_path:
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
+    if not config_path: # If no config is specified via CLI.
+        if hasattr(args, 'run'):
+            # If the run sub-command was used, use the config that is in the output dir.
+            config_path = os.path.join(output_dir_path, 'config.yaml')
+        else:
+            # Else get the default config that is saved with this python package.
+            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
 
     with open(config_path) as config_file:
         config = yaml.load(config_file)
@@ -96,12 +101,10 @@ def main():
     # Select the sub-command to run.
     if hasattr(args, 'run'):
         if has_run_files:
-            config_path = os.path.join(output_dir_path, 'config.yaml') # Use config that is in the output dir.
             run_rotary_workflow(config_path=config_path, output_dir_path=output_dir_path, jobs=jobs,
                                 conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
         else:
-            raise FileNotFoundError(
-                'Missing run configuration files {}, run either the run_one or init subcommands.'.format(run_files))
+            raise FileNotFoundError('Missing run configuration files {}, run either the run_one or init subcommands.'.format(run_files))
     elif hasattr(args, 'run_one'):
         if has_run_files:
             if override_existing_files:
