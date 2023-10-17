@@ -8,6 +8,7 @@ Description: A command-line tool for the Rotary hybrid assembly workflow.
 import argparse
 import csv
 import os
+import subprocess
 import sys
 
 import psutil
@@ -39,9 +40,20 @@ def main():
 
     if hasattr(args, 'jobs'):
         jobs = args.jobs
+    else:
+        jobs = None
 
     if hasattr(args, 'snakemake_args'):
         snakemake_args = args.snakemake_args
+        if snakemake_args:
+            snakemake_args = snakemake_args.split()
+    else:
+        snakemake_args = None
+
+    if hasattr(args, 'force'):
+        override_existing_files = args.force
+    else:
+        override_existing_files = None
 
     try:
         os.makedirs(output_dir_path, exist_ok=True)
@@ -50,8 +62,13 @@ def main():
         parser.print_help()
         sys.exit()
 
-    if not config_path:
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
+    if not config_path: # If no config is specified via CLI.
+        if hasattr(args, 'run'):
+            # If the run sub-command was used, use the config that is in the output dir.
+            config_path = os.path.join(output_dir_path, 'config.yaml')
+        else:
+            # Else get the default config that is saved with this python package.
+            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
 
     with open(config_path) as config_file:
         config = yaml.load(config_file)
@@ -78,18 +95,24 @@ def main():
                                                                                                    run_file_presences)))
     existing_message = 'Existing run configuration files {} in the output directory.'.format(run_files)
 
+    conda_env_directory = os.path.join(output_dir_path, 'conda_env')
+    os.makedirs(conda_env_directory, exist_ok=True)
+
     # Select the sub-command to run.
     if hasattr(args, 'run'):
         if has_run_files:
-            print('starting run')
+            run_rotary_workflow(config_path=config_path, output_dir_path=output_dir_path, jobs=jobs,
+                                conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
         else:
-            raise FileNotFoundError(
-                'Missing run configuration files {}, run either the run_one or init subcommands.'.format(run_files))
+            raise FileNotFoundError('Missing run configuration files {}, run either the run_one or init subcommands.'.format(run_files))
     elif hasattr(args, 'run_one'):
         if has_run_files:
-            raise FileExistsError(existing_message)
+            if override_existing_files:
+                run_one(args, config, output_dir_path, conda_env_directory, jobs, snakemake_args)
+            else:
+                raise FileExistsError(existing_message)
         else:
-            run_one(args, config, output_dir_path)
+            run_one(args, config, output_dir_path, conda_env_directory, jobs, snakemake_args)
     elif hasattr(args, 'init'):
         if has_run_files:
             raise FileExistsError(existing_message)
@@ -99,13 +122,16 @@ def main():
         parser.print_help()
 
 
-def run_one(args, config, output_dir_path):
+def run_one(args, config, output_dir_path, conda_env_directory, jobs, snakemake_args):
     """
     Run the Rotary workflow in a single sample.
 
     :param args: The command-line arguments.
     :param config: The config information as produced by ruamel.yaml parsing of a config.yaml file.
     :param output_dir_path: The path to the output Rotary directory.
+    :param conda_env_directory: The path to where snakemake should store its conda environments.
+    :param jobs: The number of system CPU cores to use.
+    :param snakemake_args: Custom CLI args to be passed to snakemake.
     """
     long_path = get_cli_arg_path(args, 'long')
     left_path = get_cli_arg_path(args, 'left')
@@ -120,6 +146,42 @@ def run_one(args, config, output_dir_path):
     config['qc_short_r1'] = sample.short_read_left_path
     config['qc_short_r2'] = sample.short_read_right_path
     config_path = write_config_file(output_dir_path=output_dir_path, config=config)
+    run_rotary_workflow(config_path=config_path, output_dir_path=output_dir_path, jobs=jobs,
+                        conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
+
+
+def run_rotary_workflow(config_path, output_dir_path, conda_env_directory, jobs=None, snakemake_custom_args=None):
+    """
+    Run the rotary snakemake workflow.
+
+    :param conda_env_directory: Path to the conda environment directory.
+    :param output_dir_path: Path to the output directory.
+    :param config_path: The path to the config file.
+    :param jobs: The number of system CPU cores to use.
+    :param snakemake_custom_args: Custom CLI args to be passed to snakemake.
+    """
+    snake_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rules', 'rotary.smk')
+
+    snakemake_args = ['snakemake', '--snakefile', snake_file_path, '--configfile', config_path, '--directory',
+                      output_dir_path, '--conda-prefix', conda_env_directory, '--conda-frontend',
+                      'mamba', '--use-conda', '--reason', '--rerun-incomplete', '--printshellcmds']
+
+    if jobs:
+        snakemake_args = snakemake_args + ['--jobs', jobs]
+    else:
+        snakemake_args = snakemake_args + ['--jobs', str(os.cpu_count())]
+
+    if snakemake_custom_args:
+        snakemake_args = snakemake_args + snakemake_custom_args
+
+    cmd = ' '.join(snakemake_args)
+
+    print('Executing: {}'.format(cmd))
+    try:
+        subprocess.check_call(cmd, shell=True)
+    except subprocess.CalledProcessError as e:
+        print(e)
+        sys.exit(1)
 
 
 def init(args, config, output_dir_path):
@@ -217,9 +279,9 @@ def parse_cli():
     parser_run.add_argument('-o', '--output_dir', metavar='PATH', default=os.getcwd(),
                             help='path the output/rotary project directory')
     parser_run.add_argument('-j', '--jobs', metavar='JOBS',
-                            help='number of jobs that rotary should use (overrides config)')
-    parser_run.add_argument('-s', '--snakemake_args', metavar='kwargs', nargs='*',
-                            help='quoted string with arguments to be passed to snakemake')
+                            help='number of threads that rotary should use (overrides config)')
+    parser_run.add_argument('-s', '--snakemake_args', metavar='',
+                            help="quoted string with arguments to be passed to snakemake. i.e., -s'--dag' (no space after -s)")
     # Add attribute to tell main() what sub-command was called.
     parser_run.set_defaults(run=True)
 
@@ -240,9 +302,11 @@ def parse_cli():
     parser_run_one.add_argument('-d', '--database_dir', metavar='PATH',
                                 help='path the rotary database directory')
     parser_run_one.add_argument('-j', '--jobs', metavar='JOBS',
-                                help='number of jobs that rotary should use (overrides config)')
-    parser_run_one.add_argument('-s', '--snakemake_args', metavar='kwargs', nargs='*',
-                                help='quoted string with arguments to be passed to snakemake')
+                                help='number of threads that rotary should use (overrides config)')
+    parser_run_one.add_argument('-s', '--snakemake_args', metavar='',
+                                help="quoted string with arguments to be passed to snakemake. i.e., -s'--dag' (no space after -s)")
+    parser_run_one.add_argument('-f', '--force', action='store_true',
+                                help="override existing run configuration files.")
     # Add attribute to tell main() what sub-command was called.
     parser_run_one.set_defaults(run_one=True)
 
