@@ -776,7 +776,7 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
 
     logger.info(f'End repair finished. Output contigs saved at {end_repaired_contigs_filepath}.')
 
-    if len(failed_contig_names) != 1:
+    if len(failed_contig_names) != 0:
         logger.warning(f'{len(failed_contig_names)} contigs could not be circularized - see above for details')
 
 
@@ -911,25 +911,23 @@ def parse_cli():
                                 help='Minimum distance (bp) between end of merge contig and nucmer hit '
                                      '(default: 100)')
 
-    workflow_settings.add_argument('-k', '--keep_going_with_failed_contigs', required=False, default=False, type=bool,
-                                   choices=[True, False],
-                                   help='Set this flag to True to continue running this script even if some contigs '
-                                        'cannot be circularized and end-repaired. The original (non-repaired) versions '
-                                        'of those contigs will be output (default: False)')
+    workflow_settings.add_argument('-k', '--keep_going_with_failed_contigs', required=False, action='store_true',
+                                   help='Set this flag to continue running this script even if some contigs '
+                                        'cannot be circularized and end-repaired. Non-repaired but circular contigs '
+                                        'WILL NOT be output, but linear and successfully circularized contigs will '
+                                        '(this will be addressed in a future fix)')
     workflow_settings.add_argument('-T', '--length_thresholds', required=False,
                                    default='100000,75000,50000,25000,5000,2500,1000', type=str,
                                    help='Comma-separated list of length thresholds for reassembly around the contig '
                                         'ends (bp) (default: 100000,75000,50000,25000,5000,2500,1000)')
-    workflow_settings.add_argument('-c', '--custom_assembly_info_file', required=False, default=False, type=bool,
-                                   choices=[True, False],
-                                   help='Whether to use a custom tab-separated file to specify the circular vs. linear '
-                                        'status of each contig in the assembly or to use the assembly_info.txt file '
-                                        'output by Flye (default). Set to True to use the custom tab-separated file, '
-                                        'provided in place of assembly.txt as a positional argument. The custom-tab '
-                                        'separated file must have the following format: no headers; first column is '
-                                        'the contig names; second column is the status of the contigs, either '
-                                        '"circular" or "linear". Any contig names not in this file will be dropped by '
-                                        'the script! (default: False)')
+    workflow_settings.add_argument('-c', '--custom_assembly_info_file', required=False, action='store_true',
+                                   help='Set this flag if you provide a custom tab-separated file to specify the '
+                                        'circular vs. linear status of each contig in the assembly, rather than using '
+                                        'the assembly_info.txt file output by Flye (default), as your argument to -i. '
+                                        'The custom-tab separated file must have the following format: no headers; '
+                                        'first column is the contig names; second column is the status of the contigs, '
+                                        'either "circular" or "linear". Any contig names not in this file will be '
+                                        'dropped by the script!')
     workflow_settings.add_argument('-t', '--threads', required=False, default=1, type=int,
                                    help='Number of processors threads to use (default: 1)')
     workflow_settings.add_argument('-m', '--threads_mem', required=False, default=1, type=float,
