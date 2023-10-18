@@ -20,8 +20,7 @@ class SequencingFile(object):
         self.path = file_path
         self.name = os.path.basename(self.path)
 
-        if 'fastq' not in self.name:
-            raise ValueError('{} is not a fastq file.'.format(self.name))
+            raise ValueError(f'{self.name} is not a fastq file.')
 
         if '_' in self.name:
             identifier, remaining = self.name.split('_', 1)  # Split on first _ if found.
@@ -51,7 +50,7 @@ class Sample(object):
         if len(set(identifiers)) == 1:
             self.identifier = identifiers[0]
         else:
-            raise ValueError('Sample identifiers of the input fastq files do not match: {}'.format(identifiers))
+            raise ValueError(f'Sample identifiers of the input fastq files do not match: {identifiers}')
 
         # Check for R1 or R2 in the file names with identifier removed.
         r_matches = [file.r_value for file in sequencing_files]
@@ -65,17 +64,16 @@ class Sample(object):
         if not long_r_value:
             self.long_read_path = long_path
         else:
-            raise ValueError("The long-read file ({}) should not have an R designator.".format(long_path))
+            raise ValueError(f"The long-read file ({long_path}) should not have an R designator.")
 
         # The short read files should both have R1s or R2s.
         if not short_one_r_value or not short_two_r_value:
-            raise ValueError("Short-read file '{}' or '{}' is missing its R designator.".format(short_path_one,
-                                                                                                short_path_two))
+            raise ValueError(f"Short-read file '{short_path_one}' or '{short_path_two}' is missing its R designator.")
 
         # The short read files should not have the same R1 or R2.
         if short_one_r_value == short_two_r_value:
-            matching_r_values_message = 'Left ({}) and right ({}) short-read files must have different R designators.'
-            raise ValueError(matching_r_values_message.format(short_path_one, short_path_two))
+            raise ValueError(
+                f'Left ({short_path_one}) and right ({short_path_two}) short-read files must have different R designators.')
 
         # Assign the file with R1 to the left file path and the file with R2 to the right filepath.
         if short_one_r_value == 'R1':

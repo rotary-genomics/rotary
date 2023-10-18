@@ -93,7 +93,7 @@ def main():
     else:
         raise ValueError('The output directory is missing a run configuration file: {}'.format(zip(run_files,
                                                                                                    run_file_presences)))
-    existing_message = 'Existing run configuration files {} in the output directory.'.format(run_files)
+    existing_message = f'Existing run configuration files {run_files} in the output directory.'
 
     conda_env_directory = os.path.join(output_dir_path, 'conda_env')
     os.makedirs(conda_env_directory, exist_ok=True)
@@ -104,7 +104,8 @@ def main():
             run_rotary_workflow(config_path=config_path, output_dir_path=output_dir_path, jobs=jobs,
                                 conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
         else:
-            raise FileNotFoundError('Missing run configuration files {}, run either the run_one or init subcommands.'.format(run_files))
+            raise FileNotFoundError(
+                f'Missing run configuration files {run_files}, run either the run_one or init subcommands.')
     elif hasattr(args, 'run_one'):
         if has_run_files:
             if override_existing_files:
@@ -176,7 +177,7 @@ def run_rotary_workflow(config_path, output_dir_path, conda_env_directory, jobs=
 
     cmd = ' '.join(snakemake_args)
 
-    print('Executing: {}'.format(cmd))
+    print(f'Executing: {cmd}')
     try:
         subprocess.check_call(cmd, shell=True)
     except subprocess.CalledProcessError as e:
@@ -211,7 +212,7 @@ def init(args, config, output_dir_path):
     samples = []
     for identifier, sequencing_files in samples_files.items():
         if len(sequencing_files) != 3:
-            raise ValueError('Sample {} should have three sequencing files'.format(identifier))
+            raise ValueError(f'Sample {identifier} should have three sequencing files')
 
         long_file = None
         left_short_file = None
