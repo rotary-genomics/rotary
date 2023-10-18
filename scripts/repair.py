@@ -274,10 +274,6 @@ def subset_reads_from_bam(bam_filepath: str, bed_filepath: str, subset_fastq_fil
         logger.debug(shlex.join(samtools_fastq_args))
         subprocess.run(samtools_fastq_args, check=True, input=samtools_view.stdout, stderr=logfile_handle)
 
-        # TODO - delete this CLI code reference once I confirm the Python code works
-        # samtools view -@ "${threads}" -L "${regions}" -b "${bam_file}" 2>> "${verbose}" | \
-        #   samtools fastq -0 "${fastq}" -n -@ "${threads}" 2>> "${verbose}"
-
 
 def run_flye(fastq_filepath: str, flye_outdir: str, flye_read_mode: str, flye_read_error: float, log_filepath: str,
              dependency_dict: dict, append_log: bool = True, threads: int = 1):
@@ -319,10 +315,6 @@ def run_flye(fastq_filepath: str, flye_outdir: str, flye_read_mode: str, flye_re
     with open(log_filepath, write_mode) as logfile_handle:
         logger.debug(shlex.join(flye_args))
         flye_run = subprocess.run(flye_args, check=False, stderr=logfile_handle)
-
-        # TODO - delete CLI code example once I confirm Python is working
-        # flye "--${flye_read_mode}" "${fastq}" -o "${flye_length_outdir}" --read_error "${flye_read_error}" \
-        #           -t "${threads}" >> "${verbose}" 2>&1
 
     if flye_run.returncode != 0:
         logger.warning(f'Flye did not finish successfully; see log for details at "{log_filepath}"')
@@ -371,11 +363,6 @@ def run_circlator_merge(circular_contig_filepath: str, patch_contig_filepath: st
         logger.debug(shlex.join(circlator_merge_args))
         subprocess.run(circlator_merge_args, check=True, stdout=logfile_handle, stderr=subprocess.STDOUT)
 
-        # TODO - delete CLI example once I confirm Python is working
-        # circlator merge --verbose --min_id "${circlator_min_id}" --min_length "${circlator_min_length}" \
-        #         --ref_end "${circlator_ref_end}" --reassemble_end "${circlator_reassemble_end}" \
-        #         "${assembly}" "${reassembly_dir}/assembly.fasta" "${merge_dir}/merge" >> "${verbose}" 2>&1
-
 
 def check_circlator_success(circlator_logfile: str):
     """
@@ -388,7 +375,7 @@ def check_circlator_success(circlator_logfile: str):
     logger.debug('Loading circlator logfile')
     circlator_info = pd.read_csv(circlator_logfile, sep='\t')[['#Contig', 'circularised']]
 
-    # TODO - check I understood this properly when making edits (look at a real file as an example)
+    # TODO: I think I might be able to safely just look for if the sum is 1 (>1 might mean something odd happened)
     # If a row is '1', it means it was stitched properly, but if '0', it means it was not stitched.
     # So if all rows are 1 (i.e., the sum of rows / # of rows is 1), it means everything was stitched properly.
     if circlator_info['circularised'].sum() / circlator_info.shape[0] == 1:
@@ -666,7 +653,7 @@ def stitch_all_contigs(circular_contig_tmp_fasta, bam_filepath, linking_outdir_b
                 shutil.move(os.path.join(linking_outdir, 'logs'),
                             os.path.join(linking_outdir_base, 'troubleshooting', contig_record.name))
 
-                # TODO - consider rotating the failed contig to midpoint and leaving a copy, if requested by the user
+                # TODO - output the original contig as-is if -k is on
 
                 failed_contig_names.append(contig_record.name)
 
