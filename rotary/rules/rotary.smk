@@ -209,7 +209,8 @@ rule build_gtdb_mash_ref_database:
     input:
         os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_validate")
     output:
-        ref_msh_file=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash', 'gtdb_ref_sketch.msh')
+        ref_msh_file=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash','gtdb_ref_sketch.msh'),
+        ref_genome_path_list=temp(os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash','ref_mash_genomes.txt'))
     conda:
         "../envs/gtdbtk.yaml"
     log:
@@ -219,15 +220,11 @@ rule build_gtdb_mash_ref_database:
     threads:
         config.get("threads",1)
     params:
-        fast_ani_genomes_dir= os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE, 'fastani', 'database'),
-        ref_genome_path_list=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash', 'ref_mash_genomes.txt')
+        fast_ani_genomes_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE,'fastani','database')
     shell:
         """
-        find {params.fast_ani_genomes_dir} -name *_genomic.fna.gz -type f > {params.ref_genome_path_list}
-        mash sketch -l {params.ref_genome_path_list} -p {threads} -o {output.ref_msh_file} -k 16 -s 5000 > {log} 2>&1  
-        rm {params.ref_genome_path_list}   
-
-        touch {output}
+        find {params.fast_ani_genomes_dir} -name *_genomic.fna.gz -type f > {output.ref_genome_path_list}
+        mash sketch -l {output.ref_genome_path_list} -p {threads} -o {output.ref_msh_file} -k 16 -s 5000 > {log} 2>&1   
         """
 
 
