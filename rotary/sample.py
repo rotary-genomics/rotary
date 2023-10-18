@@ -20,6 +20,9 @@ class SequencingFile(object):
         self.path = file_path
         self.name = os.path.basename(self.path)
 
+        file_extension = os.path.splitext(self.name)[1]
+
+        if 'fastq' not in file_extension and 'fq' not in file_extension:
             raise ValueError(f'{self.name} is not a fastq file.')
 
         if '_' in self.name:
