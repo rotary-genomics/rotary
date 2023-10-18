@@ -79,7 +79,8 @@ def main():
         config['db_dir'] = os.path.join(output_dir_path, 'databases')
 
     config['threads'] = os.cpu_count()
-    config['memory'] = round(psutil.virtual_memory().total / (1024 ** 3))
+    # 95% of the machines memory rounded to the nearest gigabyte.
+    config['memory'] = round(psutil.virtual_memory().total / (1024 ** 3) * 0.95)
 
     # Check for the presence of the run configuration files in the output directory.
     run_files = ['config.yaml', 'samples.tsv']
