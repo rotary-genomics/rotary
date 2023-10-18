@@ -701,12 +701,6 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
     linking_outdir_base = os.path.join(output_dir, 'contigs')
     circular_contig_tmp_fasta = os.path.join(linking_outdir_base, 'circular_input.fasta')
 
-    # Check output dir
-    if os.path.isdir(output_dir):
-        logger.warning(f'Output directory already exists: "{output_dir}"; files may be overwritten.')
-
-    os.makedirs(output_dir, exist_ok=True)
-
     # Get lists of circular contigs
     circular_contig_names = parse_assembly_info_file(assembly_info_filepath, assembly_info_type, return_type='circular')
 
@@ -786,7 +780,18 @@ def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_fi
         logger.warning(f'{len(failed_contig_names)} contigs could not be circularized - see above for details')
 
 
-def main(args):
+def main():
+    """
+    Collects input arguments and runs the end repair workflow
+    """
+
+    """
+    When installing through pip with pyprojects.toml a new python script is generated
+    that calls main() out of rotary.py. Run parser inside main() so it can be called
+    externally as a function.
+    """
+    parser = parse_cli()
+    args = parser.parse_args()
 
     # Set user variables
     long_read_filepath = args.long_read_filepath
@@ -818,6 +823,19 @@ def main(args):
         dependency_paths.append(check_dependency(dependency_name))
 
     dependency_dict = dict(zip(DEPENDENCY_NAMES, dependency_paths))
+
+    # Check output dir
+    try:
+        if os.path.isdir(output_dir):
+            logger.warning(f'Output directory already exists: "{output_dir}"; files may be overwritten.')
+
+        os.makedirs(output_dir, exist_ok=True)
+
+    except TypeError:
+
+        # Catches error that occurs if you run just 'repair.py' rather than 'repair.py -h' in the CLI
+        parser.print_help()
+        sys.exit(0)
 
     # Startup messages
     logger.info('Running ' + os.path.basename(sys.argv[0]))
@@ -851,52 +869,76 @@ def main(args):
     logger.info(os.path.basename(sys.argv[0]) + ': done.')
 
 
-if __name__ == '__main__':
+def parse_cli():
+    """
+    Parses the CLI arguments
+    :return: An argparse parser object
+    """
+
     parser = argparse.ArgumentParser(
         description=f'{os.path.basename(sys.argv[0])}: pipeline to repair ends of circular contigs from Flye. \n'
-                    f'  Copyright Jackson M. Tsuji, Hokkaido University / JAMSTEC, 2023. \n'
+                    '  Copyright Jackson M. Tsuji and Lee Bergstrand, 2023. \n'
                     f'  Version: {SCRIPT_VERSION}',
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('long_read_filepath', help='QC-passing Nanopore reads')
-    parser.add_argument('assembly_fasta_filepath', help='Contigs output from Flye')
-    parser.add_argument('assembly_info_filepath', help='assembly_info.txt file from Flye')
-    parser.add_argument('output_dir',
-                        help='Output directory path (might overwrite contents if the dir already exists!)')
-    parser.add_argument('-f', '--flye_read_mode', required=False, default='nano-hq', choices=['nano-hq', 'nano-raw'],
-                        help='Type of input reads for Flye')
-    parser.add_argument('-F', '--flye_read_error', required=False, default=0, type=float,
-                        help='Expected error rate of input reads, expressed as proportion (e.g., 0.03) '
-                             '[0 = use flye defaults]')
-    parser.add_argument('-T', '--length_thresholds', required=False,
-                        default='100000,75000,50000,25000,5000,2500,1000', type=str,
-                        help='Comma-separated list of length thresholds for reassembly around the contig ends (bp)')
-    parser.add_argument('-k', '--keep_going_with_failed_contigs', required=False, default=False, type=bool,
-                        choices=[True, False],
-                        help='Set this flag to True to continue running this script even if some contigs '
-                             'cannot be circularized and end-repaired. The original (non-repaired) versions of those '
-                             'contigs will be output')
-    parser.add_argument('-c', '--custom_assembly_info_file', required=False, default=False, type=bool,
-                        choices=[True, False],
-                        help='Whether to use a custom tab-separated file to specify the circular vs. linear status of '
-                             'each contig in the assembly or to use the assembly_info.txt file output by Flye '
-                             '(default). Set to True to use the custom tab-separated file, provided in place of '
-                             'assembly.txt as a positional argument. The custom-tab separated file must have the '
-                             'following format: no headers; first column is the contig names; second column is the '
-                             'status of the contigs, either "circular" or "linear". Any contig names not in this file '
-                             'will be dropped by the script!')
-    parser.add_argument('-i', '--circlator_min_id', required=False, default=99, type=float,
-                        help='Percent identity threshold for circlator merge')
-    parser.add_argument('-l', '--circlator_min_length', required=False, default=10000, type=int,
-                        help='Minimum required overlap (bp) between original and merge contigs')
-    parser.add_argument('-e', '--circlator_ref_end', required=False, default=100, type=int,
-                        help='Minimum distance (bp) between end of original contig and nucmer hit')
-    parser.add_argument('-E', '--circlator_reassemble_end', required=False, default=100, type=int,
-                        help='Minimum distance (bp) between end of merge contig and nucmer hit')
-    parser.add_argument('-t', '--threads', required=False, default=1, type=int,
-                        help='Number of processors threads to use')
-    parser.add_argument('-m', '--threads_mem', required=False, default=1, type=float,
-                        help='Memory (GB) to use **per thread** for samtools sort')
-    parser.add_argument('-v', '--verbose', required=False, action='store_true',
-                        help='Enable for verbose logging.')
-    command_line_args = parser.parse_args()
-    main(command_line_args)
+
+    required_settings = parser.add_argument_group('Required')
+    read_settings = parser.add_argument_group('Input read options')
+    merge_settings = parser.add_argument_group('Merge options')
+    workflow_settings = parser.add_argument_group('Workflow options')
+
+    required_settings.add_argument('-l', '--long_read_filepath', help='QC-passing Nanopore reads')
+    required_settings.add_argument('-a', '--assembly_fasta_filepath', help='Contigs output from Flye')
+    required_settings.add_argument('-i', '--assembly_info_filepath', help='assembly_info.txt file from Flye')
+    required_settings.add_argument('-o', '--output_dir',
+                                   help='Output directory path (might overwrite contents if the dir already exists!)')
+
+    read_settings.add_argument('-f', '--flye_read_mode', required=False, default='nano-hq',
+                               choices=['nano-hq', 'nano-raw'],
+                               help='Type of input reads for Flye (default: nano-hq)')
+    read_settings.add_argument('-F', '--flye_read_error', required=False, default=0, type=float,
+                               help='Expected error rate of input reads, expressed as proportion (e.g., 0.03). '
+                                    'If "0", then have flye set the read error (default: 0)')
+
+    merge_settings.add_argument('-I', '--circlator_min_id', required=False, default=99, type=float,
+                                help='Percent identity threshold for circlator merge (default: 99)')
+    merge_settings.add_argument('-L', '--circlator_min_length', required=False, default=10000, type=int,
+                                help='Minimum required overlap (bp) between original and merge contigs '
+                                     '(default: 10000)')
+    merge_settings.add_argument('-e', '--circlator_ref_end', required=False, default=100, type=int,
+                                help='Minimum distance (bp) between end of original contig and nucmer hit '
+                                     '(default: 100)')
+    merge_settings.add_argument('-E', '--circlator_reassemble_end', required=False, default=100, type=int,
+                                help='Minimum distance (bp) between end of merge contig and nucmer hit '
+                                     '(default: 100)')
+
+    workflow_settings.add_argument('-k', '--keep_going_with_failed_contigs', required=False, default=False, type=bool,
+                                   choices=[True, False],
+                                   help='Set this flag to True to continue running this script even if some contigs '
+                                        'cannot be circularized and end-repaired. The original (non-repaired) versions '
+                                        'of those contigs will be output (default: False)')
+    workflow_settings.add_argument('-T', '--length_thresholds', required=False,
+                                   default='100000,75000,50000,25000,5000,2500,1000', type=str,
+                                   help='Comma-separated list of length thresholds for reassembly around the contig '
+                                        'ends (bp) (default: 100000,75000,50000,25000,5000,2500,1000)')
+    workflow_settings.add_argument('-c', '--custom_assembly_info_file', required=False, default=False, type=bool,
+                                   choices=[True, False],
+                                   help='Whether to use a custom tab-separated file to specify the circular vs. linear '
+                                        'status of each contig in the assembly or to use the assembly_info.txt file '
+                                        'output by Flye (default). Set to True to use the custom tab-separated file, '
+                                        'provided in place of assembly.txt as a positional argument. The custom-tab '
+                                        'separated file must have the following format: no headers; first column is '
+                                        'the contig names; second column is the status of the contigs, either '
+                                        '"circular" or "linear". Any contig names not in this file will be dropped by '
+                                        'the script! (default: False)')
+    workflow_settings.add_argument('-t', '--threads', required=False, default=1, type=int,
+                                   help='Number of processors threads to use (default: 1)')
+    workflow_settings.add_argument('-m', '--threads_mem', required=False, default=1, type=float,
+                                   help='Memory (GB) to use **per thread** for samtools sort (default: 1)')
+    workflow_settings.add_argument('-v', '--verbose', required=False, action='store_true',
+                                   help='Enable for verbose logging')
+
+    return parser
+
+
+if __name__ == '__main__':
+    main()
