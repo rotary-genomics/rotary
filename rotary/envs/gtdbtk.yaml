@@ -1,0 +1,6 @@
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - gtdbtk=2.3.2 # Remember to update VERSION_GTDB in the snakefile if the GTDB version updates

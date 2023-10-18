@@ -3,11 +3,12 @@
 # Utility functions for flye_end_repair.sh
 # Jackson M. Tsuji, ILTS, Hokkaido University, 2022
 
+import argparse
+import logging
 import os
 import sys
 import time
-import argparse
-import logging
+
 import pandas as pd
 
 # GLOBAL VARIABLES
@@ -22,7 +23,6 @@ logger = logging.getLogger(__name__)
 def summarize_assembly_info(assembly_info_filepath, linear_contig_list_filepath=None,
                             circular_contig_list_filepath=None, bed_filepath=None,
                             length_threshold=100000, contig_id=None):
-
     logger.debug('Loading assembly info file')
     assembly_info = pd.read_csv(assembly_info_filepath, sep='\t')
 
@@ -67,13 +67,12 @@ def summarize_assembly_info(assembly_info_filepath, linear_contig_list_filepath=
                 contigs.append(contig)
                 starts.append(length - half_threshold)
                 stops.append(length)
-    
+
         end_regions = pd.DataFrame({'contig': contigs, 'start': starts, 'stop': stops})
         end_regions.to_csv(bed_filepath, sep='\t', header=None, index=False)
 
 
 def check_circlator_logfile(circlator_logfile):
-
     logger.debug('Loading circlator logfile')
     circlator_info = pd.read_csv(circlator_logfile, sep='\t')[['#Contig', 'circularised']]
 
@@ -180,4 +179,3 @@ if __name__ == '__main__':
                         help='Enable for verbose logging.')
     command_line_args = parser.parse_args()
     main(command_line_args)
-
