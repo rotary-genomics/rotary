@@ -11,3 +11,4 @@ dependencies:
   - ruamel.yaml=0.17.35
   - psutil=5.9.5
   - sh=2.0.*
+  - biopython=1.81
