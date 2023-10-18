@@ -12,8 +12,9 @@ VERSION="0.2.0-beta4"
 VERSION_POLYPOLISH="0.5.0"
 VERSION_DFAST="1.2.18"
 VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
-VERSION_GTDB="207" # See https://data.gtdb.ecogenomic.org/releases/
 START_HMM_NAME = os.path.splitext(os.path.basename(os.path.basename(config.get("hmm_url"))))[0]
+VERSION_GTDB_COMPLETE= "214.1" # See https://data.gtdb.ecogenomic.org/releases/
+VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
 
 # Specify the minimum snakemake version allowable
 min_version("7.0")
@@ -84,7 +85,7 @@ rule download_hmm:
     shell:
         """
         mkdir -p {params.db_dir}
-        wget -O {output.hmm} {params.url} 2> {log}
+        wget -O {output.hmm} --no-check-certificate {params.url} 2> {log}
         """
 
 
@@ -129,21 +130,20 @@ rule download_eggnog_db:
         """
 
 
-# TODO - the special "_v2" text had to be hard-coded into the GTDB-Tk URL and initial_download_dir due to a special update to release 207. This text needs to be removed after the next GTDB release, or else the downloader will break.
 # TODO - if there is an error during download, the initial_download_dir is not deleted during cleanup
 rule download_gtdb_db:
     output:
-        db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "GTDB_" + VERSION_GTDB + "_download")
+        db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB_COMPLETE)),
+        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_download")
     log:
         "logs/download/gtdb_db_download.log"
     benchmark:
         "benchmarks/download/gtdb_db_download.txt"
     params:
         db_dir_root=os.path.join(config.get("db_dir")),
-        initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB + "_v2"),
-        db_dir=os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB),
-        url="https://data.gtdb.ecogenomic.org/releases/release" + VERSION_GTDB + "/" + VERSION_GTDB + ".0/auxillary_files/gtdbtk_r" + VERSION_GTDB + "_v2_data.tar.gz"
+        initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB_MAIN),
+        db_dir=os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB_COMPLETE),
+        url="https://data.gtdb.ecogenomic.org/releases/release" + VERSION_GTDB_MAIN + "/" + VERSION_GTDB_COMPLETE + "/auxillary_files/gtdbtk_r" + VERSION_GTDB_MAIN + "_data.tar.gz"
     shell:
         """
         mkdir -p {params.db_dir_root}
@@ -162,9 +162,9 @@ rule download_gtdb_db:
 
 rule setup_gtdb:
     input:
-        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_download")
+        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_download")
     output:
-        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_setup")
+        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_setup")
     conda:
         "../envs/gtdbtk.yaml"
     log:
@@ -172,7 +172,7 @@ rule setup_gtdb:
     benchmark:
         "benchmarks/download/gtdb_db_setup.txt"
     params:
-        db_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB),
+        db_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE),
     shell:
         """
         # Set the database path in the conda installation
@@ -185,9 +185,9 @@ rule setup_gtdb:
 
 rule validate_gtdb:
     input:
-        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_setup")
+        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_setup")
     output:
-        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_validate")
+        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_validate")
     conda:
         "../envs/gtdbtk.yaml"
     log:
@@ -195,7 +195,7 @@ rule validate_gtdb:
     benchmark:
         "benchmarks/download/gtdb_db_validate.txt"
     params:
-        db_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB),
+        db_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE),
     shell:
         """
         # Split the "progress bar" style output into multiple lines with sed
@@ -203,6 +203,28 @@ rule validate_gtdb:
         gtdbtk check_install | sed 's/\r/\n/g' > {log} 2>&1
 
         touch {output}
+        """
+
+rule build_gtdb_mash_ref_database:
+    input:
+        os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_validate")
+    output:
+        ref_msh_file=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash','gtdb_ref_sketch.msh'),
+        ref_genome_path_list=temp(os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash','ref_mash_genomes.txt'))
+    conda:
+        "../envs/gtdbtk.yaml"
+    log:
+        "logs/download/gtdb_db_mash.log"
+    benchmark:
+        "benchmarks/download/gtdb_mash.txt"
+    threads:
+        config.get("threads",1)
+    params:
+        fast_ani_genomes_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE,'fastani','database')
+    shell:
+        """
+        find {params.fast_ani_genomes_dir} -name *_genomic.fna.gz -type f > {output.ref_genome_path_list}
+        mash sketch -l {output.ref_genome_path_list} -p {threads} -o {output.ref_msh_file} -k 16 -s 5000 > {log} 2>&1   
         """
 
 
@@ -359,8 +381,8 @@ rule assembly_end_repair:
 #        In particular, the format of assembly_info.txt will need to be standardized (also in assembly_end_repair).
 rule finalize_assembly:
     input:
-        assembly="assembly/end_repair/repaired.fasta",
-        info="assembly/end_repair/assembly_info.txt"
+        assembly="assembly/flye/assembly.fasta",
+        info="assembly/flye/assembly_info.txt"
     output:
         assembly="assembly/assembly.fasta",
         info="assembly/assembly_info.txt"
@@ -1046,7 +1068,8 @@ rule run_eggnog:
 rule run_gtdbtk:
     input:
         genome="annotation/dfast/genome.fna",
-        setup_finished=os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB + "_validate")
+        setup_finished=os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_validate"),
+        ref_msh_file=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash', 'gtdb_ref_sketch.msh')
     output:
         batchfile=temp("annotation/gtdbtk/batchfile.tsv"),
         annotation="annotation/gtdbtk/gtdbtk.summary.tsv"
@@ -1058,7 +1081,7 @@ rule run_gtdbtk:
         "benchmarks/annotation/gtdbtk.txt"
     params:
         outdir="annotation/gtdbtk/run_files",
-        db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB)),
+        db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB_COMPLETE)),
         genome_id=config.get("sample_id"),
         gtdbtk_mode="--full_tree" if config.get("gtdbtk_mode") == "full_tree" else ""
     threads:
@@ -1066,8 +1089,8 @@ rule run_gtdbtk:
     shell:
         """
         printf "{input.genome}\t{params.genome_id}\n" > {output.batchfile}
-        gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {params.outdir} \
-          {params.gtdbtk_mode} --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
+        gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {params.outdir} {params.gtdbtk_mode} \
+           --mash_db {input.ref_msh_file} --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
         head -n 1 {params.outdir}/gtdbtk.*.summary.tsv | sort -u > {output.annotation}
         tail -n +2 {params.outdir}/gtdbtk.*.summary.tsv >> {output.annotation}
         """

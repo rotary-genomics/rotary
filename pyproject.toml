@@ -1,0 +1,33 @@
+[project]
+name = "Rotary"
+version = "0.3.0"
+description = "Rotary is a snakemake-based scalable pipeline for hybrid assembly of microbial genomes using Nanopore and Illumina data."
+authors = [
+    {name = "Jackson Tsuji"},
+    {name = "Lee Bergstrand"}
+]
+
+license = {file = "LICENSE"}
+readme = "README.md"
+
+dependencies = [
+    "pandas ~=1.4",
+    "snakemake ~=7.32",
+    "ruamel.yaml ~=0.17",
+    "psutil ~=5.9",
+    "sh ~=2.0",
+    "biopython ~=1.8"
+]
+
+[tool.setuptools.packages]
+find = {}
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+rotary = "rotary.rotary:main"
+
+[tool.setuptools]
+include-package-data = true
