@@ -12,7 +12,7 @@ VERSION="0.2.0-beta4"
 VERSION_POLYPOLISH="0.5.0"
 VERSION_DFAST="1.2.18"
 VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
-START_HMM_NAME = os.path.splitext(os.path.basename(os.path.basename(config.get("hmm_url"))))[0]
+START_HMM_NAME = os.path.splitext(os.path.basename(config.get("hmm_url")))[0]
 VERSION_GTDB_COMPLETE= "214.1" # See https://data.gtdb.ecogenomic.org/releases/
 VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
 
@@ -807,7 +807,7 @@ rule process_start_genes:
 
         else:
             # Load HMM search results
-            hmmsearch_results = hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None)[[0, 2, 3, 4]]
+            hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None)[[0, 2, 3, 4]]
 
             hmmsearch_results.columns = ['orf', 'hmm_name', 'hmm_accession', 'evalue']
 
