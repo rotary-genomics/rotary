@@ -96,7 +96,7 @@ def main():
                                                                                                    run_file_presences)))
     existing_message = f'Existing run configuration files {run_files} in the output directory.'
 
-    conda_env_directory = os.path.join(output_dir_path, 'conda_env')
+    conda_env_directory = os.path.join(database_dir_path, 'rotary_conda_env')
     os.makedirs(conda_env_directory, exist_ok=True)
 
     # Select the sub-command to run.
