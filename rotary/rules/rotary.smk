@@ -12,6 +12,7 @@ VERSION="0.2.0-beta4"
 VERSION_POLYPOLISH="0.5.0"
 VERSION_DFAST="1.2.18"
 VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
+START_HMM_NAME = os.path.splitext(os.path.basename(config.get("hmm_url")))[0]
 VERSION_GTDB_COMPLETE= "214.1" # See https://data.gtdb.ecogenomic.org/releases/
 VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
 
@@ -70,22 +71,21 @@ rule install_polypolish:
         touch {output.install_finished}
         """
 
-
 # TODO - does not check the HMM version, only ID. If the HMM version updates, it won't automatically re-download
 rule download_hmm:
     output:
-        hmm=os.path.join(config.get("db_dir"), "hmm", config.get("start_hmm_pfam_id") + ".hmm")
+        hmm=os.path.join(config.get("db_dir"), "hmm", START_HMM_NAME + ".hmm")
     log:
         "logs/download/hmm_download.log"
     benchmark:
         "benchmarks/download/hmm_download.txt"
     params:
         db_dir=os.path.join(config.get("db_dir"), "hmm"),
-        url="http://pfam-legacy.xfam.org/family/" + config.get("start_hmm_pfam_id") + "/hmm"
+        url=config.get("hmm_url")
     shell:
         """
         mkdir -p {params.db_dir}
-        wget -O {output.hmm} --no-check-certificate {params.url} 2> {log}
+        wget -O {output.hmm} {params.url} 2> {log}
         """
 
 
@@ -757,7 +757,7 @@ rule get_polished_contigs:
 rule search_contig_start:
     input:
         contigs="circularize/filter/circular.fasta",
-        hmm=os.path.join(config.get("db_dir"), "hmm", config.get("start_hmm_pfam_id") + ".hmm")
+        hmm=os.path.join(config.get("db_dir"), "hmm", START_HMM_NAME + ".hmm")
     output:
         orf_predictions=temp("circularize/identify/circular.faa"),
         gene_predictions=temp("circularize/identify/circular.ffn"),
@@ -807,7 +807,7 @@ rule process_start_genes:
 
         else:
             # Load HMM search results
-            hmmsearch_results = hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None)[[0, 2, 3, 4]]
+            hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None)[[0, 2, 3, 4]]
 
             hmmsearch_results.columns = ['orf', 'hmm_name', 'hmm_accession', 'evalue']
 
