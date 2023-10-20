@@ -19,12 +19,12 @@ DEPENDENCY_NAMES = ['flye', 'minimap2', 'samtools', 'circlator']
 
 # Set up the logger
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 formatter = logging.Formatter('[ %(asctime)s ]: %(levelname)s: %(funcName)s: %(message)s',
                               datefmt='%Y-%m-%d %H:%M:%S')
 stream_handler = logging.StreamHandler()
 stream_handler.setFormatter(formatter)
 logger.addHandler(stream_handler)
-
 
 def check_dependency(dependency_name: str):
     """
@@ -547,21 +547,44 @@ def iterate_linking_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: st
 
         # Don't attempt to link the ends if the contig is too short
         if len(contig_record.seq) <= length_threshold:
-            logger.debug(f'Skipping length threshold of {length_threshold} because '
+            logger.info(f'Skipping length threshold of {length_threshold} because '
                          f'contig is shorter than this length ({len(contig_record.seq)} bp)')
 
             assembly_attempts = assembly_attempts + 1
             continue
 
+        # Make sure that the circlator_min_length is shorter than the length threshold (otherwise merging is impossible)
+        if cli_tool_settings_dict['circlator_min_length'] > length_threshold:
+
+            revised_min_length = int(length_threshold * 0.9)
+            cli_tool_settings_dict_revised = cli_tool_settings_dict.copy()
+            cli_tool_settings_dict_revised['circlator_min_length'] = revised_min_length
+
+            logger.warning(f'The minimum required length of alignment between the original and reassembled contig '
+                           f'(specified by circlator_min_length; {cli_tool_settings_dict["circlator_min_length"]} bp) '
+                           f'is longer than the length_threshold the original contig will be subset to '
+                           f'({length_threshold} bp). This means that finding a matching merge will be impossible. To '
+                           f'overcome this, the script will shorter the circlator_min_length for this iteration to 90% '
+                           f'of the length threshold, i.e., {revised_min_length} bp.')
+
+            cli_tool_settings_dict_used = cli_tool_settings_dict_revised
+
+        else:
+            cli_tool_settings_dict_used = cli_tool_settings_dict
+
         # Try to stitch the contig ends
-        logger.debug(f'Starting reassembly with a length threshold of {length_threshold} bp')
+        logger.info(f'Attempting reassembly with a length threshold of {length_threshold} bp')
         length_outdir = os.path.join(linking_outdir, 'tmp', f'L{length_threshold}')
 
         flye_exit_status = link_contig_ends(contig_record=contig_record, bam_filepath=bam_filepath,
                                             length_outdir=length_outdir, length_threshold=length_threshold,
-                                            cli_tool_settings_dict=cli_tool_settings_dict,
+                                            cli_tool_settings_dict=cli_tool_settings_dict_used,
                                             dependency_dict=dependency_dict, verbose_logfile=verbose_logfile,
                                             threads=threads)
+
+        # Make the output logging directory (this is needed even if Flye fails so the pipeline can keep going)
+        log_dir = os.path.join(log_dir_base, f'L{length_threshold}')
+        os.makedirs(log_dir, exist_ok=True)
 
         # Stop early if Flye fails
         if flye_exit_status != 0:
@@ -569,8 +592,6 @@ def iterate_linking_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: st
             continue
 
         # If Flye was successful, copy important log files for that specific length threshold
-        log_dir = os.path.join(log_dir_base, f'L{length_threshold}')
-        os.makedirs(log_dir, exist_ok=True)
         shutil.copy(os.path.join(length_outdir, 'assembly', 'assembly_info.txt'), log_dir)
         shutil.copy(os.path.join(length_outdir, 'merge', 'merge.circularise.log'), log_dir)
         shutil.copy(os.path.join(length_outdir, 'merge', 'merge.circularise_details.log'), log_dir)
@@ -583,7 +604,7 @@ def iterate_linking_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: st
             rotate_contig_to_midpoint(os.path.join(length_outdir, 'merge', 'merge.fasta'),
                                       os.path.join(linking_outdir, 'stitched.fasta'), append=False)
 
-            # Save a copy of the final circulator merge logfile in the main log directory
+            # Save a copy of the final circlator merge logfile in the main log directory
             shutil.copy(os.path.join(length_outdir, 'merge', 'merge.circularise_details.log'),
                         os.path.join(log_dir_base, f'{contig_record.name}_circlator_final.log'))
 
@@ -631,7 +652,7 @@ def stitch_all_contigs(circular_contig_tmp_fasta, bam_filepath, linking_outdir_b
 
         for contig_record in SeqIO.parse(fasta_handle, 'fasta'):
 
-            logger.info(f'Attempting end repair for contig: {contig_record.name}')
+            logger.info(f'Starting end repair on contig: {contig_record.name}')
 
             # Define temp files and folders that will be generated for this contig during stitching
             linking_outdir = os.path.join(linking_outdir_base, contig_record.name)
@@ -670,6 +691,26 @@ def stitch_all_contigs(circular_contig_tmp_fasta, bam_filepath, linking_outdir_b
 def run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, assembly_info_type, output_dir,
                    length_thresholds, keep_failed_contigs, cli_tool_settings_dict, dependency_dict, threads,
                    threads_mem_mb):
+    """
+    Runs the end repair workflow
+
+    :param long_read_filepath: path to the QC-passing Nanopore reads, FastQ format; gzipped is OK
+    :param assembly_fasta_filepath: path to the assembled contigs output by Flye, FastA format
+    :param assembly_info_filepath: path to assembly_info.txt output by Flye
+    :param assembly_info_type: 'flye' type for assembly_info.txt from flye; 'custom' for custom format (see parse_cli
+                               for custom format details)
+    :param output_dir: path to the directory to save output files
+    :param length_thresholds: list of bp regions around the contig ends to attempt to subset for the assembly
+    :param keep_failed_contigs:
+    :param cli_tool_settings_dict: dictionary containing the following CLI tool settings, as defined in main(), as keys:
+                                   flye_read_mode, flye_read_error, circlator_min_id, circlator_min_length,
+                                   circlator_ref_end, circlator_reassemble_end
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
+    :param threads: parallel processor threads to use for the analysis
+    :param threads_mem_mb: memory in MB per thread (to use for samtools); must be an integer
+    :return: None
+    """
+
     # Define core file names and directory structures
     # These will be the files and folders in the main output directory:
     end_repaired_contigs_filepath = os.path.join(output_dir, 'repaired.fasta')
@@ -785,29 +826,23 @@ def main():
     parser = parse_cli()
     args = parser.parse_args()
 
-    # Set user variables
-    long_read_filepath = args.long_read_filepath
-    assembly_fasta_filepath = args.assembly_fasta_filepath
-    assembly_info_filepath = args.assembly_info_filepath
+    # Further parse some of the command line inputs
     assembly_info_type = 'custom' if args.custom_assembly_info_file is True else 'flye'
-    output_dir = args.output_dir
+    # TODO - improve error handling if a string is provided instead of a real length
     length_thresholds = [int(x) for x in args.length_thresholds.split(',')]
-    keep_failed_contigs = args.keep_going_with_failed_contigs
     cli_tool_settings_dict = {'flye_read_mode': args.flye_read_mode,
                               'flye_read_error': args.flye_read_error,
                               'circlator_min_id': args.circlator_min_id,
                               'circlator_min_length': args.circlator_min_length,
                               'circlator_ref_end': args.circlator_ref_end,
                               'circlator_reassemble_end': args.circlator_reassemble_end}
-    threads = args.threads
     threads_mem_mb = int(args.threads_mem * 1024)
-    verbose = args.verbose
 
     # Startup checks
-    if verbose is True:
-        logger.setLevel(logging.DEBUG)
+    if args.verbose is True:
+        stream_handler.setLevel(logging.DEBUG)
     else:
-        logger.setLevel(logging.INFO)
+        stream_handler.setLevel(logging.INFO)
 
     # Check dependencies
     dependency_paths = []
@@ -817,45 +852,57 @@ def main():
     dependency_dict = dict(zip(DEPENDENCY_NAMES, dependency_paths))
 
     # Check output dir
-    try:
-        if os.path.isdir(output_dir):
-            logger.warning(f'Output directory already exists: "{output_dir}"; files may be overwritten.')
+    output_dir_exists = os.path.isdir(args.output_dir)
 
-        os.makedirs(output_dir, exist_ok=True)
+    if (output_dir_exists is True) & (args.overwrite is False):
 
-    except TypeError:
+        logger.error(f'Output directory already exists: "{args.output_dir}". Will not continue. Set the '
+                     f'--overwrite flag at your own risk if you want to use an existing directory.')
 
-        # Catches error that occurs if you run just 'repair.py' rather than 'repair.py -h' in the CLI
-        parser.print_help()
-        sys.exit(0)
+        raise FileExistsError
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    # Start log file in the output dir
+    file_handler = logging.FileHandler(filename=os.path.join(args.output_dir, 'repaired.log'), mode='w')
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.DEBUG)
+    logger.addHandler(file_handler)
 
     # Startup messages
     logger.info('Running ' + os.path.basename(sys.argv[0]))
     logger.info('### SETTINGS ###')
-    logger.info(f'Long read filepath: {long_read_filepath}')
-    logger.info(f'Assembly FastA filepath: {assembly_fasta_filepath}')
-    logger.info(f'Assembly info filepath: {assembly_info_filepath}')
+    logger.info(f'Long read filepath: {args.long_read_filepath}')
+    logger.info(f'Assembly FastA filepath: {args.assembly_fasta_filepath}')
+    logger.info(f'Assembly info filepath: {args.assembly_info_filepath}')
     logger.info(f'Use a custom assembly info file: {args.custom_assembly_info_file}')
-    logger.info(f'Output directory: {output_dir}')
+    logger.info(f'Output directory: {args.output_dir}')
+    logger.info(f'Overwrite output dir if needed?: {args.overwrite}')
     logger.info(f'Length thresholds to test (bp): {length_thresholds}')
-    logger.info(f'Keep going if some contigs cannot be re-circularized?: {keep_failed_contigs}')
+    logger.info(f'Keep going if some contigs cannot be re-circularized?: {args.keep_going_with_failed_contigs}')
     logger.info(f'Flye read mode: {cli_tool_settings_dict["flye_read_mode"]}')
     logger.info(f'Flye read error: {cli_tool_settings_dict["flye_read_error"]}')
     logger.info(f'Circlator min. ID: {cli_tool_settings_dict["circlator_min_id"]}')
     logger.info(f'Circlator min. length: {cli_tool_settings_dict["circlator_min_length"]}')
     logger.info(f'Circlator ref. end: {cli_tool_settings_dict["circlator_ref_end"]}')
     logger.info(f'Circlator reassembly end: {cli_tool_settings_dict["circlator_reassemble_end"]}')
-    logger.info(f'Threads: {threads}')
+    logger.info(f'Threads: {args.threads}')
     logger.info(f'Memory per thread (GB = MB): {args.threads_mem} = {threads_mem_mb}')
-    logger.info(f'Verbose logging: {verbose}')
+    logger.info(f'Verbose logging: {args.verbose}')
     logger.info('### DEPENDENCIES ###')
     for key, value in dependency_dict.items():
         logger.info(f'{key}: {value}')
     logger.info('################')
 
-    run_end_repair(long_read_filepath, assembly_fasta_filepath, assembly_info_filepath, assembly_info_type, output_dir,
-                   length_thresholds, keep_failed_contigs, cli_tool_settings_dict, dependency_dict, threads,
-                   threads_mem_mb)
+    # Now that the file log inside the output dir exists, record a warning if the output dir was already there before
+    #  the script started
+    if output_dir_exists is True:
+        logger.warning(f'Output directory already exists: "{args.output_dir}". Files may be overwritten.')
+
+    run_end_repair(args.long_read_filepath, args.assembly_fasta_filepath, args.assembly_info_filepath, assembly_info_type,
+                   args.output_dir,
+                   length_thresholds, args.keep_going_with_failed_contigs, cli_tool_settings_dict, dependency_dict,
+                   args.threads, threads_mem_mb)
 
     logger.info(os.path.basename(sys.argv[0]) + ': done.')
 
@@ -876,18 +923,22 @@ def parse_cli():
     merge_settings = parser.add_argument_group('Merge options')
     workflow_settings = parser.add_argument_group('Workflow options')
 
-    required_settings.add_argument('-l', '--long_read_filepath', help='QC-passing Nanopore reads')
-    required_settings.add_argument('-a', '--assembly_fasta_filepath', help='Contigs output from Flye')
-    required_settings.add_argument('-i', '--assembly_info_filepath', help='assembly_info.txt file from Flye')
-    required_settings.add_argument('-o', '--output_dir',
-                                   help='Output directory path (might overwrite contents if the dir already exists!)')
+    required_settings.add_argument('-l', '--long_read_filepath', required=True, type=str,
+                                   help='QC-passing Nanopore reads')
+    required_settings.add_argument('-a', '--assembly_fasta_filepath', required=True, type=str,
+                                   help='Contigs to be end-repaired')
+    required_settings.add_argument('-i', '--assembly_info_filepath', required=True, type=str,
+                                   help='assembly_info.txt file from Flye showing which assembled contigs are circular '
+                                        'vs. linear (or a custom guide file; see -c below)')
+    required_settings.add_argument('-o', '--output_dir', required=True, type=str, help='Output directory path')
 
     read_settings.add_argument('-f', '--flye_read_mode', required=False, default='nano-hq',
                                choices=['nano-hq', 'nano-raw'],
-                               help='Type of input reads for Flye (default: nano-hq)')
+                               help='Type of long read reads provided by -l, to be used for reassembly by Flye. See '
+                                    'details on these settings in the Flye documentation. (default: nano-hq)')
     read_settings.add_argument('-F', '--flye_read_error', required=False, default=0, type=float,
                                help='Expected error rate of input reads, expressed as proportion (e.g., 0.03). '
-                                    'If "0", then have flye set the read error (default: 0)')
+                                    'If "0", then have flye set the read error automatically (default: 0)')
 
     merge_settings.add_argument('-I', '--circlator_min_id', required=False, default=99, type=float,
                                 help='Percent identity threshold for circlator merge (default: 99)')
@@ -903,17 +954,20 @@ def parse_cli():
 
     workflow_settings.add_argument('-k', '--keep_going_with_failed_contigs', required=False, action='store_true',
                                    help='Set this flag to continue running this script even if some contigs '
-                                        'cannot be circularized and end-repaired. Non-repaired but circular contigs '
-                                        'WILL NOT be output, but linear and successfully circularized contigs will '
-                                        '(this will be addressed in a future fix)')
+                                        'cannot be circularized and end-repaired. For any non-repaired contigs, an '
+                                        'exact copy of the original contig will be output.')
     workflow_settings.add_argument('-c', '--custom_assembly_info_file', required=False, action='store_true',
                                    help='Set this flag if you provide a custom tab-separated file to specify the '
                                         'circular vs. linear status of each contig in the assembly, rather than using '
                                         'the assembly_info.txt file output by Flye (default), as your argument to -i. '
-                                        'The custom-tab separated file must have the following format: no headers; '
+                                        'The custom file must have the following format: no headers; tab-separated; '
                                         'first column is the contig names; second column is the status of the contigs, '
                                         'either "circular" or "linear". Any contig names not in this file will be '
                                         'dropped by the script!')
+    workflow_settings.add_argument('-O', '--overwrite', required=False, action='store_true',
+                                   help='Set this flag to overwrite an existing output directory and its contents; by '
+                                        'default this code will throw an error if the output directory already exists. '
+                                        'By setting this flag, you risk erasing old data and/or running into errors.')
     workflow_settings.add_argument('-T', '--length_thresholds', required=False,
                                    default='100000,75000,50000,25000,5000,2500,1000', type=str,
                                    help='Comma-separated list of length thresholds for reassembly around the contig '
@@ -923,7 +977,8 @@ def parse_cli():
     workflow_settings.add_argument('-m', '--threads_mem', required=False, default=1, type=float,
                                    help='Memory (GB) to use **per thread** for samtools sort (default: 1)')
     workflow_settings.add_argument('-v', '--verbose', required=False, action='store_true',
-                                   help='Enable for verbose logging')
+                                   help='Print verbose logging to screen (note: the logfile saved at repaired.log by '
+                                        'this script is always verbose)')
 
     return parser
 
