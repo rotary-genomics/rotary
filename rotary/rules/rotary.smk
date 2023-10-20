@@ -85,7 +85,7 @@ rule download_hmm:
     shell:
         """
         mkdir -p {params.db_dir}
-        wget -O {output.hmm} --no-check-certificate {params.url} 2> {log}
+        wget -O {output.hmm} {params.url} 2> {log}
         """
 
 
