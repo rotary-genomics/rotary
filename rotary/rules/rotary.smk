@@ -381,8 +381,8 @@ rule assembly_end_repair:
 #        In particular, the format of assembly_info.txt will need to be standardized (also in assembly_end_repair).
 rule finalize_assembly:
     input:
-        assembly="assembly/flye/assembly.fasta",
-        info="assembly/flye/assembly_info.txt"
+        assembly="assembly/end_repair/repaired.fasta",
+        info="assembly/end_repair/assembly_info.txt"
     output:
         assembly="assembly/assembly.fasta",
         info="assembly/assembly_info.txt"
