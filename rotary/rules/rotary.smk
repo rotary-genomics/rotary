@@ -342,16 +342,29 @@ rule assembly_end_repair:
         min_id=config.get("circlator_merge_min_id"),
         min_length=config.get("circlator_merge_min_length"),
         ref_end=config.get("circlator_merge_ref_end"),
-        reassemble_end=config.get("circlator_merge_reassemble_end")
+        reassemble_end=config.get("circlator_merge_reassemble_end"),
+        keep_going="--keep_going_with_failed_contigs" if config.get("keep_unrepaired_contigs") == "True" else "",
     threads:
         config.get("threads",1)
     resources:
         mem=int(config.get("memory") / config.get("threads",1))
     shell:
         """
-        rotary repair -l {input.qc_long_reads} -a {input.assembly} -i {input.info} -o {params.output_dir} \
-          -f {params.flye_input_mode} -F {params.flye_read_error} -I {params.min_id} \
-          -L {params.min_length} -e {params.ref_end} -E {params.reassemble_end} -t {threads} -m {resources.mem} \
+        rotary-repair --long_read_filepath {input.qc_long_reads} \
+          --assembly_fasta_filepath {input.assembly} \
+          --assembly_info_filepath {input.info} \
+          --output_dir {params.output_dir} \
+          --flye_read_mode {params.flye_input_mode} \
+          --flye_read_error {params.flye_read_error} \
+          --circlator_min_id {params.min_id} \
+          --circlator_min_length {params.min_length} \
+          --circlator_ref_end {params.ref_end} \
+          --circlator_reassemble_end {params.reassemble_end} \
+          --threads {threads} \
+          --threads_mem {resources.mem} \
+          --verbose \
+          --overwrite \
+          {params.keep_going} \
           > {log} 2>&1
         """
 
