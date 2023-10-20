@@ -14,7 +14,7 @@ import sys
 import psutil
 from ruamel.yaml import YAML
 
-from rotary.sample import SequencingFile, Sample
+from rotary.sample import SequencingFile, Sample, is_fastq_file
 from rotary.utils import check_for_files, get_cli_arg_path
 
 yaml = YAML()
@@ -197,10 +197,10 @@ def init(args, config, output_dir_path):
     input_path = get_cli_arg_path(args, 'input_dir')
     fastq_files = []
 
-    for file in os.listdir(input_path):
-        if 'fastq' in file:
-            file = SequencingFile(file_path=(os.path.join(input_path, file)))
-            fastq_files.append(file)
+    for file_path in os.listdir(input_path):
+        filename = os.path.basename(file_path)
+        if is_fastq_file(filename):
+            fastq_files.append(SequencingFile(file_path=os.path.join(input_path, file_path)))
 
     samples_files = {}
     for file in fastq_files:
