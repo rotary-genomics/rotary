@@ -28,6 +28,7 @@ build-backend = "setuptools.build_meta"
 
 [project.scripts]
 rotary = "rotary.rotary:main"
+rotary-repair = "rotary.repair:main"
 
 [tool.setuptools]
 include-package-data = true
