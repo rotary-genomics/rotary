@@ -329,8 +329,6 @@ rule assembly_end_repair:
     output:
         assembly="assembly/end_repair/repaired.fasta",
         info="assembly/end_repair/repaired_info.tsv"
-    conda:
-        "../envs/circlator.yaml"
     log:
         "logs/assembly/end_repair.log"
     benchmark:
