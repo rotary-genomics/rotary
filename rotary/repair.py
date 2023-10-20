@@ -20,8 +20,7 @@ DEPENDENCY_NAMES = ['flye', 'minimap2', 'samtools', 'circlator']
 # Set up the logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-formatter = logging.Formatter('[ %(asctime)s ]: %(levelname)s: %(funcName)s: %(message)s',
-                              datefmt='%Y-%m-%d %H:%M:%S')
+formatter = logging.Formatter('[ %(asctime)s ]: %(levelname)s: %(funcName)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 stream_handler = logging.StreamHandler()
 stream_handler.setFormatter(formatter)
 logger.addHandler(stream_handler)
@@ -499,8 +498,6 @@ def link_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: str, length_o
                             log_filepath=verbose_logfile, dependency_dict=dependency_dict, append_log=True)
 
     else:
-
-        # TODO - confirm I don't need to copy or move any files for the script to keep going
         logger.warning('Flye assembly FAILED')
 
     return flye_exit_status
@@ -620,7 +617,7 @@ def iterate_linking_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: st
 def stitch_all_contigs(circular_contig_tmp_fasta, bam_filepath, linking_outdir_base, end_repaired_contigs_filepath,
                        length_thresholds, cli_tool_settings_dict, dependency_dict, verbose_logfile, threads):
     """
-    Run the iterate_linking_contig_ends function on all contigs in an input FastA file, i.e., attempt to stich the ends
+    Run the iterate_linking_contig_ends function on all contigs in an input FastA file, i.e., attempt to stitch the ends
     of all the contigs (assumed circular) in the file.
 
     :param circular_contig_tmp_fasta: Input FastA file of circular contigs to be stitched
@@ -636,7 +633,7 @@ def stitch_all_contigs(circular_contig_tmp_fasta, bam_filepath, linking_outdir_b
     :param verbose_logfile: path to a logfile where shell script logs will be added
     :param threads: parallel processor threads to use for the analysis
     :return: Writes stitched contigs to end_repaired_contigs_filepath. Returns a list of the names of any contigs that
-             could not be stiched successfully (list length will be zero if all contigs stitched successfully)
+             could not be stitched successfully (list length will be zero if all contigs stitched successfully)
     """
 
     # Initialize the repaired contigs FastA file (so it will overwrite an old file rather than just append later)
@@ -654,7 +651,7 @@ def stitch_all_contigs(circular_contig_tmp_fasta, bam_filepath, linking_outdir_b
 
             logger.info(f'Starting end repair on contig: {contig_record.name}')
 
-            # Define temp files and folders that will be generated for this contig during stitching
+            # This is the temp folder that will be used for this contig during stitching
             linking_outdir = os.path.join(linking_outdir_base, contig_record.name)
 
             end_linkage_complete = iterate_linking_contig_ends(contig_record, bam_filepath, linking_outdir,
@@ -826,30 +823,11 @@ def main():
     parser = parse_cli()
     args = parser.parse_args()
 
-    # Further parse some of the command line inputs
-    assembly_info_type = 'custom' if args.custom_assembly_info_file is True else 'flye'
-    # TODO - improve error handling if a string is provided instead of a real length
-    length_thresholds = [int(x) for x in args.length_thresholds.split(',')]
-    cli_tool_settings_dict = {'flye_read_mode': args.flye_read_mode,
-                              'flye_read_error': args.flye_read_error,
-                              'circlator_min_id': args.circlator_min_id,
-                              'circlator_min_length': args.circlator_min_length,
-                              'circlator_ref_end': args.circlator_ref_end,
-                              'circlator_reassemble_end': args.circlator_reassemble_end}
-    threads_mem_mb = int(args.threads_mem * 1024)
-
     # Startup checks
     if args.verbose is True:
         stream_handler.setLevel(logging.DEBUG)
     else:
         stream_handler.setLevel(logging.INFO)
-
-    # Check dependencies
-    dependency_paths = []
-    for dependency_name in DEPENDENCY_NAMES:
-        dependency_paths.append(check_dependency(dependency_name))
-
-    dependency_dict = dict(zip(DEPENDENCY_NAMES, dependency_paths))
 
     # Check output dir
     output_dir_exists = os.path.isdir(args.output_dir)
@@ -868,6 +846,25 @@ def main():
     file_handler.setFormatter(formatter)
     file_handler.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
+
+    # Check dependencies
+    dependency_paths = []
+    for dependency_name in DEPENDENCY_NAMES:
+        dependency_paths.append(check_dependency(dependency_name))
+
+    dependency_dict = dict(zip(DEPENDENCY_NAMES, dependency_paths))
+
+    # Parse some command line inputs further
+    assembly_info_type = 'custom' if args.custom_assembly_info_file is True else 'flye'
+    # TODO - improve error handling if a string is provided instead of a real length
+    length_thresholds = [int(x) for x in args.length_thresholds.split(',')]
+    cli_tool_settings_dict = {'flye_read_mode': args.flye_read_mode,
+                              'flye_read_error': args.flye_read_error,
+                              'circlator_min_id': args.circlator_min_id,
+                              'circlator_min_length': args.circlator_min_length,
+                              'circlator_ref_end': args.circlator_ref_end,
+                              'circlator_reassemble_end': args.circlator_reassemble_end}
+    threads_mem_mb = int(args.threads_mem * 1024)
 
     # Startup messages
     logger.info('Running ' + os.path.basename(sys.argv[0]))
@@ -894,15 +891,13 @@ def main():
         logger.info(f'{key}: {value}')
     logger.info('################')
 
-    # Now that the file log inside the output dir exists, record a warning if the output dir was already there before
-    #  the script started
+    # Record a warning if the output dir was already there before the script started
     if output_dir_exists is True:
         logger.warning(f'Output directory already exists: "{args.output_dir}". Files may be overwritten.')
 
-    run_end_repair(args.long_read_filepath, args.assembly_fasta_filepath, args.assembly_info_filepath, assembly_info_type,
-                   args.output_dir,
-                   length_thresholds, args.keep_going_with_failed_contigs, cli_tool_settings_dict, dependency_dict,
-                   args.threads, threads_mem_mb)
+    run_end_repair(args.long_read_filepath, args.assembly_fasta_filepath, args.assembly_info_filepath,
+                   assembly_info_type, args.output_dir, length_thresholds, args.keep_going_with_failed_contigs,
+                   cli_tool_settings_dict, dependency_dict, args.threads, threads_mem_mb)
 
     logger.info(os.path.basename(sys.argv[0]) + ': done.')
 
