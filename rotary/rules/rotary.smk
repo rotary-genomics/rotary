@@ -691,7 +691,6 @@ rule polish:
 # Writes linear.list with the names of linear contigs if there are any linear contigs
 # Then, the DAG is re-evaluated. Circularization is only run if there are circular contigs.
 # Based on clustering tutorial at https://snakemake.readthedocs.io/en/stable/snakefiles/rules.html (accessed 2022.3.31)
-# TODO: confirm that the code here matches the format of circular_info.tsv
 checkpoint split_circular_and_linear_contigs:
     input:
         assembly_stats="assembly/circular_info.tsv",
