@@ -1,12 +1,11 @@
-# rotary, a snakemake-based Nanopore genome assembly workflow
-# Copyright Jackson M. Tsuji, Institute of Low Temperature Science, Hokkaido University, 2022
+# rotary: utilities and workflow for long-read DNA assemblies including circular elements
+# Copyright Jackson M. Tsuji and Lee H. Bergstrand, 2023
 
 import os
 import sys
-import shutil
 import pandas as pd
 import itertools
-from snakemake.utils import logger, min_version, update_config
+from snakemake.utils import min_version
 
 VERSION_POLYPOLISH="0.5.0"
 VERSION_DFAST="1.2.18"

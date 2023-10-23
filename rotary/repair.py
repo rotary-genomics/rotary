@@ -3,16 +3,16 @@
 # Fixes ends of circular contigs produced by Flye
 # Copyright Jackson M. Tsuji and Lee H. Bergstrand 2023
 
-import os
-import sys
-import time
 import argparse
 import logging
-import shutil
+import os
 import shlex
+import shutil
 import subprocess
-from Bio import SeqIO
+import sys
+
 import pandas as pd
+from Bio import SeqIO
 
 # GLOBAL VARIABLES
 DEPENDENCY_NAMES = ['flye', 'minimap2', 'samtools', 'circlator']
