@@ -50,8 +50,9 @@ def main():
 
     if (output_dir_exists is True) & (args.overwrite is False):
 
-        raise FileExistsError(f'Output directory already exists: "{args.output_dir}". Will not continue. Set the '
-                              f'--overwrite flag at your own risk if you want to use an existing directory.')
+        logger.error(f'Output directory already exists: "{args.output_dir}". Will not continue. Set the '
+                     f'--overwrite flag at your own risk if you want to use an existing directory.')
+        sys.exit(1)
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -119,7 +120,6 @@ def main():
 def check_dependency(dependency_name: str):
     """
     Checks if a required shell dependency is present
-
     :param dependency_name: name of the dependency
     :return: path to the dependency
     """
@@ -127,7 +127,9 @@ def check_dependency(dependency_name: str):
     dependency_path = shutil.which(dependency_name)
 
     if dependency_path is None:
-        raise RuntimeError(f'Dependency not found: {dependency_name}')
+
+        logger.error(f'Dependency not found: {dependency_name}')
+        raise RuntimeError
 
     return dependency_path
 
@@ -135,7 +137,6 @@ def check_dependency(dependency_name: str):
 def parse_assembly_info_file(assembly_info_filepath: str, info_type: str, return_type: str = 'circular'):
     """
     List circular and linear contigs from a Flye (or custom format) assembly info file
-
     :param assembly_info_filepath: path to assembly_info.txt output by Flye
     :param info_type: whether the info file is in 'flye' format or is a 'custom' format.
                       'flye' format refers to the 'assembly_info.txt' format output by Flye after a successful assembly.
@@ -176,14 +177,16 @@ def parse_assembly_info_file(assembly_info_filepath: str, info_type: str, return
         linear_contigs = assembly_info[assembly_info['status'] != 'circular']
 
     else:
-        raise ValueError(f'Assembly info file format should be "flye" or "custom"; you provided {info_type}')
+
+        logger.error(f'Assembly info file format should be "flye" or "custom"; you provided {info_type}')
+        raise ValueError
 
     # Check for duplicate sequence IDs
     if assembly_info['#seq_name'].drop_duplicates().shape[0] < assembly_info['#seq_name'].shape[0]:
         duplicated_ids = set(assembly_info['#seq_name'][assembly_info['#seq_name'].duplicated() == True])
 
-        raise RuntimeError(f'Some sequence IDs are duplicated in the input assembly info file: '
-                           f'{", ".join(duplicated_ids)}')
+        logger.error(f'Some sequence IDs are duplicated in the input assembly info file: {", ".join(duplicated_ids)}')
+        raise RuntimeError
 
     if return_type == 'circular':
 
@@ -197,7 +200,8 @@ def parse_assembly_info_file(assembly_info_filepath: str, info_type: str, return
 
     else:
 
-        raise RuntimeError(f'Return_type must be "circular" or "linear"; you provided "{return_type}"')
+        logger.error(f'Return_type must be "circular" or "linear"; you provided "{return_type}"')
+        raise RuntimeError
 
     return output_list
 
@@ -205,7 +209,6 @@ def parse_assembly_info_file(assembly_info_filepath: str, info_type: str, return
 def subset_sequences(input_fasta_filepath: str, subset_sequence_ids: list):
     """
     Given an input FastA file, subsets the file to the provided sequence IDs
-
     :param input_fasta_filepath: Path to the input FastA file
     :param subset_sequence_ids: list of the names of sequences to keep. If any names in the list are not in the
                                 input file, the function will not return anything for those names. The function will
@@ -231,14 +234,14 @@ def subset_sequences(input_fasta_filepath: str, subset_sequence_ids: list):
         sequence_names_series = pd.Series(sequence_names)
         duplicates_names = set(sequence_names_series[sequence_names_series.duplicated() == True])
 
-        raise RuntimeError(f'Duplicate sequence IDs were detected in the input FastA file "{input_fasta_filepath}": '
-                           f'{", ".join(duplicates_names)}')
+        logger.error(f'Duplicate sequence IDs were detected in the input FastA file "{input_fasta_filepath}": '
+                     f'{", ".join(duplicates_names)}')
+        raise RuntimeError
 
 
 def set_write_mode(append_log: bool):
     """
     Converts the boolean append_log to 'w' or 'a' write modes
-
     :param append_log: boolean of whether to append to an existing log file (True) or to overwrite an existing log
                        file (False)
     :return: string of either 'a' (append mode) or 'w' (write mode)
@@ -251,7 +254,9 @@ def set_write_mode(append_log: bool):
         write_mode = 'w'
 
     else:
-        raise ValueError(f'Expected a boolean True or False; you provided {append_log}')
+
+        logger.error(f'append_log should be a boolean True or False; you provided {append_log}')
+        raise ValueError
 
     return write_mode
 
@@ -259,7 +264,6 @@ def set_write_mode(append_log: bool):
 def generate_bed_file(contig_seqrecord: SeqIO.SeqRecord, bed_filepath: str, length_threshold: int = 100000):
     """
     Generates a BED file for a desired region around the ends of a contig
-
     :param contig_seqrecord: SeqRecord of the contig
     :param bed_filepath: desired output filepath for the BED file
     :param length_threshold: length (bp) around the contig end to target in the BED file.
@@ -296,7 +300,6 @@ def map_long_reads(contig_filepath: str, long_read_filepath: str, output_bam_fil
                    dependency_dict: dict, append_log: bool = True, threads: int = 1, threads_mem_mb: float = 1):
     """
     Maps long reads (via minimap2) to contigs and sorts/indexes the resulting BAM file
-
     :param contig_filepath: path to the FastA file containing the reference contigs
     :param long_read_filepath: path to the FastQ file containing long reads to map (compressed is OK)
     :param output_bam_filepath: path to the BAM file to be saved
@@ -339,8 +342,7 @@ def map_long_reads(contig_filepath: str, long_read_filepath: str, output_bam_fil
 def subset_reads_from_bam(bam_filepath: str, bed_filepath: str, subset_fastq_filepath: str, log_filepath: str,
                           dependency_dict: dict, append_log: bool = True, threads: int = 1):
     """
-    Subsets reads from a BAM file that were mapped to regions defined in a BED file; saves reads to a FastQ file.
-
+    Subsets reads from a BAM file that were mapped to regions defined in a BED file; saves reads to a FastQ file
     :param bam_filepath: path to a BAM file containing reads mapped to a reference; BAM needs to be sorted and indexed
     :param bed_filepath: path to a BED file containing the regions of reference contigs to subset reads for
     :param subset_fastq_filepath: path to the FastQ file to be saved (.fastq.gz extension saves as Gzipped FastQ)
@@ -372,8 +374,7 @@ def subset_reads_from_bam(bam_filepath: str, bed_filepath: str, subset_fastq_fil
 def run_flye(fastq_filepath: str, flye_outdir: str, flye_read_mode: str, flye_read_error: float, log_filepath: str,
              dependency_dict: dict, append_log: bool = True, threads: int = 1):
     """
-    Runs Flye to assemble the reads in the input FastQ file. This function allows Flye to fail without raising an error.
-
+    Runs Flye to assemble the reads in the input FastQ file. This function allows Flye to fail without raising an error
     :param fastq_filepath: path to a FastQ file containing the input reads (gzipped is OK)
     :param flye_outdir: directory to save Flye output to
     :param flye_read_mode: type of long reads, either 'nano-raw' or 'nano-hq'
@@ -390,19 +391,24 @@ def run_flye(fastq_filepath: str, flye_outdir: str, flye_read_mode: str, flye_re
 
     # TODO - add support for PacBio reads
     if (flye_read_mode != 'nano-raw') & (flye_read_mode != 'nano-hq'):
-        raise ValueError(f'flye_read_mode must be "nano-raw" or "nano-hq"; you provided {flye_read_mode}')
+
+        logger.error(f'flye_read_mode must be "nano-raw" or "nano-hq"; you provided {flye_read_mode}')
+        raise ValueError
 
     flye_args = [dependency_dict['flye'], f'--{flye_read_mode}', fastq_filepath, '-o', flye_outdir, '-t', str(threads)]
 
     if flye_read_error != 0:
+
         flye_args.append('--read_error')
         flye_args.append(flye_read_error)
 
     with open(log_filepath, write_mode) as logfile_handle:
+
         logger.debug(shlex.join(flye_args))
         flye_run = subprocess.run(flye_args, check=False, stderr=logfile_handle)
 
     if flye_run.returncode != 0:
+
         logger.warning(f'Flye did not finish successfully; see log for details at "{log_filepath}"')
 
     return flye_run.returncode
@@ -420,7 +426,7 @@ def run_circlator_merge(circular_contig_filepath: str, patch_contig_filepath: st
     :param patch_contig_filepath: path to a FastA file containing a linear contig that should span the 'ends' of the
                                   circular contig
     :param merge_outdir: directory to save circlator merge output to
-    :param circlator_min_id: Percent identity threshold for circlator merge to stich the contigs
+    :param circlator_min_id: Percent identity threshold for circlator merge to stitch the contigs
     :param circlator_min_length: Minimum required overlap (bp) between the circular contig and the patch contig
     :param circlator_ref_end: Minimum distance (bp) between end of circular contig and the nucmer hit
     :param circlator_reassemble_end: Minimum distance (bp) between end of patch contig and the nucmer hit
@@ -448,7 +454,6 @@ def run_circlator_merge(circular_contig_filepath: str, patch_contig_filepath: st
 def check_circlator_success(circlator_logfile: str):
     """
     Checks the circlator log file to see if contig stitching was successful
-
     :param circlator_logfile: path to the circlator log file
     :return: Boolean of whether the contigs were successfully stitched or not
     """
@@ -460,15 +465,19 @@ def check_circlator_success(circlator_logfile: str):
     # If a row is '1', it means it was stitched properly, but if '0', it means it was not stitched.
     # So if all rows are 1 (i.e., the sum of rows / # of rows is 1), it means everything was stitched properly.
     if circlator_info['circularised'].sum() / circlator_info.shape[0] == 1:
+
         logger.debug('Everything is stitched.')
         result = True
 
     elif circlator_info['circularised'].sum() >= 0:
+
         logger.debug('Not everything is stitched.')
         result = False
 
     else:
-        raise RuntimeError('File processing error. # of non-stitched contigs is not >=0. Exiting...')
+
+        logger.error('File processing error. # of non-stitched contigs is not >=0. Exiting...')
+        raise RuntimeError
 
     return result
 
@@ -476,7 +485,6 @@ def check_circlator_success(circlator_logfile: str):
 def rotate_contig_to_midpoint(contig_fasta_filepath: str, output_filepath: str, append: bool = False):
     """
     Rotates an input (circular) contig to its approximate midpoint
-
     :param contig_fasta_filepath: path to a FastA file containing a single circular contig
     :param output_filepath: path where the FastA file containing the output rotated contig should be saved
     :param append: whether to append the output FastA onto an existing file (True) or overwrite (False)
@@ -494,7 +502,8 @@ def rotate_contig_to_midpoint(contig_fasta_filepath: str, output_filepath: str, 
                 contig_record = record
 
             elif contig_count > 0:
-                raise RuntimeError('More than one contig in input FastA file')
+                logger.error('More than one contig in input FastA file')
+                raise RuntimeError
 
             contig_count = contig_count + 1
 
@@ -624,7 +633,7 @@ def iterate_linking_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: st
         # Don't attempt to link the ends if the contig is too short
         if len(contig_record.seq) <= length_threshold:
             logger.info(f'Skipping length threshold of {length_threshold} because '
-                         f'contig is shorter than this length ({len(contig_record.seq)} bp)')
+                        f'contig is shorter than this length ({len(contig_record.seq)} bp)')
 
             assembly_attempts = assembly_attempts + 1
             continue
@@ -760,8 +769,10 @@ def stitch_all_contigs(circular_contig_tmp_fasta: str, bam_filepath: str, linkin
                 shutil.rmtree(linking_outdir)
 
             else:
-                raise ValueError(f'end_linkage_complete should be boolean True or False; is actually '
-                                 f'{end_linkage_complete}')
+
+                logger.error(f'end_linkage_complete should be boolean True or False; is actually '
+                             f'{end_linkage_complete}')
+                raise ValueError
 
     return failed_contig_names
 
@@ -858,7 +869,9 @@ def run_end_repair(long_read_filepath: str, assembly_fasta_filepath: str, assemb
                     SeqIO.write(record, append_handle, 'fasta')
 
         else:
-            raise ValueError(f'Expected a boolean True or False; you provided {keep_failed_contigs}')
+
+            logger.error(f'keep_failed_contigs should be a boolean True or False; you provided {keep_failed_contigs}')
+            raise ValueError
 
     # Get the linear contigs and append them to the repaired contigs file
     # TODO - consider just getting all non-circular contigs regardless of whether they are in the assembly info file.
