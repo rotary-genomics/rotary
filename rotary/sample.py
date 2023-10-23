@@ -20,9 +20,7 @@ class SequencingFile(object):
         self.path = file_path
         self.name = os.path.basename(self.path)
 
-        file_extension = os.path.splitext(self.name)[1]
-
-        if 'fastq' not in file_extension and 'fq' not in file_extension:
+        if not is_fastq_file(self.name):
             raise ValueError(f'{self.name} is not a fastq file.')
 
         if '_' in self.name:
@@ -38,6 +36,8 @@ class SequencingFile(object):
             self.r_value = r_value[0].upper()
         else:
             self.r_value = None
+
+
 
 
 class Sample(object):
@@ -92,3 +92,18 @@ class Sample(object):
         :return: Returns a list containing the sample identifier and the paths to sample's the input files.
         """
         return [self.identifier, self.long_read_path, self.short_read_left_path, self.short_read_right_path]
+
+def is_fastq_file(file_name):
+    """
+    Determines if file is a fastq file based in its extension.
+    :param file_name: The name of the file.
+    :return: True if the file contains 'fastq' or 'fq'.
+    """
+    file_extension = file_name.split(os.path.extsep, 1)[1]
+
+    if 'fastq' in file_extension or 'fq' in file_extension:
+        is_fastq = True
+    else:
+        is_fastq = False
+
+    return is_fastq
