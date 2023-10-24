@@ -319,24 +319,39 @@ def map_long_reads(contig_filepath: str, long_read_filepath: str, output_bam_fil
             # TODO - add support for different flags like -ax for pacbio
             minimap_args = [dependency_dict['minimap2'], '-t', str(threads), '-ax', 'map-ont', contig_filepath,
                             long_read_filepath]
-            logger.debug(f'{shlex.join(minimap_args)} | \\')
-            minimap = subprocess.run(minimap_args, check=True, stdout=subprocess.PIPE, stderr=logfile_handle)
+            minimap = run_pipeline_subcommand(command_args=minimap_args, stdout=subprocess.PIPE, stderr=logfile_handle)
 
             samtools_view_args = [dependency_dict['samtools'], 'view', '-b', '-@', str(threads)]
-            logger.debug(f'{shlex.join(samtools_view_args)} | \\')
-            samtools_view = subprocess.run(samtools_view_args, check=True, input=minimap.stdout,
-                                           stdout=subprocess.PIPE, stderr=logfile_handle)
+            samtools_view = run_pipeline_subcommand(command_args=samtools_view_args, stdin=minimap, stdout=subprocess.PIPE,
+                                                    stderr=logfile_handle)
 
             samtools_sort_args = [dependency_dict['samtools'], 'sort', '-@', str(threads), '-m', f'{threads_mem_mb}M']
-            logger.debug(shlex.join(samtools_sort_args))
-            subprocess.run(samtools_sort_args, check=True, input=samtools_view.stdout,
-                           stdout=bam_handle, stderr=logfile_handle)
+            run_pipeline_subcommand(command_args=samtools_sort_args, stdin=samtools_view, stdout=bam_handle,
+                                    stderr=logfile_handle)
 
         samtools_index_args = [dependency_dict['samtools'], 'index', '-@', str(threads), output_bam_filepath]
-        logger.debug(shlex.join(samtools_index_args))
-        subprocess.run(samtools_index_args, check=True, stderr=logfile_handle)
+        run_pipeline_subcommand(command_args=samtools_index_args, stderr=logfile_handle)
 
     logger.debug('Read mapping finished')
+
+
+def run_pipeline_subcommand(command_args, stdin=None, stdout=None, stderr=None, check=True):
+    """
+    Wrapper function for running subcommands.
+
+    :param command_args: The command line arguments of the subcommand (e.g., ['samtools', '-h'])
+    :param stdin: A subprocess.PIPE or None if stdin is not to be used.
+    :param stdout: Where to send stdout or None if stdout is not to be used.
+    :param stderr: Where to send stderr or None if stderr is not to be used.
+    :param check: Cause a runtime error if the subcommand fails.
+    :return: The output of the subcommand.
+    """
+    logger.debug(shlex.join(command_args))
+
+    if stdin:
+        stdin = stdin.stdout
+
+    return subprocess.run(command_args, check=check, input=stdin, stdout=stdout, stderr=stderr)
 
 
 def subset_reads_from_bam(bam_filepath: str, bed_filepath: str, subset_fastq_filepath: str, log_filepath: str,
@@ -362,13 +377,12 @@ def subset_reads_from_bam(bam_filepath: str, bed_filepath: str, subset_fastq_fil
         #  like in circlator
         samtools_view_args = [dependency_dict['samtools'], 'view', '-@', str(threads), '-L', bed_filepath, '-b',
                               bam_filepath]
-        logger.debug(f'{shlex.join(samtools_view_args)} | \\')
-        samtools_view = subprocess.run(samtools_view_args, check=True, stdout=subprocess.PIPE, stderr=logfile_handle)
+        samtools_view = run_pipeline_subcommand(command_args=samtools_view_args, stdout=subprocess.PIPE,
+                                                stderr=logfile_handle)
 
         samtools_fastq_args = [dependency_dict['samtools'], 'fastq', '-0', subset_fastq_filepath, '-n', '-@',
                                str(threads)]
-        logger.debug(shlex.join(samtools_fastq_args))
-        subprocess.run(samtools_fastq_args, check=True, input=samtools_view.stdout, stderr=logfile_handle)
+        run_pipeline_subcommand(command_args=samtools_fastq_args, stdin=samtools_view, stderr=logfile_handle)
 
 
 def run_flye(fastq_filepath: str, flye_outdir: str, flye_read_mode: str, flye_read_error: float, log_filepath: str,
@@ -404,8 +418,7 @@ def run_flye(fastq_filepath: str, flye_outdir: str, flye_read_mode: str, flye_re
 
     with open(log_filepath, write_mode) as logfile_handle:
 
-        logger.debug(shlex.join(flye_args))
-        flye_run = subprocess.run(flye_args, check=False, stderr=logfile_handle)
+        flye_run = run_pipeline_subcommand(command_args=flye_args, check=False, stderr=logfile_handle)
 
     if flye_run.returncode != 0:
 
@@ -447,8 +460,7 @@ def run_circlator_merge(circular_contig_filepath: str, patch_contig_filepath: st
                                 '--min_length', str(circlator_min_length), '--ref_end', str(circlator_ref_end),
                                 '--reassemble_end', str(circlator_reassemble_end), circular_contig_filepath,
                                 patch_contig_filepath, os.path.join(merge_outdir, 'merge')]
-        logger.debug(shlex.join(circlator_merge_args))
-        subprocess.run(circlator_merge_args, check=True, stdout=logfile_handle, stderr=subprocess.STDOUT)
+        run_pipeline_subcommand(command_args=circlator_merge_args, stdout=logfile_handle, stderr=subprocess.STDOUT)
 
 
 def check_circlator_success(circlator_logfile: str):
