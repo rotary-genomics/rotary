@@ -19,6 +19,10 @@ requirements:
     - psutil=5.9.5
     - sh=2.0.*
     - biopython=1.81
+    - circlator=1.5.5
+    - flye=2.9
+    - minimap2=2.23
+    - samtools=1.15
 
 build:
   script: poetry install

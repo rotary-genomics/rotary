@@ -49,6 +49,12 @@ circlator_merge_min_length: 10000
 circlator_merge_ref_end: 100
 # Minimum distance (bp) between end of merge contig and nucmer hit
 circlator_merge_reassemble_end: 100
+# By default, end repair fails if a circular contig can't be end-repaired (i.e., if a contig can't be built that spans
+#   the ends of the contig). Failing to build the end-spanning contig can happen for several reasons (e.g., if that
+#   region is a repeat-rich region), even if the contig is really circular. Set keep_unrepaired_contigs to 'True' to keep
+#   the pipeline going even if end repair fails on a contig. If set to 'True', then the original assembled versions of
+#   any contigs that fail end repair will be used for downstream steps and will still be treated as circular.
+keep_unrepaired_contigs: 'False'
 
 ## Polishing
 # Model: set this parameter to match the flow cell version / basecalling model you used to generate the long reads.
@@ -67,9 +73,9 @@ evenness_cutoff_short_read: 95
 evenness_cutoff_long_read: "None"
 
 ## Circularization
-# Download the following HMM from Pfam to look for a start gene
-# DnaA is PF00308
-start_hmm_pfam_id: "PF00308"
+# Download the following HMM to use for a start gene.
+# RpoB is TIGR02013.1.
+hmm_url: "https://ftp.ncbi.nlm.nih.gov/hmm/current/hmm_PGAP.HMM/TIGR02013.1.HMM"
 hmmsearch_evalue: 1e-40
 
 ## Annotation

@@ -1,17 +1,16 @@
-# rotary, a snakemake-based Nanopore genome assembly workflow
-# Copyright Jackson M. Tsuji, Institute of Low Temperature Science, Hokkaido University, 2022
+# rotary: utilities and workflow for long-read DNA assemblies including circular elements
+# Copyright Jackson M. Tsuji and Lee H. Bergstrand, 2023
 
 import os
 import sys
-import shutil
 import pandas as pd
 import itertools
-from snakemake.utils import logger, min_version, update_config
+from snakemake.utils import min_version
 
-VERSION="0.2.0-beta4"
 VERSION_POLYPOLISH="0.5.0"
 VERSION_DFAST="1.2.18"
 VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
+START_HMM_NAME = os.path.splitext(os.path.basename(config.get("hmm_url")))[0]
 VERSION_GTDB_COMPLETE= "214.1" # See https://data.gtdb.ecogenomic.org/releases/
 VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
 
@@ -29,26 +28,6 @@ rule all:
         "checkpoints/polish",
         "checkpoints/circularize",
         "checkpoints/annotation"
-
-
-rule install_internal_scripts:
-    output:
-        end_repair=os.path.join(config.get("db_dir"), "rotary-" + VERSION, "scripts", "flye_end_repair.sh"),
-        end_repair_utils=os.path.join(config.get("db_dir"), "rotary-" + VERSION, "scripts", "flye_end_repair_utils.py"),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "internal_scripts_" + VERSION)
-    log:
-        "logs/download/install_internal_scripts.log"
-    benchmark:
-        "benchmarks/download/install_internal_scripts.txt"
-    params:
-        db_dir=config.get("db_dir"),
-        url="https://github.com/jmtsuji/rotary/archive/refs/tags/" + VERSION + ".tar.gz"
-    shell:
-        """
-        mkdir -p {params.db_dir}
-        wget -O - {params.url} 2> {log} | tar -C {params.db_dir} -xzf - >> {log} 2>&1
-        touch {output.install_finished}
-        """
 
 
 rule install_polypolish:
@@ -74,18 +53,18 @@ rule install_polypolish:
 # TODO - does not check the HMM version, only ID. If the HMM version updates, it won't automatically re-download
 rule download_hmm:
     output:
-        hmm=os.path.join(config.get("db_dir"), "hmm", config.get("start_hmm_pfam_id") + ".hmm")
+        hmm=os.path.join(config.get("db_dir"), "hmm", START_HMM_NAME + ".hmm")
     log:
         "logs/download/hmm_download.log"
     benchmark:
         "benchmarks/download/hmm_download.txt"
     params:
         db_dir=os.path.join(config.get("db_dir"), "hmm"),
-        url="http://pfam-legacy.xfam.org/family/" + config.get("start_hmm_pfam_id") + "/hmm"
+        url=config.get("hmm_url")
     shell:
         """
         mkdir -p {params.db_dir}
-        wget -O {output.hmm} --no-check-certificate {params.url} 2> {log}
+        wget -O {output.hmm} {params.url} 2> {log}
         """
 
 
@@ -339,19 +318,16 @@ rule assembly_flye:
         """
 
 
+# TODO - eventually make this rule more generic so that outputs from other assemblers can go to the same output files
+# TODO - the math for memory per thread should really be done somewhere other than 'resources' - what is best practice?
 rule assembly_end_repair:
     input:
         qc_long_reads="qc_long/nanopore_qc.fastq.gz",
         assembly="assembly/flye/assembly.fasta",
-        info="assembly/flye/assembly_info.txt",
-        end_repair=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"scripts","flye_end_repair.sh"),
-        end_repair_utils=os.path.join(config.get("db_dir"),"rotary-" + VERSION,"scripts","flye_end_repair_utils.py"),
-        install_finished=os.path.join(config.get("db_dir"),"checkpoints","internal_scripts_" + VERSION)
+        info="assembly/flye/assembly_info.txt"
     output:
         assembly="assembly/end_repair/repaired.fasta",
-        info="assembly/end_repair/assembly_info.txt"
-    conda:
-        "../envs/circlator.yaml"
+        info="assembly/end_repair/repaired_info.tsv"
     log:
         "logs/assembly/end_repair.log"
     benchmark:
@@ -363,29 +339,40 @@ rule assembly_end_repair:
         min_id=config.get("circlator_merge_min_id"),
         min_length=config.get("circlator_merge_min_length"),
         ref_end=config.get("circlator_merge_ref_end"),
-        reassemble_end=config.get("circlator_merge_reassemble_end")
+        reassemble_end=config.get("circlator_merge_reassemble_end"),
+        keep_going="--keep_going_with_failed_contigs" if config.get("keep_unrepaired_contigs") == "True" else "",
     threads:
         config.get("threads",1)
     resources:
         mem=int(config.get("memory") / config.get("threads",1))
     shell:
         """
-        {input.end_repair} -f {params.flye_input_mode} -F {params.flye_read_error} -i {params.min_id} \
-          -l {params.min_length} -e {params.ref_end} -E {params.reassemble_end} -t {threads} -m {resources.mem} \
-          {input.qc_long_reads} {input.assembly} {input.info} {params.output_dir} > {log} 2>&1
-        cp {input.info} {output.info}
+        rotary-repair --long_read_filepath {input.qc_long_reads} \
+          --assembly_fasta_filepath {input.assembly} \
+          --assembly_info_filepath {input.info} \
+          --output_dir {params.output_dir} \
+          --flye_read_mode {params.flye_input_mode} \
+          --flye_read_error {params.flye_read_error} \
+          --circlator_min_id {params.min_id} \
+          --circlator_min_length {params.min_length} \
+          --circlator_ref_end {params.ref_end} \
+          --circlator_reassemble_end {params.reassemble_end} \
+          --threads {threads} \
+          --threads_mem {resources.mem} \
+          --verbose \
+          --overwrite \
+          {params.keep_going} \
+          > {log} 2>&1
         """
 
 
-# TODO - eventually make this rule more generic so that outputs from other assemblers can go to the same output files
-#        In particular, the format of assembly_info.txt will need to be standardized (also in assembly_end_repair).
 rule finalize_assembly:
     input:
-        assembly="assembly/flye/assembly.fasta",
-        info="assembly/flye/assembly_info.txt"
+        assembly="assembly/end_repair/repaired.fasta",
+        info="assembly/end_repair/repaired_info.tsv"
     output:
         assembly="assembly/assembly.fasta",
-        info="assembly/assembly_info.txt"
+        info="assembly/circular_info.tsv"
     run:
         source_relpath = os.path.relpath(str(input.assembly),os.path.dirname(str(output.assembly)))
         os.symlink(source_relpath,str(output.assembly))
@@ -397,7 +384,7 @@ rule finalize_assembly:
 rule assembly:
     input:
         "assembly/assembly.fasta",
-        "assembly/assembly_info.txt"
+        "assembly/circular_info.tsv"
     output:
         temp(touch("checkpoints/assembly"))
 
@@ -716,7 +703,7 @@ rule polish:
 # Based on clustering tutorial at https://snakemake.readthedocs.io/en/stable/snakefiles/rules.html (accessed 2022.3.31)
 checkpoint split_circular_and_linear_contigs:
     input:
-        assembly_stats="assembly/assembly_info.txt",
+        assembly_stats="assembly/circular_info.tsv",
         filter_list="polish/cov_filter/filtered_contigs.list"
     output:
         directory("circularize/filter/lists")
@@ -724,19 +711,19 @@ checkpoint split_circular_and_linear_contigs:
         coverage_filtered_contigs = pd.read_csv(input.filter_list, header=None)[0]
 
         assembly_info = pd.read_csv(input.assembly_stats, sep='\t')
-        assembly_info_filtered = assembly_info[assembly_info['#seq_name'].isin(coverage_filtered_contigs)]
+        assembly_info_filtered = assembly_info[assembly_info['contig'].isin(coverage_filtered_contigs)]
 
-        circular_contigs = assembly_info_filtered[assembly_info_filtered['circ.'] == 'Y']
-        linear_contigs = assembly_info_filtered[assembly_info_filtered['circ.'] == 'N']
+        circular_contigs = assembly_info_filtered[assembly_info_filtered['circular'] == 'Y']
+        linear_contigs = assembly_info_filtered[assembly_info_filtered['circular'] == 'N']
 
         os.makedirs(output[0], exist_ok=True)
 
         # Only output files if there is >=1 entry
         if circular_contigs.shape[0] >= 1:
-            circular_contigs['#seq_name'].to_csv(os.path.join(output[0], 'circular.list'), header=None, index=False)
+            circular_contigs['contig'].to_csv(os.path.join(output[0], 'circular.list'), header=None, index=False)
 
         if linear_contigs.shape[0] >= 1:
-            linear_contigs['#seq_name'].to_csv(os.path.join(output[0], 'linear.list'), header=None, index=False)
+            linear_contigs['contig'].to_csv(os.path.join(output[0], 'linear.list'), header=None, index=False)
 
 
 # Makes separate files for circular and linear contigs as needed
@@ -757,7 +744,7 @@ rule get_polished_contigs:
 rule search_contig_start:
     input:
         contigs="circularize/filter/circular.fasta",
-        hmm=os.path.join(config.get("db_dir"), "hmm", config.get("start_hmm_pfam_id") + ".hmm")
+        hmm=os.path.join(config.get("db_dir"), "hmm", START_HMM_NAME + ".hmm")
     output:
         orf_predictions=temp("circularize/identify/circular.faa"),
         gene_predictions=temp("circularize/identify/circular.ffn"),
@@ -807,7 +794,7 @@ rule process_start_genes:
 
         else:
             # Load HMM search results
-            hmmsearch_results = hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None)[[0, 2, 3, 4]]
+            hmmsearch_results = pd.read_csv(input[0], sep='\s+', header=None)[[0, 2, 3, 4]]
 
             hmmsearch_results.columns = ['orf', 'hmm_name', 'hmm_accession', 'evalue']
 

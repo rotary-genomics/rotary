@@ -16,7 +16,7 @@ dependencies = [
     "ruamel.yaml ~=0.17",
     "psutil ~=5.9",
     "sh ~=2.0",
-    "biopython ~=1.8"
+    "biopython ~=1.81"
 ]
 
 [tool.setuptools.packages]
@@ -28,6 +28,7 @@ build-backend = "setuptools.build_meta"
 
 [project.scripts]
 rotary = "rotary.rotary:main"
+rotary-repair = "rotary.repair:main"
 
 [tool.setuptools]
 include-package-data = true
