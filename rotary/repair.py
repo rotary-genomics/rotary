@@ -19,6 +19,7 @@ DEPENDENCY_NAMES = ['flye', 'minimap2', 'samtools', 'circlator']
 
 # Set up the logger
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 formatter = logging.Formatter('[ %(asctime)s ]: %(levelname)s: %(funcName)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 stream_handler = logging.StreamHandler()
 stream_handler.setFormatter(formatter)
@@ -40,9 +41,9 @@ def main():
 
     # Startup checks
     if args.verbose is True:
-        logger.setLevel(logging.DEBUG)
+        stream_handler.setLevel(logging.DEBUG)
     else:
-        logger.setLevel(logging.INFO)
+        stream_handler.setLevel(logging.INFO)
 
     # Check output dir
     output_dir_exists = os.path.isdir(args.output_dir)
@@ -58,6 +59,7 @@ def main():
     # Start log file in the output dir
     file_handler = logging.FileHandler(filename=os.path.join(args.output_dir, 'repaired.log'), mode='w')
     file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.DEBUG)
     logger.addHandler(file_handler)
 
     # Check dependencies
@@ -110,7 +112,7 @@ def main():
 
     run_end_repair(args.long_read_filepath, args.assembly_fasta_filepath, args.assembly_info_filepath,
                    assembly_info_type, args.output_dir, length_thresholds, args.keep_going_with_failed_contigs,
-                   cli_tool_settings_dict, args.threads, threads_mem_mb)
+                   cli_tool_settings_dict, dependency_dict, args.threads, threads_mem_mb)
 
     logger.info(os.path.basename(sys.argv[0]) + ': done.')
 
@@ -295,13 +297,14 @@ def generate_bed_file(contig_seqrecord: SeqIO.SeqRecord, bed_filepath: str, leng
 
 
 def map_long_reads(contig_filepath: str, long_read_filepath: str, output_bam_filepath: str, log_filepath: str,
-                   append_log: bool = True, threads: int = 1, threads_mem_mb: float = 1):
+                   dependency_dict: dict, append_log: bool = True, threads: int = 1, threads_mem_mb: float = 1):
     """
     Maps long reads (via minimap2) to contigs and sorts/indexes the resulting BAM file
     :param contig_filepath: path to the FastA file containing the reference contigs
     :param long_read_filepath: path to the FastQ file containing long reads to map (compressed is OK)
     :param output_bam_filepath: path to the BAM file to be saved
     :param log_filepath: path to the log file to be saved
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
     :param append_log: whether the log should append to an existing file (True) or overwrite an existing file (False);
                        this setting is only relevant if the log file at log_filepath already exists
     :param threads: number of threads to use for read mapping
@@ -314,35 +317,52 @@ def map_long_reads(contig_filepath: str, long_read_filepath: str, output_bam_fil
     with open(log_filepath, write_mode) as logfile_handle:
         with open(output_bam_filepath, 'w') as bam_handle:
             # TODO - add support for different flags like -ax for pacbio
-            minimap_args = ['minimap2', '-t', str(threads), '-ax', 'map-ont', contig_filepath, long_read_filepath]
-            logger.debug(f'{shlex.join(minimap_args)} | \\')
-            minimap = subprocess.run(minimap_args, check=True, stdout=subprocess.PIPE, stderr=logfile_handle)
+            minimap_args = [dependency_dict['minimap2'], '-t', str(threads), '-ax', 'map-ont', contig_filepath,
+                            long_read_filepath]
+            minimap = run_pipeline_subcommand(command_args=minimap_args, stdout=subprocess.PIPE, stderr=logfile_handle)
 
-            samtools_view_args = ['samtools', 'view', '-b', '-@', str(threads)]
-            logger.debug(f'{shlex.join(samtools_view_args)} | \\')
-            samtools_view = subprocess.run(samtools_view_args, check=True, input=minimap.stdout,
-                                           stdout=subprocess.PIPE, stderr=logfile_handle)
+            samtools_view_args = [dependency_dict['samtools'], 'view', '-b', '-@', str(threads)]
+            samtools_view = run_pipeline_subcommand(command_args=samtools_view_args, stdin=minimap, stdout=subprocess.PIPE,
+                                                    stderr=logfile_handle)
 
-            samtools_sort_args = ['samtools', 'sort', '-@', str(threads), '-m', f'{threads_mem_mb}M']
-            logger.debug(shlex.join(samtools_sort_args))
-            subprocess.run(samtools_sort_args, check=True, input=samtools_view.stdout,
-                           stdout=bam_handle, stderr=logfile_handle)
+            samtools_sort_args = [dependency_dict['samtools'], 'sort', '-@', str(threads), '-m', f'{threads_mem_mb}M']
+            run_pipeline_subcommand(command_args=samtools_sort_args, stdin=samtools_view, stdout=bam_handle,
+                                    stderr=logfile_handle)
 
-        samtools_index_args = ['samtools', 'index', '-@', str(threads), output_bam_filepath]
-        logger.debug(shlex.join(samtools_index_args))
-        subprocess.run(samtools_index_args, check=True, stderr=logfile_handle)
+        samtools_index_args = [dependency_dict['samtools'], 'index', '-@', str(threads), output_bam_filepath]
+        run_pipeline_subcommand(command_args=samtools_index_args, stderr=logfile_handle)
 
     logger.debug('Read mapping finished')
 
 
+def run_pipeline_subcommand(command_args, stdin=None, stdout=None, stderr=None, check=True):
+    """
+    Wrapper function for running subcommands.
+
+    :param command_args: The command line arguments of the subcommand (e.g., ['samtools', '-h'])
+    :param stdin: A subprocess.PIPE or None if stdin is not to be used.
+    :param stdout: Where to send stdout or None if stdout is not to be used.
+    :param stderr: Where to send stderr or None if stderr is not to be used.
+    :param check: Cause a runtime error if the subcommand fails.
+    :return: The output of the subcommand.
+    """
+    logger.debug(shlex.join(command_args))
+
+    if stdin:
+        stdin = stdin.stdout
+
+    return subprocess.run(command_args, check=check, input=stdin, stdout=stdout, stderr=stderr)
+
+
 def subset_reads_from_bam(bam_filepath: str, bed_filepath: str, subset_fastq_filepath: str, log_filepath: str,
-                          append_log: bool = True, threads: int = 1):
+                          dependency_dict: dict, append_log: bool = True, threads: int = 1):
     """
     Subsets reads from a BAM file that were mapped to regions defined in a BED file; saves reads to a FastQ file
     :param bam_filepath: path to a BAM file containing reads mapped to a reference; BAM needs to be sorted and indexed
     :param bed_filepath: path to a BED file containing the regions of reference contigs to subset reads for
     :param subset_fastq_filepath: path to the FastQ file to be saved (.fastq.gz extension saves as Gzipped FastQ)
     :param log_filepath: path to the log file to be saved
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
     :param append_log: whether the log should append to an existing file (True) or overwrite an existing file (False);
                        this setting is only relevant if the log file at log_filepath already exists
     :param threads: number of threads to use for read mapping
@@ -355,17 +375,18 @@ def subset_reads_from_bam(bam_filepath: str, bed_filepath: str, subset_fastq_fil
 
         # TODO - consider adding option to split long reads in half if they go around a short circular contig,
         #  like in circlator
-        samtools_view_args = ['samtools', 'view', '-@', str(threads), '-L', bed_filepath, '-b', bam_filepath]
-        logger.debug(f'{shlex.join(samtools_view_args)} | \\')
-        samtools_view = subprocess.run(samtools_view_args, check=True, stdout=subprocess.PIPE, stderr=logfile_handle)
+        samtools_view_args = [dependency_dict['samtools'], 'view', '-@', str(threads), '-L', bed_filepath, '-b',
+                              bam_filepath]
+        samtools_view = run_pipeline_subcommand(command_args=samtools_view_args, stdout=subprocess.PIPE,
+                                                stderr=logfile_handle)
 
-        samtools_fastq_args = ['samtools', 'fastq', '-0', subset_fastq_filepath, '-n', '-@', str(threads)]
-        logger.debug(shlex.join(samtools_fastq_args))
-        subprocess.run(samtools_fastq_args, check=True, input=samtools_view.stdout, stderr=logfile_handle)
+        samtools_fastq_args = [dependency_dict['samtools'], 'fastq', '-0', subset_fastq_filepath, '-n', '-@',
+                               str(threads)]
+        run_pipeline_subcommand(command_args=samtools_fastq_args, stdin=samtools_view, stderr=logfile_handle)
 
 
 def run_flye(fastq_filepath: str, flye_outdir: str, flye_read_mode: str, flye_read_error: float, log_filepath: str,
-             append_log: bool = True, threads: int = 1):
+             dependency_dict: dict, append_log: bool = True, threads: int = 1):
     """
     Runs Flye to assemble the reads in the input FastQ file. This function allows Flye to fail without raising an error
     :param fastq_filepath: path to a FastQ file containing the input reads (gzipped is OK)
@@ -373,6 +394,7 @@ def run_flye(fastq_filepath: str, flye_outdir: str, flye_read_mode: str, flye_re
     :param flye_read_mode: type of long reads, either 'nano-raw' or 'nano-hq'
     :param flye_read_error: expected error rate of reads as a proportion; specify 0 to use default Flye settings
     :param log_filepath: path to the log file to be saved
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
     :param append_log: whether the log should append to an existing file (True) or overwrite an existing file (False);
                        this setting is only relevant if the log file at log_filepath already exists
     :param threads: number of threads to use for read mapping
@@ -387,7 +409,7 @@ def run_flye(fastq_filepath: str, flye_outdir: str, flye_read_mode: str, flye_re
         logger.error(f'flye_read_mode must be "nano-raw" or "nano-hq"; you provided {flye_read_mode}')
         raise ValueError
 
-    flye_args = ['flye', f'--{flye_read_mode}', fastq_filepath, '-o', flye_outdir, '-t', str(threads)]
+    flye_args = [dependency_dict['flye'], f'--{flye_read_mode}', fastq_filepath, '-o', flye_outdir, '-t', str(threads)]
 
     if flye_read_error != 0:
 
@@ -396,8 +418,7 @@ def run_flye(fastq_filepath: str, flye_outdir: str, flye_read_mode: str, flye_re
 
     with open(log_filepath, write_mode) as logfile_handle:
 
-        logger.debug(shlex.join(flye_args))
-        flye_run = subprocess.run(flye_args, check=False, stderr=logfile_handle)
+        flye_run = run_pipeline_subcommand(command_args=flye_args, check=False, stderr=logfile_handle)
 
     if flye_run.returncode != 0:
 
@@ -408,7 +429,8 @@ def run_flye(fastq_filepath: str, flye_outdir: str, flye_read_mode: str, flye_re
 
 def run_circlator_merge(circular_contig_filepath: str, patch_contig_filepath: str, merge_outdir: str,
                         circlator_min_id: float, circlator_min_length: int, circlator_ref_end: int,
-                        circlator_reassemble_end: int, log_filepath: str, append_log: bool = True):
+                        circlator_reassemble_end: int, log_filepath: str, dependency_dict: dict,
+                        append_log: bool = True):
     """
     Runs the 'circlator merge' module to stitch a gap-spanning contig onto the ends of a circular contig to confirm and
     repair the circularization of the contig
@@ -422,6 +444,7 @@ def run_circlator_merge(circular_contig_filepath: str, patch_contig_filepath: st
     :param circlator_ref_end: Minimum distance (bp) between end of circular contig and the nucmer hit
     :param circlator_reassemble_end: Minimum distance (bp) between end of patch contig and the nucmer hit
     :param log_filepath: path to the log file to be saved
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
     :param append_log: whether the log should append to an existing file (True) or overwrite an existing file (False);
                        this setting is only relevant if the log file at log_filepath already exists
     :return: circlator merge output is saved to disk at merge_outdir
@@ -433,12 +456,11 @@ def run_circlator_merge(circular_contig_filepath: str, patch_contig_filepath: st
 
     with open(log_filepath, write_mode) as logfile_handle:
 
-        circlator_merge_args = ['circlator', 'merge', '--verbose', '--min_id', str(circlator_min_id), '--min_length',
-                                str(circlator_min_length), '--ref_end', str(circlator_ref_end), '--reassemble_end',
-                                str(circlator_reassemble_end), circular_contig_filepath, patch_contig_filepath,
-                                os.path.join(merge_outdir, 'merge')]
-        logger.debug(shlex.join(circlator_merge_args))
-        subprocess.run(circlator_merge_args, check=True, stdout=logfile_handle, stderr=subprocess.STDOUT)
+        circlator_merge_args = [dependency_dict['circlator'], 'merge', '--verbose', '--min_id', str(circlator_min_id),
+                                '--min_length', str(circlator_min_length), '--ref_end', str(circlator_ref_end),
+                                '--reassemble_end', str(circlator_reassemble_end), circular_contig_filepath,
+                                patch_contig_filepath, os.path.join(merge_outdir, 'merge')]
+        run_pipeline_subcommand(command_args=circlator_merge_args, stdout=logfile_handle, stderr=subprocess.STDOUT)
 
 
 def check_circlator_success(circlator_logfile: str):
@@ -515,7 +537,7 @@ def rotate_contig_to_midpoint(contig_fasta_filepath: str, output_filepath: str, 
 
 
 def link_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: str, length_outdir: str, length_threshold: int,
-                     cli_tool_settings_dict: dict, verbose_logfile: str, threads: int = 1):
+                     cli_tool_settings_dict: dict, dependency_dict: dict, verbose_logfile: str, threads: int = 1):
     """
     Attempt to stitch the ends of an input circular contig via assembling reads mapped within x bp of the contig ends
 
@@ -529,6 +551,7 @@ def link_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: str, length_o
     :param cli_tool_settings_dict: dictionary containing the following CLI tool settings, as defined in main(), as keys:
                                    flye_read_mode, flye_read_error, circlator_min_id, circlator_min_length,
                                    circlator_ref_end, circlator_reassemble_end
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
     :param verbose_logfile: path to a log file where shell script logs will be saved
     :param threads: parallel processor threads to use for the analysis
     :return: exit status code for Flye
@@ -546,13 +569,13 @@ def link_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: str, length_o
     generate_bed_file(contig_record, bed_filepath, length_threshold=length_threshold)
     subset_reads_from_bam(bam_filepath=bam_filepath, bed_filepath=bed_filepath,
                           subset_fastq_filepath=ends_fastq_filepath, log_filepath=verbose_logfile,
-                          append_log=True, threads=threads)
+                          dependency_dict=dependency_dict, append_log=True, threads=threads)
 
     # Assemble the reads to get (hopefully) a joined contig end
     flye_exit_status = run_flye(fastq_filepath=ends_fastq_filepath, flye_outdir=flye_length_outdir,
                                 flye_read_mode=cli_tool_settings_dict['flye_read_mode'],
                                 flye_read_error=cli_tool_settings_dict['flye_read_error'],
-                                log_filepath=verbose_logfile, append_log=True,
+                                log_filepath=verbose_logfile, dependency_dict=dependency_dict, append_log=True,
                                 threads=threads)
 
     if flye_exit_status == 0:
@@ -572,7 +595,7 @@ def link_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: str, length_o
                             circlator_min_length=cli_tool_settings_dict['circlator_min_length'],
                             circlator_ref_end=cli_tool_settings_dict['circlator_ref_end'],
                             circlator_reassemble_end=cli_tool_settings_dict['circlator_reassemble_end'],
-                            log_filepath=verbose_logfile, append_log=True)
+                            log_filepath=verbose_logfile, dependency_dict=dependency_dict, append_log=True)
 
     else:
         logger.warning('Flye assembly FAILED')
@@ -581,8 +604,8 @@ def link_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: str, length_o
 
 
 def iterate_linking_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: str, linking_outdir: str,
-                                length_thresholds: list, cli_tool_settings_dict: dict, verbose_logfile: str,
-                                threads: int = 1):
+                                length_thresholds: list, cli_tool_settings_dict: dict, dependency_dict: dict,
+                                verbose_logfile: str, threads: int = 1):
     """
     Iterate link_contig_ends to try to stitch the ends of a circular contig using multiple length thresholds
 
@@ -595,6 +618,7 @@ def iterate_linking_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: st
     :param cli_tool_settings_dict: dictionary containing the following CLI tool settings, as defined in main(), as keys:
                                    flye_read_mode, flye_read_error, circlator_min_id, circlator_min_length,
                                    circlator_ref_end, circlator_reassemble_end
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
     :param verbose_logfile: path to a logfile where shell script logs will be saved
     :param threads: parallel processor threads to use for the analysis
     :return: boolean of whether end linkage was successful (True) or not (False)
@@ -652,7 +676,8 @@ def iterate_linking_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: st
         flye_exit_status = link_contig_ends(contig_record=contig_record, bam_filepath=bam_filepath,
                                             length_outdir=length_outdir, length_threshold=length_threshold,
                                             cli_tool_settings_dict=cli_tool_settings_dict_used,
-                                            verbose_logfile=verbose_logfile, threads=threads)
+                                            dependency_dict=dependency_dict, verbose_logfile=verbose_logfile,
+                                            threads=threads)
 
         # Make the output logging directory (this is needed even if Flye fails so the pipeline can keep going)
         log_dir = os.path.join(log_dir_base, f'L{length_threshold}')
@@ -691,7 +716,7 @@ def iterate_linking_contig_ends(contig_record: SeqIO.SeqRecord, bam_filepath: st
 
 def stitch_all_contigs(circular_contig_tmp_fasta: str, bam_filepath: str, linking_outdir_base: str,
                        end_repaired_contigs_filepath: str, length_thresholds: list, cli_tool_settings_dict: dict,
-                       verbose_logfile: str, threads: int):
+                       dependency_dict: dict, verbose_logfile: str, threads: int):
     """
     Run the iterate_linking_contig_ends function on all contigs in an input FastA file, i.e., attempt to stitch the ends
     of all the contigs (assumed circular) in the file.
@@ -705,6 +730,7 @@ def stitch_all_contigs(circular_contig_tmp_fasta: str, bam_filepath: str, linkin
     :param cli_tool_settings_dict: dictionary containing the following CLI tool settings, as defined in main(), as keys:
                                    flye_read_mode, flye_read_error, circlator_min_id, circlator_min_length,
                                    circlator_ref_end, circlator_reassemble_end
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
     :param verbose_logfile: path to a logfile where shell script logs will be added
     :param threads: parallel processor threads to use for the analysis
     :return: Writes stitched contigs to end_repaired_contigs_filepath. Returns a list of the names of any contigs that
@@ -731,7 +757,7 @@ def stitch_all_contigs(circular_contig_tmp_fasta: str, bam_filepath: str, linkin
 
             end_linkage_complete = iterate_linking_contig_ends(contig_record, bam_filepath, linking_outdir,
                                                                length_thresholds, cli_tool_settings_dict,
-                                                               verbose_logfile, threads)
+                                                               dependency_dict, verbose_logfile, threads)
 
             if end_linkage_complete is False:
 
@@ -765,7 +791,7 @@ def stitch_all_contigs(circular_contig_tmp_fasta: str, bam_filepath: str, linkin
 
 def run_end_repair(long_read_filepath: str, assembly_fasta_filepath: str, assembly_info_filepath: str,
                    assembly_info_type: str, output_dir: str, length_thresholds: list, keep_failed_contigs: bool,
-                   cli_tool_settings_dict: dict, threads: int, threads_mem_mb: int):
+                   cli_tool_settings_dict: dict, dependency_dict: dict, threads: int, threads_mem_mb: int):
     """
     Runs the end repair workflow
 
@@ -782,6 +808,7 @@ def run_end_repair(long_read_filepath: str, assembly_fasta_filepath: str, assemb
     :param cli_tool_settings_dict: dictionary containing the following CLI tool settings, as defined in main(), as keys:
                                    flye_read_mode, flye_read_error, circlator_min_id, circlator_min_length,
                                    circlator_ref_end, circlator_reassemble_end
+    :param dependency_dict: dictionary including the needed shell dependency names (as keys) and paths (as values)
     :param threads: parallel processor threads to use for the analysis
     :param threads_mem_mb: memory in MB per thread (to use for samtools); must be an integer
     :return: None
@@ -816,12 +843,12 @@ def run_end_repair(long_read_filepath: str, assembly_fasta_filepath: str, assemb
     # Start the main workflow from here:
     logger.info('Mapping reads to all contigs')
     map_long_reads(contig_filepath=assembly_fasta_filepath, long_read_filepath=long_read_filepath,
-                   output_bam_filepath=bam_filepath, log_filepath=verbose_logfile,
+                   output_bam_filepath=bam_filepath, log_filepath=verbose_logfile, dependency_dict=dependency_dict,
                    append_log=False, threads=threads, threads_mem_mb=threads_mem_mb)
 
     failed_contig_names = stitch_all_contigs(circular_contig_tmp_fasta, bam_filepath, linking_outdir_base,
                                              end_repaired_contigs_filepath, length_thresholds, cli_tool_settings_dict,
-                                             verbose_logfile, threads)
+                                             dependency_dict, verbose_logfile, threads)
 
     os.makedirs(circlator_logdir, exist_ok=True)
     shutil.move(os.path.join(linking_outdir_base, 'log_summary'), circlator_logdir)
@@ -843,7 +870,7 @@ def run_end_repair(long_read_filepath: str, assembly_fasta_filepath: str, assemb
 
         elif keep_failed_contigs is True:
 
-            logger.warning(f'{len(failed_contig_names)} contigs could not be circularized. The original (non-repaired) '
+            logger.warning(f'{len(failed_contig_names)} contigs could not be circularized. The original (no-repaired) '
                            f'versions of these contigs will be included in the final output file')
             logger.warning(f'Names of contigs that could not be circularized: {", ".join(failed_contig_names)}')
 
