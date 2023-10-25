@@ -1,16 +1,7 @@
 # Config file for rotary
 
-#####################
-## Sample information
-# The sample ID should ideally be short and without special characters (e.g., < 10 characters, alphanumeric and underscores only)
-sample_id: "E_coli"
-# Nanopore data
-longreads: "E_coli.fastq.gz"
-# QC'ed short reads
-# Set qc_short_r1 (and qc_short_r1) to "None" (with quotes) to skip short read polishing
-qc_short_r1: "QC_R1.fastq.gz"
-qc_short_r2: "QC_R2.fastq.gz"
-#####################
+# path to the sample tsv file
+sample_tsv: "example/path"
 
 ## Directory for database installation
 db_dir: "/Data/databases/rotary"

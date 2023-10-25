@@ -142,7 +142,7 @@ def run_one(args, config, output_dir_path, conda_env_directory, jobs, snakemake_
     sample = Sample(long_file=sequencing_files[0],
                     short_file_one=sequencing_files[1],
                     short_file_two=sequencing_files[2])
-    create_sample_tsv(output_dir_path, [sample])
+    config['sample_tsv'] = create_sample_tsv(output_dir_path, [sample])
     config['sample_id'] = sample.identifier
     config['longreads'] = sample.long_read_path
     config['qc_short_r1'] = sample.short_read_left_path
@@ -229,7 +229,7 @@ def init(args, config, output_dir_path):
         sample = Sample(long_file, left_short_file, right_short_file)
         samples.append(sample)
 
-    create_sample_tsv(output_dir_path, samples)
+    config['sample_tsv'] = create_sample_tsv(output_dir_path, samples)
     write_config_file(config, output_dir_path)
 
 
@@ -240,12 +240,15 @@ def create_sample_tsv(output_dir_path, samples):
     :param output_dir_path: The path to the output Rotary directory.
     :param samples: A list of Sample objects.
     """
-    with open(os.path.join(output_dir_path, 'samples.tsv'), 'w') as tsv_file:
+    sample_tsv_path = os.path.join(output_dir_path, 'samples.tsv')
+    with open(sample_tsv_path, 'w') as tsv_file:
         tsv_writer = csv.writer(tsv_file, delimiter='\t')
         header = ['sample_id', 'long-read', 'short-read_R1', 'short-read_R2']
         tsv_writer.writerow(header)
         for current_sample in samples:
             tsv_writer.writerow(current_sample.sample_file_row)
+
+    return sample_tsv_path
 
 
 def write_config_file(config, output_dir_path):

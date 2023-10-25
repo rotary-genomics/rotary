@@ -5,6 +5,7 @@ import os
 import sys
 import pandas as pd
 import itertools
+import csv
 from snakemake.utils import min_version
 
 
@@ -16,10 +17,20 @@ VERSION_GTDB_COMPLETE= "214.1" # See https://data.gtdb.ecogenomic.org/releases/
 VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
 DB_DIR_PATH = config.get('db_dir')
 
-# sample reads
-LONG = config.get("longreads")
-SHORT_R1 = config.get("qc_short_r1")
-SHORT_R2 = config.get("qc_short_r2")
+samples = []
+with open(config.get('sample_tsv')) as sample_file:
+    tsv_reader = csv.reader(sample_file, delimiter="\t")
+    next(tsv_reader) # Skip header row.
+    for line in tsv_reader:
+        samples.append(line)
+
+first_sample = samples[0]
+
+# sample and reads
+SAMPLE_ID = first_sample[0]
+LONG = first_sample[1]
+SHORT_R1 = first_sample[2]
+SHORT_R2 = first_sample[3]
 
 # Specify the minimum snakemake version allowable
 min_version("7.0")
@@ -1010,7 +1021,7 @@ rule run_dfast:
     params:
         outdir="annotation/dfast",
         db=directory(os.path.join(DB_DIR_PATH,"dfast_" + VERSION_DFAST)),
-        strain=config.get("sample_id")
+        strain=SAMPLE_ID
     threads:
         config.get("threads",1)
     shell:
@@ -1076,7 +1087,7 @@ rule run_gtdbtk:
     params:
         outdir="annotation/gtdbtk/run_files",
         db=directory(os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE)),
-        genome_id=config.get("sample_id"),
+        genome_id=SAMPLE_ID,
         gtdbtk_mode="--full_tree" if config.get("gtdbtk_mode") == "full_tree" else ""
     threads:
         config.get("threads",1)
