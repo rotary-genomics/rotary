@@ -141,3 +141,19 @@ def make_sample_from_sample_tsv_row(row):
     sample.identifier = sample_identifier
 
     return sample
+def create_sample_tsv(output_dir_path, samples):
+    """
+    Generates a TSV file in the output directory with a series of CLI paths for files belonging to each sample.
+
+    :param output_dir_path: The path to the output Rotary directory.
+    :param samples: A list of Sample objects.
+    """
+    sample_tsv_path = os.path.join(output_dir_path, 'samples.tsv')
+    with open(sample_tsv_path, 'w') as tsv_file:
+        tsv_writer = csv.writer(tsv_file, delimiter='\t')
+        header = ['sample_id', 'long-read', 'short-read_R1', 'short-read_R2']
+        tsv_writer.writerow(header)
+        for current_sample in samples:
+            tsv_writer.writerow(current_sample.sample_file_row)
+
+    return sample_tsv_path
