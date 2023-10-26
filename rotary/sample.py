@@ -38,22 +38,32 @@ class SequencingFile(object):
             self.r_value = None
 
 
-
-
 class Sample(object):
     """
     An object representing a series of FASTQ files that all belong to the same sample.
     """
 
-    def __init__(self, long_file: SequencingFile, short_file_one: SequencingFile, short_file_two: SequencingFile):
+    def __init__(self, long_file: SequencingFile, short_file_one: SequencingFile, short_file_two: SequencingFile,
+                 integrity_check: bool = True):
+
+        if integrity_check:
+            self.assign_variables_with_integrity_check(long_file, short_file_one, short_file_two)
+        else:
+            self.identifier = long_file.identifier
+            self.long_read_path = long_file.path
+            self.short_read_left_path = short_file_one.path
+            self.short_read_right_path = short_file_two.path
+
+    def assign_variables_with_integrity_check(self, long_file, short_file_one, short_file_two):
+        """
+        Builds the sample object with integrity checks to ensure the proper files are mapping to a singel sample.
+
+        :param long_file: A SequencingFile object representing the long read file.
+        :param short_file_one: A SequencingFile object representing the first short read file.
+        :param short_file_two: A SequencingFile object representing the second short read file.
+        """
         sequencing_files = [long_file, short_file_one, short_file_two]
         identifiers = [file.identifier for file in sequencing_files]
-
-        # The identifiers should all be the same. If not raise and exception.
-        if len(set(identifiers)) == 1:
-            self.identifier = identifiers[0]
-        else:
-            raise ValueError(f'Sample identifiers of the input fastq files do not match: {identifiers}')
 
         # Check for R1 or R2 in the file names with identifier removed.
         r_matches = [file.r_value for file in sequencing_files]
@@ -62,6 +72,12 @@ class Sample(object):
         long_path = long_file.path
         short_path_one = short_file_one.path
         short_path_two = short_file_two.path
+
+        # The identifiers should all be the same. If not raise and exception.
+        if len(set(identifiers)) == 1:
+            self.identifier = identifiers[0]
+        else:
+            raise ValueError(f'Sample identifiers of the input fastq files do not match: {identifiers}')
 
         # The long read file should not have a R1 or R2.
         if not long_r_value:
@@ -93,6 +109,7 @@ class Sample(object):
         """
         return [self.identifier, self.long_read_path, self.short_read_left_path, self.short_read_right_path]
 
+
 def is_fastq_file(file_name):
     """
     Determines if file is a fastq file based in its extension.
@@ -107,3 +124,4 @@ def is_fastq_file(file_name):
         is_fastq = False
 
     return is_fastq
+
