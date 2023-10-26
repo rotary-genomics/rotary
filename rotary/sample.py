@@ -125,3 +125,19 @@ def is_fastq_file(file_name):
 
     return is_fastq
 
+def make_sample_from_sample_tsv_row(row):
+    """
+    Parses a row from a sample TSV file and returns a Sample object.
+
+    :param row: A row from a sample tsv file as parsed by the CSV module.
+    :return: A Sample object representing the row.
+    """
+    sample_identifier = row[0]
+    long = SequencingFile(file_path=(row[1]))
+    short_left = SequencingFile(file_path=(row[2]))
+    short_right = SequencingFile(file_path=(row[3]))
+
+    sample = Sample(long, short_left, short_right, integrity_check=False)
+    sample.identifier = sample_identifier
+
+    return sample
