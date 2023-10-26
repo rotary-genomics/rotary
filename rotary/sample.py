@@ -5,6 +5,7 @@ Created by: Lee Bergstrand (2023)
 
 Description: Classes and methods for representing Rotary sampling files.
 """
+import csv
 import os
 import re
 
@@ -125,11 +126,14 @@ def is_fastq_file(file_name):
 
     return is_fastq
 
-def make_sample_from_sample_tsv_row(row):
+
+def make_sample_from_sample_tsv_row(row, integrity_check=False):
     """
     Parses a row from a sample TSV file and returns a Sample object.
 
     :param row: A row from a sample tsv file as parsed by the CSV module.
+    :param integrity_check: Perform checking that ensures that each sample object maps to
+                            files that are all from the same physical sample.
     :return: A Sample object representing the row.
     """
     sample_identifier = row[0]
@@ -137,10 +141,32 @@ def make_sample_from_sample_tsv_row(row):
     short_left = SequencingFile(file_path=(row[2]))
     short_right = SequencingFile(file_path=(row[3]))
 
-    sample = Sample(long, short_left, short_right, integrity_check=False)
+    sample = Sample(long, short_left, short_right, integrity_check=integrity_check)
     sample.identifier = sample_identifier
 
     return sample
+
+
+def parse_sample_tsv(sample_tsv_path, integrity_check=False):
+    """
+    Parses a sample tsv file and returns a dictionary of sample objects representing each sample.
+
+    :param sample_tsv_path: The path to the sample TSV file.
+    :param integrity_check: Perform checking that ensures that the sample object maps
+                            files that are all from the same physical sample.
+    :return: A dictionary of all the sample identifiers mapped to sample objects.
+    """
+    sample_dict = {}
+    with open(sample_tsv_path) as sample_file:
+        tsv_reader = csv.reader(sample_file, delimiter="\t")
+        next(tsv_reader)  # Skip header row.
+        for row in tsv_reader:
+            sample = make_sample_from_sample_tsv_row(row, integrity_check=integrity_check)
+            sample_dict[sample.identifier] = sample
+
+    return sample_dict
+
+
 def create_sample_tsv(output_dir_path, samples):
     """
     Generates a TSV file in the output directory with a series of CLI paths for files belonging to each sample.
