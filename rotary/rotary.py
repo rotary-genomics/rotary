@@ -146,6 +146,7 @@ def run_one(args, config, output_dir_path, conda_env_directory, jobs, snakemake_
     config['longreads'] = sample.long_read_path
     config['qc_short_r1'] = sample.short_read_left_path
     config['qc_short_r2'] = sample.short_read_right_path
+    create_sample_tsv(output_dir_path, [sample])
     config_path = write_config_file(output_dir_path=output_dir_path, config=config)
     run_rotary_workflow(config_path=config_path, output_dir_path=output_dir_path, jobs=jobs,
                         conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
@@ -228,10 +229,8 @@ def init(args, config, output_dir_path):
         sample = Sample(long_file, left_short_file, right_short_file)
         samples.append(sample)
 
-    config['sample_tsv'] = create_sample_tsv(output_dir_path, samples)
+    create_sample_tsv(output_dir_path, samples)
     write_config_file(config, output_dir_path)
-
-
 
 
 def write_config_file(config, output_dir_path):

@@ -1,8 +1,5 @@
 # Config file for rotary
 
-# path to the sample tsv file
-sample_tsv: "example/path"
-
 ## Directory for database installation
 db_dir: "/Data/databases/rotary"
 

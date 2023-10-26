@@ -5,8 +5,9 @@ import os
 import sys
 import pandas as pd
 import itertools
-import csv
 from snakemake.utils import min_version
+
+from rotary.sample import parse_sample_tsv
 
 
 VERSION_POLYPOLISH="0.5.0"
@@ -16,21 +17,16 @@ START_HMM_NAME = os.path.splitext(os.path.basename(config.get("hmm_url")))[0]
 VERSION_GTDB_COMPLETE= "214.1" # See https://data.gtdb.ecogenomic.org/releases/
 VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
 DB_DIR_PATH = config.get('db_dir')
+sample_tsv_path = 'samples.tsv'
+SAMPLES = parse_sample_tsv(sample_tsv_path)
 
-samples = []
-with open(config.get('sample_tsv')) as sample_file:
-    tsv_reader = csv.reader(sample_file, delimiter="\t")
-    next(tsv_reader) # Skip header row.
-    for line in tsv_reader:
-        samples.append(line)
-
-first_sample = samples[0]
+first_sample = next(iter(SAMPLES.values()))
 
 # sample and reads
-SAMPLE_ID = first_sample[0]
-LONG = first_sample[1]
-SHORT_R1 = first_sample[2]
-SHORT_R2 = first_sample[3]
+SAMPLE_ID = first_sample.identifier
+LONG = first_sample.long_read_path
+SHORT_R1 = first_sample.short_read_left_path
+SHORT_R2 = first_sample.short_read_right_path
 
 # Specify the minimum snakemake version allowable
 min_version("7.0")
