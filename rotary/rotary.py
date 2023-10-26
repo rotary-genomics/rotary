@@ -134,18 +134,15 @@ def run_one(args, config, output_dir_path, conda_env_directory, jobs, snakemake_
     :param jobs: The number of system CPU cores to use.
     :param snakemake_args: Custom CLI args to be passed to snakemake.
     """
-    long_path = get_cli_arg_path(args, 'long')
-    left_path = get_cli_arg_path(args, 'left')
-    right_path = get_cli_arg_path(args, 'right')
-    sequencing_files = [SequencingFile(path) for path in [long_path, left_path, right_path]]
+    sequencing_files = [SequencingFile(path) for path in [(get_cli_arg_path(args, 'long')),
+                                                          (get_cli_arg_path(args, 'left')),
+                                                          (get_cli_arg_path(args, 'right'))]]
+
     sample = Sample(long_file=sequencing_files[0],
                     short_file_one=sequencing_files[1],
-                    short_file_two=sequencing_files[2])
-    config['sample_tsv'] = create_sample_tsv(output_dir_path, [sample])
-    config['sample_id'] = sample.identifier
-    config['longreads'] = sample.long_read_path
-    config['qc_short_r1'] = sample.short_read_left_path
-    config['qc_short_r2'] = sample.short_read_right_path
+                    short_file_two=sequencing_files[2],
+                    integrity_check=False) # Don't do integrity check on user specified files.
+
     create_sample_tsv(output_dir_path, [sample])
     config_path = write_config_file(output_dir_path=output_dir_path, config=config)
     run_rotary_workflow(config_path=config_path, output_dir_path=output_dir_path, jobs=jobs,
