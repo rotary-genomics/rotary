@@ -973,8 +973,7 @@ def parse_cli():
     workflow_settings.add_argument('-m', '--threads_mem', required=False, default=1, type=float,
                                    help='Memory (GB) to use **per thread** for samtools sort (default: 1)')
     workflow_settings.add_argument('-v', '--verbose', required=False, action='store_true',
-                                   help='Print verbose logging to screen (note: the logfile saved at repaired.log by '
-                                        'this script is always verbose)')
+                                   help='Enable verbose logging')
 
     return parser
 
