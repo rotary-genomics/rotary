@@ -7,12 +7,26 @@ import pandas as pd
 import itertools
 from snakemake.utils import min_version
 
+from rotary.sample import parse_sample_tsv
+
+
 VERSION_POLYPOLISH="0.5.0"
 VERSION_DFAST="1.2.18"
 VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
 START_HMM_NAME = os.path.splitext(os.path.basename(config.get("hmm_url")))[0]
 VERSION_GTDB_COMPLETE= "214.1" # See https://data.gtdb.ecogenomic.org/releases/
 VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
+DB_DIR_PATH = config.get('db_dir')
+sample_tsv_path = 'samples.tsv'
+SAMPLES = parse_sample_tsv(sample_tsv_path)
+
+first_sample = next(iter(SAMPLES.values()))
+
+# sample and reads
+SAMPLE_ID = first_sample.identifier
+LONG = first_sample.long_read_path
+SHORT_R1 = first_sample.short_read_left_path
+SHORT_R2 = first_sample.short_read_right_path
 
 # Specify the minimum snakemake version allowable
 min_version("7.0")
@@ -32,15 +46,15 @@ rule all:
 
 rule install_polypolish:
     output:
-        polypolish_filter=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH, "polypolish_insert_filter.py"),
-        polypolish=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH, "polypolish"),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "polypolish_" + VERSION_POLYPOLISH)
+        polypolish_filter=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish_insert_filter.py"),
+        polypolish=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish"),
+        install_finished=os.path.join(DB_DIR_PATH,"checkpoints","polypolish_" + VERSION_POLYPOLISH)
     log:
         "logs/download/install_polypolish.log"
     benchmark:
         "benchmarks/download/install_polypolish.txt"
     params:
-        db_dir=os.path.join(config.get("db_dir"), "polypolish_" + VERSION_POLYPOLISH),
+        db_dir=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH),
         url="https://github.com/rrwick/Polypolish/releases/download/v" + VERSION_POLYPOLISH + "/polypolish-linux-x86_64-musl-v" + VERSION_POLYPOLISH + ".tar.gz"
     shell:
         """
@@ -53,13 +67,13 @@ rule install_polypolish:
 # TODO - does not check the HMM version, only ID. If the HMM version updates, it won't automatically re-download
 rule download_hmm:
     output:
-        hmm=os.path.join(config.get("db_dir"), "hmm", START_HMM_NAME + ".hmm")
+        hmm=os.path.join(DB_DIR_PATH,"hmm",START_HMM_NAME + ".hmm")
     log:
         "logs/download/hmm_download.log"
     benchmark:
         "benchmarks/download/hmm_download.txt"
     params:
-        db_dir=os.path.join(config.get("db_dir"), "hmm"),
+        db_dir=os.path.join(DB_DIR_PATH,"hmm"),
         url=config.get("hmm_url")
     shell:
         """
@@ -70,8 +84,8 @@ rule download_hmm:
 
 rule download_dfast_db:
     output:
-        db=directory(os.path.join(config.get("db_dir"), "dfast_" + VERSION_DFAST)),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "dfast_" + VERSION_DFAST)
+        db=directory(os.path.join(DB_DIR_PATH,"dfast_" + VERSION_DFAST)),
+        install_finished=os.path.join(DB_DIR_PATH,"checkpoints","dfast_" + VERSION_DFAST)
     conda:
         "../envs/annotation_dfast.yaml"
     log:
@@ -79,7 +93,7 @@ rule download_dfast_db:
     benchmark:
         "benchmarks/download/dfast_db_download.txt"
     params:
-        db_dir=os.path.join(config.get("db_dir"), "dfast_" + VERSION_DFAST)
+        db_dir=os.path.join(DB_DIR_PATH,"dfast_" + VERSION_DFAST)
     shell:
         """
         mkdir -p {params.db_dir}
@@ -91,8 +105,8 @@ rule download_dfast_db:
 
 rule download_eggnog_db:
     output:
-        db=directory(os.path.join(config.get("db_dir"), "eggnog_" + VERSION_EGGNOG)),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "eggnog_" + VERSION_EGGNOG)
+        db=directory(os.path.join(DB_DIR_PATH,"eggnog_" + VERSION_EGGNOG)),
+        install_finished=os.path.join(DB_DIR_PATH,"checkpoints","eggnog_" + VERSION_EGGNOG)
     conda:
         "../envs/eggnog.yaml"
     log:
@@ -100,7 +114,7 @@ rule download_eggnog_db:
     benchmark:
         "benchmarks/download/eggnog_db_download.txt"
     params:
-        db_dir=os.path.join(config.get("db_dir"), "eggnog_" + VERSION_EGGNOG)
+        db_dir=os.path.join(DB_DIR_PATH,"eggnog_" + VERSION_EGGNOG)
     shell:
         """
         mkdir -p {params.db_dir}
@@ -112,16 +126,16 @@ rule download_eggnog_db:
 # TODO - if there is an error during download, the initial_download_dir is not deleted during cleanup
 rule download_gtdb_db:
     output:
-        db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB_COMPLETE)),
-        install_finished=os.path.join(config.get("db_dir"), "checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_download")
+        db=directory(os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE)),
+        install_finished=os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_download")
     log:
         "logs/download/gtdb_db_download.log"
     benchmark:
         "benchmarks/download/gtdb_db_download.txt"
     params:
-        db_dir_root=os.path.join(config.get("db_dir")),
-        initial_download_dir=os.path.join(config.get("db_dir"), "release" + VERSION_GTDB_MAIN),
-        db_dir=os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB_COMPLETE),
+        db_dir_root=os.path.join(DB_DIR_PATH),
+        initial_download_dir=os.path.join(DB_DIR_PATH,"release" + VERSION_GTDB_MAIN),
+        db_dir=os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE),
         url="https://data.gtdb.ecogenomic.org/releases/release" + VERSION_GTDB_MAIN + "/" + VERSION_GTDB_COMPLETE + "/auxillary_files/gtdbtk_r" + VERSION_GTDB_MAIN + "_data.tar.gz"
     shell:
         """
@@ -141,9 +155,9 @@ rule download_gtdb_db:
 
 rule setup_gtdb:
     input:
-        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_download")
+        os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_download")
     output:
-        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_setup")
+        os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_setup")
     conda:
         "../envs/gtdbtk.yaml"
     log:
@@ -151,7 +165,7 @@ rule setup_gtdb:
     benchmark:
         "benchmarks/download/gtdb_db_setup.txt"
     params:
-        db_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE),
+        db_dir=os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE),
     shell:
         """
         # Set the database path in the conda installation
@@ -164,9 +178,9 @@ rule setup_gtdb:
 
 rule validate_gtdb:
     input:
-        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_setup")
+        os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_setup")
     output:
-        os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_validate")
+        os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_validate")
     conda:
         "../envs/gtdbtk.yaml"
     log:
@@ -174,7 +188,7 @@ rule validate_gtdb:
     benchmark:
         "benchmarks/download/gtdb_db_validate.txt"
     params:
-        db_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE),
+        db_dir=os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE),
     shell:
         """
         # Split the "progress bar" style output into multiple lines with sed
@@ -186,10 +200,10 @@ rule validate_gtdb:
 
 rule build_gtdb_mash_ref_database:
     input:
-        os.path.join(config.get("db_dir"),"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_validate")
+        os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_validate")
     output:
-        ref_msh_file=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash','gtdb_ref_sketch.msh'),
-        ref_genome_path_list=temp(os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash','ref_mash_genomes.txt'))
+        ref_msh_file=os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE + '_mash','gtdb_ref_sketch.msh'),
+        ref_genome_path_list=temp(os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE + '_mash','ref_mash_genomes.txt'))
     conda:
         "../envs/gtdbtk.yaml"
     log:
@@ -199,7 +213,7 @@ rule build_gtdb_mash_ref_database:
     threads:
         config.get("threads",1)
     params:
-        fast_ani_genomes_dir=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE,'fastani','database')
+        fast_ani_genomes_dir=os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE,'fastani','database')
     shell:
         """
         find {params.fast_ani_genomes_dir} -name *_genomic.fna.gz -type f > {output.ref_genome_path_list}
@@ -209,7 +223,7 @@ rule build_gtdb_mash_ref_database:
 
 rule nanopore_qc_filter:
     input:
-        config.get("longreads")
+        LONG
     output:
         "qc_long/nanopore_qc.fastq.gz"
     conda:
@@ -437,9 +451,9 @@ rule prepare_polypolish_polish_input:
 rule polish_polypolish:
     input:
         contigs="{step}/polypolish/input/input.fasta",
-        polypolish_filter=os.path.join(config.get("db_dir"),"polypolish_" + VERSION_POLYPOLISH,"polypolish_insert_filter.py"),
-        polypolish=os.path.join(config.get("db_dir"),"polypolish_" + VERSION_POLYPOLISH,"polypolish"),
-        install_finished=os.path.join(config.get("db_dir"),"checkpoints","polypolish_" + VERSION_POLYPOLISH)
+        polypolish_filter=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish_insert_filter.py"),
+        polypolish=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish"),
+        install_finished=os.path.join(DB_DIR_PATH,"checkpoints","polypolish_" + VERSION_POLYPOLISH)
     output:
         mapping_r1=temp("{step}/polypolish/R1.sam"),
         mapping_r2=temp("{step}/polypolish/R2.sam"),
@@ -455,8 +469,8 @@ rule polish_polypolish:
     benchmark:
         "benchmarks/{step}/polypolish.txt"
     params:
-        qc_short_r1=config.get("qc_short_r1"),
-        qc_short_r2=config.get("qc_short_r2")
+        qc_short_r1=SHORT_R1,
+        qc_short_r2=SHORT_R2
     threads:
         config.get("threads",1)
     shell:
@@ -499,8 +513,8 @@ rule polish_polca:
     benchmark:
         "benchmarks/polish/polca.txt"
     params:
-        qc_short_r1=config.get("qc_short_r1"),
-        qc_short_r2=config.get("qc_short_r2"),
+        qc_short_r1=SHORT_R1,
+        qc_short_r2=SHORT_R2,
         outdir="polish/polca"
     threads:
         config.get("threads",1)
@@ -518,7 +532,7 @@ rule polish_polca:
 # Conditional based on whether short read polishing was performed
 rule pre_coverage_filter:
     input:
-        "polish/medaka/consensus.fasta" if config.get("qc_short_r1") == "None" else "polish/polca/polca.fasta"
+        "polish/medaka/consensus.fasta" if SHORT_R1 == "None" else "polish/polca/polca.fasta"
     output:
         "polish/cov_filter/pre_filtered.fasta"
     run:
@@ -529,7 +543,7 @@ rule pre_coverage_filter:
 # Different coverage methods can be used for the filter: short, long, a combo, or neither (bypass)
 filtration_method = []
 
-if (config.get("qc_short_r1") != "None") & \
+if (SHORT_R1 != "None") & \
         ((config.get("meandepth_cutoff_short_read") != "None") | (config.get("evenness_cutoff_short_read") != "None")):
     filtration_method.append("short_read")
 
@@ -548,8 +562,8 @@ if (config.get("qc_short_r1") != "None") & \
         benchmark:
             "benchmarks/polish/calculate_short_read_coverage.txt"
         params:
-            qc_short_r1=config.get("qc_short_r1"),
-            qc_short_r2=config.get("qc_short_r2")
+            qc_short_r1=SHORT_R1,
+            qc_short_r2=SHORT_R2
         threads:
             config.get("threads",1)
         resources:
@@ -668,7 +682,7 @@ else:
 
     rule filter_contigs_by_coverage:
         input:
-            contigs="polish/medaka/consensus.fasta" if config.get("qc_short_r1") == "None" else "polish/polca/polca.fasta",
+            contigs="polish/medaka/consensus.fasta" if SHORT_R1 == "None" else "polish/polca/polca.fasta",
             filter_list="polish/cov_filter/filtered_contigs.list"
         output:
             "polish/cov_filter/filtered_contigs.fasta"
@@ -744,7 +758,7 @@ rule get_polished_contigs:
 rule search_contig_start:
     input:
         contigs="circularize/filter/circular.fasta",
-        hmm=os.path.join(config.get("db_dir"), "hmm", START_HMM_NAME + ".hmm")
+        hmm=os.path.join(DB_DIR_PATH,"hmm",START_HMM_NAME + ".hmm")
     output:
         orf_predictions=temp("circularize/identify/circular.faa"),
         gene_predictions=temp("circularize/identify/circular.ffn"),
@@ -924,7 +938,7 @@ rule prepare_polypolish_circularize_input:
 # Determines whether a second round of long vs. short read polishing is performed
 rule finalize_circular_contig_rotation:
     input:
-        "circularize/medaka/consensus.fasta" if config.get("qc_short_r1") == "None" else "circularize/polypolish/polypolish.fasta"
+        "circularize/medaka/consensus.fasta" if SHORT_R1 == "None" else "circularize/polypolish/polypolish.fasta"
     output:
         "circularize/combine/circular.fasta"
     run:
@@ -990,7 +1004,7 @@ rule circularize:
 rule run_dfast:
     input:
         contigs="circularize/circularize.fasta",
-        install_finished=os.path.join(config.get("db_dir"),"checkpoints","dfast_" + VERSION_DFAST)
+        install_finished=os.path.join(DB_DIR_PATH,"checkpoints","dfast_" + VERSION_DFAST)
     output:
         "annotation/dfast/genome.fna",
         "annotation/dfast/protein.faa"
@@ -1002,8 +1016,8 @@ rule run_dfast:
         "benchmarks/annotation/annotation_dfast.txt"
     params:
         outdir="annotation/dfast",
-        db=directory(os.path.join(config.get("db_dir"),"dfast_" + VERSION_DFAST)),
-        strain=config.get("sample_id")
+        db=directory(os.path.join(DB_DIR_PATH,"dfast_" + VERSION_DFAST)),
+        strain=SAMPLE_ID
     threads:
         config.get("threads",1)
     shell:
@@ -1026,7 +1040,7 @@ rule run_dfast:
 rule run_eggnog:
     input:
         protein="annotation/dfast/protein.faa",
-        install_finished=os.path.join(config.get("db_dir"),"checkpoints","eggnog_" + VERSION_EGGNOG)
+        install_finished=os.path.join(DB_DIR_PATH,"checkpoints","eggnog_" + VERSION_EGGNOG)
     output:
         "annotation/eggnog/eggnog.emapper.annotations"
     conda:
@@ -1038,7 +1052,7 @@ rule run_eggnog:
     params:
         outdir = "annotation/eggnog",
         tmpdir="annotation/eggnog/tmp",
-        db=directory(os.path.join(config.get("db_dir"), "eggnog_" + VERSION_EGGNOG)),
+        db=directory(os.path.join(DB_DIR_PATH,"eggnog_" + VERSION_EGGNOG)),
         sensmode=config.get("eggnog_sensmode")
     threads:
         config.get("threads",1)
@@ -1055,8 +1069,8 @@ rule run_eggnog:
 rule run_gtdbtk:
     input:
         genome="annotation/dfast/genome.fna",
-        setup_finished=os.path.join(config.get("db_dir"),"checkpoints", "GTDB_" + VERSION_GTDB_COMPLETE + "_validate"),
-        ref_msh_file=os.path.join(config.get("db_dir"),"GTDB_" + VERSION_GTDB_COMPLETE + '_mash', 'gtdb_ref_sketch.msh')
+        setup_finished=os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_validate"),
+        ref_msh_file=os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE + '_mash','gtdb_ref_sketch.msh')
     output:
         batchfile=temp("annotation/gtdbtk/batchfile.tsv"),
         annotation="annotation/gtdbtk/gtdbtk.summary.tsv"
@@ -1068,8 +1082,8 @@ rule run_gtdbtk:
         "benchmarks/annotation/gtdbtk.txt"
     params:
         outdir="annotation/gtdbtk/run_files",
-        db=directory(os.path.join(config.get("db_dir"), "GTDB_" + VERSION_GTDB_COMPLETE)),
-        genome_id=config.get("sample_id"),
+        db=directory(os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE)),
+        genome_id=SAMPLE_ID,
         gtdbtk_mode="--full_tree" if config.get("gtdbtk_mode") == "full_tree" else ""
     threads:
         config.get("threads",1)
@@ -1083,7 +1097,7 @@ rule run_gtdbtk:
         """
 
 
-if config.get("qc_short_r1") != "None":
+if SHORT_R1 != "None":
 
     # TODO - clarify name compared to previous mapping step
     rule calculate_final_short_read_coverage:
@@ -1100,8 +1114,8 @@ if config.get("qc_short_r1") != "None":
         benchmark:
             "benchmarks/annotation/calculate_final_short_read_coverage.txt"
         params:
-            qc_short_r1=config.get("qc_short_r1"),
-            qc_short_r2=config.get("qc_short_r2")
+            qc_short_r1=SHORT_R1,
+            qc_short_r2=SHORT_R2
         threads:
             config.get("threads",1)
         resources:
@@ -1173,7 +1187,7 @@ rule summarize_annotation:
         "annotation/eggnog/eggnog.emapper.annotations",
         "annotation/gtdbtk/gtdbtk.summary.tsv",
         expand("annotation/coverage/{type}_coverage.tsv",
-            type=["short_read", "long_read"] if config.get("qc_short_r1") != "None" else ["long_read"]),
+            type=["short_read", "long_read"] if SHORT_R1 != "None" else ["long_read"]),
         "annotation/logs",
         "annotation/stats"
     output:

@@ -6,7 +6,6 @@ Created by: Lee Bergstrand (2023)
 Description: A command-line tool for the Rotary hybrid assembly workflow.
 """
 import argparse
-import csv
 import os
 import subprocess
 import sys
@@ -14,7 +13,7 @@ import sys
 import psutil
 from ruamel.yaml import YAML
 
-from rotary.sample import SequencingFile, Sample, is_fastq_file
+from rotary.sample import SequencingFile, Sample, is_fastq_file, create_sample_tsv
 from rotary.utils import check_for_files, get_cli_arg_path
 
 yaml = YAML()
@@ -96,7 +95,7 @@ def main():
                                                                                                    run_file_presences)))
     existing_message = f'Existing run configuration files {run_files} in the output directory.'
 
-    conda_env_directory = os.path.join(database_dir_path, 'rotary_conda_env')
+    conda_env_directory = os.path.join(config['db_dir'], 'rotary_conda_env')
     os.makedirs(conda_env_directory, exist_ok=True)
 
     # Select the sub-command to run.
@@ -135,18 +134,16 @@ def run_one(args, config, output_dir_path, conda_env_directory, jobs, snakemake_
     :param jobs: The number of system CPU cores to use.
     :param snakemake_args: Custom CLI args to be passed to snakemake.
     """
-    long_path = get_cli_arg_path(args, 'long')
-    left_path = get_cli_arg_path(args, 'left')
-    right_path = get_cli_arg_path(args, 'right')
-    sequencing_files = [SequencingFile(path) for path in [long_path, left_path, right_path]]
+    sequencing_files = [SequencingFile(path) for path in [(get_cli_arg_path(args, 'long')),
+                                                          (get_cli_arg_path(args, 'left')),
+                                                          (get_cli_arg_path(args, 'right'))]]
+
     sample = Sample(long_file=sequencing_files[0],
                     short_file_one=sequencing_files[1],
-                    short_file_two=sequencing_files[2])
+                    short_file_two=sequencing_files[2],
+                    integrity_check=False) # Don't do integrity check on user specified files.
+
     create_sample_tsv(output_dir_path, [sample])
-    config['sample_id'] = sample.identifier
-    config['longreads'] = sample.long_read_path
-    config['qc_short_r1'] = sample.short_read_left_path
-    config['qc_short_r2'] = sample.short_read_right_path
     config_path = write_config_file(output_dir_path=output_dir_path, config=config)
     run_rotary_workflow(config_path=config_path, output_dir_path=output_dir_path, jobs=jobs,
                         conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
@@ -231,21 +228,6 @@ def init(args, config, output_dir_path):
 
     create_sample_tsv(output_dir_path, samples)
     write_config_file(config, output_dir_path)
-
-
-def create_sample_tsv(output_dir_path, samples):
-    """
-    Generates a TSV file in the output directory with a series of CLI paths for files belonging to each sample.
-
-    :param output_dir_path: The path to the output Rotary directory.
-    :param samples: A list of Sample objects.
-    """
-    with open(os.path.join(output_dir_path, 'samples.tsv'), 'w') as tsv_file:
-        tsv_writer = csv.writer(tsv_file, delimiter='\t')
-        header = ['sample_id', 'long-read', 'short-read_R1', 'short-read_R2']
-        tsv_writer.writerow(header)
-        for current_sample in samples:
-            tsv_writer.writerow(current_sample.sample_file_row)
 
 
 def write_config_file(config, output_dir_path):
