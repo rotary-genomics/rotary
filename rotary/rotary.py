@@ -18,6 +18,7 @@ from rotary.utils import get_cli_arg_path
 
 yaml = YAML()
 rotary_config_name = 'config.yaml'
+run_files = [rotary_config_name, 'samples.tsv']
 
 
 def main():
@@ -51,7 +52,13 @@ def run(args):
     :param args: The command-line arguments.
     """
     output_dir_path = get_cli_arg_path(args, 'output_dir')
-    check_run_files(output_dir_path=output_dir_path)
+    # Check for the presence of the run configuration files in the output directory.
+
+    existing_files = check_for_run_files(output_dir_path, run_files)
+
+    if not existing_files:
+        raise FileNotFoundError(
+            f'Missing run configuration files {run_files}, run either the run_one or init subcommands.')
 
     jobs = get_jobs(args)
     snakemake_args = get_snakemake_args(args)
@@ -95,82 +102,6 @@ def run_one(args):
 
     run_rotary_workflow(config_path=config_path, output_dir_path=output_dir_path, jobs=jobs,
                         conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
-
-
-def setup_run_directory(args, output_dir_path):
-    """
-    Sets up the basic configuration files inside output directory.
-
-    :param args: The command-line arguments.
-    :param output_dir_path: The path to the output Rotary directory.
-    :return: Path to the conda environment directory and the path to the configuration file.
-    """
-    os.makedirs(output_dir_path, exist_ok=True)
-
-    if hasattr(args, 'force'):
-        fail_if_run_files_found = False
-    else:
-        fail_if_run_files_found = True
-
-    check_run_files(output_dir_path=output_dir_path, fail_if_found=fail_if_run_files_found)
-
-    input_config_path = get_cli_arg_path(args, 'config')
-    if not input_config_path:  # If no config is specified via CLI.
-        input_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
-
-    with open(input_config_path) as config_file:
-        config = yaml.load(config_file)
-
-    # modify config to use available CPU and RAM.
-    modify_config_for_computational_resources(config)
-
-    output_config_path = os.path.join(output_dir_path, 'config.yaml')
-
-    database_dir_path = get_cli_arg_path(args, 'database_dir')
-    if database_dir_path:
-        config['db_dir'] = database_dir_path
-    else:
-        config['db_dir'] = os.path.join(output_dir_path, 'databases')
-
-    conda_env_path = os.path.join(config['db_dir'], 'rotary_conda_env')
-    os.makedirs(conda_env_path, exist_ok=True)
-
-    with open(output_config_path, 'w') as file:
-        yaml.dump(config, file)
-
-    return conda_env_path, output_config_path
-
-
-def get_jobs(args):
-    """
-    Gets the number of jobs for the command line arguments.
-
-    :param args: The command line arguments.
-    :return: The number of jobs to use in a run.
-    """
-    if hasattr(args, 'jobs'):
-        jobs = args.jobs
-    else:
-        jobs = None
-
-    return jobs
-
-
-def get_snakemake_args(args):
-    """
-    Gets the snakemake arguments from the command line arguments.
-
-    :param args: The command line arguments.
-    :return: The snakemake arguments.
-    """
-    if hasattr(args, 'snakemake_args'):
-        snakemake_args = args.snakemake_args
-        if snakemake_args:
-            snakemake_args = snakemake_args.split()
-    else:
-        snakemake_args = None
-
-    return snakemake_args
 
 
 def init(args):
@@ -220,7 +151,104 @@ def init(args):
     create_sample_tsv(output_dir_path, samples)
 
 
-def modify_config_for_computational_resources(config):
+def setup_run_directory(args, output_dir_path):
+    """
+    Sets up the basic configuration files inside output directory.
+
+    :param args: The command-line arguments.
+    :param output_dir_path: The path to the output Rotary directory.
+    :return: Path to the conda environment directory and the path to the configuration file.
+    """
+    existing_files = check_for_run_files(output_dir_path, run_files)
+    if not hasattr(args, 'force') and existing_files:
+        raise FileExistsError(
+            f'The output directory ({output_dir_path}) already has configuration files ({run_files}) from a prior run.')
+
+    os.makedirs(output_dir_path, exist_ok=True)
+
+    input_config_path = get_cli_arg_path(args, 'config')
+    if not input_config_path:  # If no config is specified via CLI grab the default config.yaml.
+        input_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
+
+    with open(input_config_path) as config_file:
+        config = yaml.load(config_file)
+
+    # modify config to use available CPU and RAM.
+    config = modify_config_with_available_computational_resources(config)
+
+    database_dir_path = get_cli_arg_path(args, 'database_dir')
+    if database_dir_path:
+        config['db_dir'] = database_dir_path
+    else:
+        parent_dir = os.path.split(output_dir_path)[0]
+        config['db_dir'] = os.path.join(parent_dir, 'rotary_database')
+
+    output_config_path = os.path.join(output_dir_path, 'config.yaml')
+    conda_env_path = os.path.join(config['db_dir'], 'rotary_conda_env')
+    os.makedirs(conda_env_path, exist_ok=True)
+
+    with open(output_config_path, 'w') as file:
+        yaml.dump(config, file)
+
+    return conda_env_path, output_config_path
+
+
+def check_for_run_files(output_dir_path, run_files_to_check):
+    """
+    Checks for existing configuration files from and existing run.
+
+    :param output_dir_path: The path to the output directory.
+    :param run_files_to_check: The run files to check for.
+    :return: True if the run files are all present and False if they are not.
+    """
+    run_paths = [os.path.join(output_dir_path, file_name) for file_name in run_files_to_check]
+    run_file_presences = [True for path in run_paths if os.path.exists(path)]
+
+    if len(run_file_presences) == len(run_files_to_check):
+        run_files_present = True
+    elif len(run_file_presences) == 0:
+        run_files_present = False
+    else:
+        file_presences_map = zip(run_files_to_check, run_file_presences)
+        raise FileNotFoundError(
+            f'The output directory has some configuration files present and others absent: {file_presences_map}')
+
+    return run_files_present
+
+
+def get_jobs(args):
+    """
+    Gets the number of jobs for the command line arguments.
+
+    :param args: The command line arguments.
+    :return: The number of jobs to use in a run.
+    """
+    if hasattr(args, 'jobs'):
+        jobs = args.jobs
+    else:
+        jobs = None
+
+    return jobs
+
+
+def get_snakemake_args(args):
+    """
+    Gets the snakemake arguments from the command line arguments.
+
+    :param args: The command line arguments.
+    :return: The snakemake arguments.
+    """
+    if hasattr(args, 'snakemake_args'):
+        snakemake_args = args.snakemake_args
+        if snakemake_args:
+            snakemake_args = snakemake_args.split()
+    else:
+        snakemake_args = None
+
+    return snakemake_args
+
+
+def modify_config_with_available_computational_resources(config):
     """
     Modify the config to use available CPU and RAM.
 
@@ -230,33 +258,7 @@ def modify_config_for_computational_resources(config):
     # 95% of the machines memory rounded to the nearest gigabyte.
     config['memory'] = round(psutil.virtual_memory().total / (1024 ** 3) * 0.95)
 
-
-def check_run_files(output_dir_path, run_files=None, fail_if_found=False):
-    """
-    Checks that all run files present or absent and there isn't mix of present and absent files.
-
-    :param output_dir_path: The path to the output Rotary directory.
-    :param run_files: The files to check for.
-    :param fail_if_found: Throw error if all run files are absent.
-    """
-    # Check for the presence of the run configuration files in the output directory.
-
-    if run_files is None:
-        run_files = ['config.yaml', 'samples.tsv']
-
-    run_paths = [os.path.join(output_dir_path, file_name) for file_name in run_files]
-    run_file_presences = [True for path in run_paths if os.path.exists(path)]
-
-    if len(run_file_presences) == len(run_files):
-        if fail_if_found:
-            raise FileExistsError(f'Configuration files are already present in {output_dir_path}.')
-    elif len(run_file_presences) == 0:
-        if not fail_if_found:
-            raise FileNotFoundError(
-                f'Missing run configuration files {run_files}, run either the run_one or init subcommands.')
-    else:
-        file_presences_map = zip(run_files, run_file_presences)
-        raise FileNotFoundError(f'The output directory is missing a run configuration file: {file_presences_map}')
+    return config
 
 
 def run_rotary_workflow(config_path, output_dir_path, conda_env_directory, jobs=None, snakemake_custom_args=None):
@@ -319,8 +321,8 @@ def parse_cli():
 
     # =========================
     # Declare Run_One Sub-command
-    run_help = """Runs the Rotary workflow on specified sequencing files"""
-    parser_run_one = subparsers.add_parser('run_one', help=run_help)
+    run_one_help = """Runs the Rotary workflow on specified sequencing files"""
+    parser_run_one = subparsers.add_parser('run_one', help=run_one_help)
     parser_run_one.add_argument('-l', '--long', metavar='FASTQ',
                                 help='path to the Oxford Nanopore long-read .fastq(.gz) file')
     parser_run_one.add_argument('-r1', '--left', metavar='FASTQ',
@@ -344,8 +346,8 @@ def parse_cli():
 
     # =========================
     # Declare Init Sub-command
-    run_help = """Creates a rotary project directory containing a default """
-    parser_init = subparsers.add_parser('init', help=run_help)
+    init_help = """Creates a rotary project directory containing a default """
+    parser_init = subparsers.add_parser('init', help=init_help)
     parser_init.add_argument('-o', '--output_dir', metavar='PATH',
                              help='path the output/rotary project directory', default=os.getcwd())
     parser_init.add_argument('-d', '--database_dir', metavar='PATH', required=True,
