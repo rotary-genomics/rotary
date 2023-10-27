@@ -8,18 +8,41 @@ Description: Utilities for the Rotary hybrid assembly workflow.
 import os
 
 
-def check_for_files(directory_path, file_names: list = None):
+def check_for_files(output_dir_path, files_to_check):
     """
-    Checks if there are specific files in a given directory.
+    Checks for existing configuration files from and existing run.
 
-    :param directory_path: The path to the directory to check.
-    :param file_names: A list of file names to check for in the output directory.
-    :return: A list of true/false values for if each file is present.
+    :param output_dir_path: The path to the output directory.
+    :param files_to_check: The files to check for.
+    :return: True if the files are all present and False if they are not.
     """
+    paths = [os.path.join(output_dir_path, file_name) for file_name in files_to_check]
+    presences = [True for path in paths if os.path.exists(path)]
 
-    run_paths = [os.path.join(directory_path, file_name) for file_name in file_names]
+    if len(presences) == len(files_to_check):
+        all_files_present = True
+    elif len(presences) == 0:
+        all_files_present = False
+    else:
+        raise FileNotFoundError(
+            f'The directory ({output_dir_path}) has a mixture of files {files_to_check} present and absent.')
 
-    return [os.path.exists(path) for path in run_paths]
+    return all_files_present
+
+
+def get_cli_arg(args, argument):
+    """
+    Gets the command line argument if present or not.
+
+    :param args: The command line arguments.
+    :param argument: The name of the CLI arg.
+    :return:
+    """
+    if hasattr(args, argument):
+        result = getattr(args, argument)
+    else:
+        result = None
+    return result
 
 
 def get_cli_arg_path(args, argument):
@@ -30,12 +53,10 @@ def get_cli_arg_path(args, argument):
     :param argument: The CLI arg to be found.
     :return: Either None or a sanitized absolute path to the file.
     """
-    if hasattr(args, argument):
-        cli_path = getattr(args, argument)
-        if cli_path:
-            cli_path = sanitize_cli_path(cli_path)
-    else:
-        cli_path = None
+    cli_path = get_cli_arg(args, argument)
+
+    if cli_path:
+        cli_path = sanitize_cli_path(cli_path)
 
     return cli_path
 

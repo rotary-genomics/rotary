@@ -14,7 +14,7 @@ import psutil
 from ruamel.yaml import YAML
 
 from rotary.sample import SequencingFile, Sample, is_fastq_file, create_sample_tsv
-from rotary.utils import get_cli_arg_path
+from rotary.utils import get_cli_arg_path, get_cli_arg, check_for_files
 
 yaml = YAML()
 rotary_config_name = 'config.yaml'
@@ -54,13 +54,11 @@ def run(args):
     output_dir_path = get_cli_arg_path(args, 'output_dir')
     # Check for the presence of the run configuration files in the output directory.
 
-    existing_files = check_for_run_files(output_dir_path, run_files)
-
-    if not existing_files:
+    if not check_for_files(output_dir_path, run_files):
         raise FileNotFoundError(
             f'Missing run configuration files {run_files}, run either the run_one or init subcommands.')
 
-    jobs = get_jobs(args)
+    jobs = get_cli_arg(args, 'jobs')
     snakemake_args = get_snakemake_args(args)
 
     config_path = get_cli_arg_path(args, 'config')
@@ -84,9 +82,11 @@ def run_one(args):
     :param args: The command-line arguments.
     """
     output_dir_path = get_cli_arg_path(args, 'output_dir')
+
+    # Checks for existing run files and sets up the run directory.
     conda_env_directory, config_path = setup_run_directory(args, output_dir_path)
 
-    jobs = get_jobs(args)
+    jobs = get_cli_arg(args, 'jobs')
     snakemake_args = get_snakemake_args(args)
 
     sequencing_files = [SequencingFile(path) for path in [(get_cli_arg_path(args, 'long')),
@@ -111,6 +111,8 @@ def init(args):
     :param args: The command-line arguments.
     """
     output_dir_path = get_cli_arg_path(args, 'output_dir')
+
+    # Checks for existing run files and sets up the run directory.
     setup_run_directory(args, output_dir_path)
 
     input_path = get_cli_arg_path(args, 'input_dir')
@@ -159,10 +161,10 @@ def setup_run_directory(args, output_dir_path):
     :param output_dir_path: The path to the output Rotary directory.
     :return: Path to the conda environment directory and the path to the configuration file.
     """
-    existing_files = check_for_run_files(output_dir_path, run_files)
-    if not hasattr(args, 'force') and existing_files:
+    # Check if run files exist in the output.
+    if not get_cli_arg(args, 'force') and check_for_files(output_dir_path, run_files):
         raise FileExistsError(
-            f'The output directory ({output_dir_path}) already has configuration files ({run_files}) from a prior run.')
+            f'The output directory ({output_dir_path}) already has configuration files {run_files} from a prior run.')
 
     os.makedirs(output_dir_path, exist_ok=True)
 
@@ -193,44 +195,6 @@ def setup_run_directory(args, output_dir_path):
     return conda_env_path, output_config_path
 
 
-def check_for_run_files(output_dir_path, run_files_to_check):
-    """
-    Checks for existing configuration files from and existing run.
-
-    :param output_dir_path: The path to the output directory.
-    :param run_files_to_check: The run files to check for.
-    :return: True if the run files are all present and False if they are not.
-    """
-    run_paths = [os.path.join(output_dir_path, file_name) for file_name in run_files_to_check]
-    run_file_presences = [True for path in run_paths if os.path.exists(path)]
-
-    if len(run_file_presences) == len(run_files_to_check):
-        run_files_present = True
-    elif len(run_file_presences) == 0:
-        run_files_present = False
-    else:
-        file_presences_map = zip(run_files_to_check, run_file_presences)
-        raise FileNotFoundError(
-            f'The output directory has some configuration files present and others absent: {file_presences_map}')
-
-    return run_files_present
-
-
-def get_jobs(args):
-    """
-    Gets the number of jobs for the command line arguments.
-
-    :param args: The command line arguments.
-    :return: The number of jobs to use in a run.
-    """
-    if hasattr(args, 'jobs'):
-        jobs = args.jobs
-    else:
-        jobs = None
-
-    return jobs
-
-
 def get_snakemake_args(args):
     """
     Gets the snakemake arguments from the command line arguments.
@@ -238,12 +202,10 @@ def get_snakemake_args(args):
     :param args: The command line arguments.
     :return: The snakemake arguments.
     """
-    if hasattr(args, 'snakemake_args'):
-        snakemake_args = args.snakemake_args
-        if snakemake_args:
-            snakemake_args = snakemake_args.split()
-    else:
-        snakemake_args = None
+    snakemake_args = get_cli_arg(args, 'snakemake_args')
+
+    if snakemake_args:
+        snakemake_args = snakemake_args.split()
 
     return snakemake_args
 
@@ -354,6 +316,8 @@ def parse_cli():
                              help='path the rotary database directory')
     parser_init.add_argument('-i', '--input_dir', metavar='PATH', required=True,
                              help='path to a directory containing Oxford Nanopore long-read and Illumina short-read .fastq(.gz) files')
+    parser_init.add_argument('-f', '--force', action='store_true',
+                             help="override existing run configuration files.")
     parser_init.set_defaults(init=True)
     return parser
 
