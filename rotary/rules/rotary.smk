@@ -23,14 +23,6 @@ SAMPLES = parse_sample_tsv(sample_tsv_path)
 
 SAMPLE_NAMES = list(SAMPLES.keys())
 
-first_sample = next(iter(SAMPLES.values()))
-
-# sample and reads
-SAMPLE_ID = first_sample.identifier
-LONG = first_sample.long_read_path
-SHORT_R1 = first_sample.short_read_left_path
-SHORT_R2 = first_sample.short_read_right_path
-
 # Specify the minimum snakemake version allowable
 min_version("7.0")
 # Specify shell parameters
@@ -1031,21 +1023,21 @@ rule circularize:
 # TODO - can I auto-predict genome completeness, names, types, topologies?
 rule run_dfast:
     input:
-        contigs="circularize/circularize.fasta",
+        contigs="{sample}/circularize/circularize.fasta",
         install_finished=os.path.join(DB_DIR_PATH,"checkpoints","dfast_" + VERSION_DFAST)
     output:
-        "annotation/dfast/genome.fna",
-        "annotation/dfast/protein.faa"
+        dfast_genome = "{sample}/annotation/dfast/genome.fna",
+        dfast_proteins = "{sample}/annotation/dfast/protein.faa",
+        outdir = directory("{sample}/annotation/dfast")
     conda:
         "../envs/annotation_dfast.yaml"
     log:
-        "logs/annotation/annotation_dfast.log"
+        "{sample}/logs/annotation/annotation_dfast.log"
     benchmark:
-        "benchmarks/annotation/annotation_dfast.txt"
+        "{sample}/benchmarks/annotation/annotation_dfast.txt"
     params:
-        outdir="annotation/dfast",
         db=directory(os.path.join(DB_DIR_PATH,"dfast_" + VERSION_DFAST)),
-        strain=SAMPLE_ID
+        strain=lambda wildcards: wildcards.sample # Get sample name from wildcards.
     threads:
         config.get("threads",1)
     shell:
@@ -1053,7 +1045,7 @@ rule run_dfast:
         dfast --force \
           --dbroot {params.db} \
           -g {input.contigs} \
-          -o {params.outdir} \
+          -o {output.outdir} \
           --strain {params.strain} \
           --locus_tag_prefix {params.strain} \
           --cpu {threads} > {log} 2>&1
@@ -1067,83 +1059,81 @@ rule run_dfast:
 # TODO - add option to control whether --dbmem flag is set (uses more RAM but does faster analysis)
 rule run_eggnog:
     input:
-        protein="annotation/dfast/protein.faa",
+        protein="{sample}/annotation/dfast/protein.faa",
         install_finished=os.path.join(DB_DIR_PATH,"checkpoints","eggnog_" + VERSION_EGGNOG)
     output:
-        "annotation/eggnog/eggnog.emapper.annotations"
+        eggnog_annotations="{sample}/annotation/eggnog/eggnog.emapper.annotations",
+        outdir= directory("{sample}annotation/eggnog")
     conda:
         "../envs/eggnog.yaml"
     log:
-        "logs/annotation/eggnog.log"
+        "{sample}/logs/annotation/eggnog.log"
     benchmark:
-        "benchmarks/annotation/eggnog.txt"
+        "{sample}/benchmarks/annotation/eggnog.txt"
     params:
-        outdir = "annotation/eggnog",
-        tmpdir="annotation/eggnog/tmp",
         db=directory(os.path.join(DB_DIR_PATH,"eggnog_" + VERSION_EGGNOG)),
         sensmode=config.get("eggnog_sensmode")
     threads:
         config.get("threads",1)
     shell:
         """
-        mkdir -p {params.tmpdir}
+        mkdir -p {output.outdir}/tmp
         emapper.py --cpu {threads} -i {input.protein} --itype proteins -m diamond --sensmode {params.sensmode} \
-          --dbmem --output eggnog --output_dir {params.outdir} --temp_dir {params.tmpdir} \
+          --dbmem --output eggnog --output_dir {output.outdir} --temp_dir {output.outdir}/tmp \
           --data_dir {params.db} --override > {log} 2>&1
-        rm -r {params.tmpdir}
+        rm -r {output.outdir}/tmp
         """
 
 
 rule run_gtdbtk:
     input:
-        genome="annotation/dfast/genome.fna",
+        genome="{sample}/annotation/dfast/genome.fna",
         setup_finished=os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_validate"),
         ref_msh_file=os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE + '_mash','gtdb_ref_sketch.msh')
     output:
-        batchfile=temp("annotation/gtdbtk/batchfile.tsv"),
-        annotation="annotation/gtdbtk/gtdbtk.summary.tsv"
+        batchfile=temp("{sample}/annotation/gtdbtk/batchfile.tsv"),
+        annotation="{sample}/annotation/gtdbtk/gtdbtk.summary.tsv",
+        outdir=directory("{sample}annotation/gtdbtk/run_files")
     conda:
         "../envs/gtdbtk.yaml"
     log:
-        "logs/annotation/gtdbtk.log"
+        "{sample}/logs/annotation/gtdbtk.log"
     benchmark:
-        "benchmarks/annotation/gtdbtk.txt"
+        "{sample}/benchmarks/annotation/gtdbtk.txt"
     params:
-        outdir="annotation/gtdbtk/run_files",
         db=directory(os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE)),
-        genome_id=SAMPLE_ID,
+        genome_id=lambda wildcards: wildcards.sample, # Get sample name from wildcards.
         gtdbtk_mode="--full_tree" if config.get("gtdbtk_mode") == "full_tree" else ""
     threads:
         config.get("threads",1)
     shell:
         """
         printf "{input.genome}\t{params.genome_id}\n" > {output.batchfile}
-        gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {params.outdir} {params.gtdbtk_mode} \
+        gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {output.outdir} {params.gtdbtk_mode} \
            --mash_db {input.ref_msh_file} --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
-        head -n 1 {params.outdir}/gtdbtk.*.summary.tsv | sort -u > {output.annotation}
-        tail -n +2 {params.outdir}/gtdbtk.*.summary.tsv >> {output.annotation}
+        head -n 1 {output.outdir}/gtdbtk.*.summary.tsv | sort -u > {output.annotation}
+        tail -n +2 {output.outdir}/gtdbtk.*.summary.tsv >> {output.annotation}
         """
 
 
-if SHORT_R1 != "None":
+if POLISH_WITH_SHORT_READS == True:
 
     # TODO - clarify name compared to previous mapping step
     rule calculate_final_short_read_coverage:
         input:
-            "annotation/dfast/genome.fna"
+            qc_short_r1 = "{sample}/{sample}_R1.fastq.gz",
+            qc_short_r2 = "{sample}/{sample}_R2.fastq.gz",
+            dfast_genome = "{sample}/annotation/dfast/genome.fna"
         output:
-            mapping="annotation/coverage/short_read.bam",
-            index="annotation/coverage/short_read.bam.bai",
-            coverage="annotation/coverage/short_read_coverage.tsv"
+            mapping="{sample}/annotation/coverage/short_read.bam",
+            index="{sample}/annotation/coverage/short_read.bam.bai",
+            coverage="{sample}/annotation/coverage/short_read_coverage.tsv"
         conda:
             "../envs/mapping.yaml"
         log:
-            "logs/annotation/calculate_final_short_read_coverage.log"
+            "{sample}/logs/annotation/calculate_final_short_read_coverage.log"
         benchmark:
-            "benchmarks/annotation/calculate_final_short_read_coverage.txt"
-        params:
-            qc_short_r1=SHORT_R1,
-            qc_short_r2=SHORT_R2
+            "{sample}/benchmarks/annotation/calculate_final_short_read_coverage.txt"
         threads:
             config.get("threads",1)
         resources:
@@ -1151,7 +1141,7 @@ if SHORT_R1 != "None":
         shell:
             """
             bwa index {input} 2> {log}
-            bwa mem -t {threads} {input} {params.qc_short_r1} {params.qc_short_r2} 2>> {log} | \
+            bwa mem -t {threads} {input} {input.qc_short_r1} {input.qc_short_r2} 2>> {log} | \
               samtools view -b -@ {threads} 2>> {log} | \
               samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
               > {output.mapping}
@@ -1162,18 +1152,18 @@ if SHORT_R1 != "None":
 
 rule calculate_final_long_read_coverage:
     input:
-        contigs="annotation/dfast/genome.fna",
-        qc_long_reads="qc_long/nanopore_qc.fastq.gz"
+        contigs="{sample}/annotation/dfast/genome.fna",
+        qc_long_reads="{sample}/qc_long/nanopore_qc.fastq.gz"
     output:
-        mapping="annotation/coverage/long_read.bam",
-        index="annotation/coverage/long_read.bam.bai",
-        coverage="annotation/coverage/long_read_coverage.tsv"
+        mapping="{sample}/annotation/coverage/long_read.bam",
+        index="{sample}/annotation/coverage/long_read.bam.bai",
+        coverage="{sample}/annotation/coverage/long_read_coverage.tsv"
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/annotation/calculate_final_long_read_coverage.log"
+        "{sample}/logs/annotation/calculate_final_long_read_coverage.log"
     benchmark:
-        "benchmarks/annotation/calculate_final_long_read_coverage.txt"
+        "{sample}/benchmarks/annotation/calculate_final_long_read_coverage.txt"
     threads:
         config.get("threads",1)
     resources:
@@ -1191,13 +1181,13 @@ rule calculate_final_long_read_coverage:
 
 rule symlink_logs:
     input:
-        "annotation/coverage/long_read_coverage.tsv"
+        long_read_coverage="{sample}/annotation/coverage/long_read_coverage.tsv",
     output:
-        logs=temp(directory("annotation/logs")),
-        stats=temp(directory("annotation/stats"))
+        logs=temp(directory("{sample}/annotation/logs")),
+        stats=temp(directory("{sample}/annotation/stats"))
     params:
-        logs="logs",
-        stats="stats"
+        logs=lambda wildcards: f"{wildcards.sample}/logs",
+        stats=lambda wildcards: f"{wildcards.sample}/stats"
     run:
         source_relpath = os.path.relpath(str(params.logs),os.path.dirname(str(output.logs)))
         os.symlink(source_relpath, str(output.logs))
@@ -1211,23 +1201,23 @@ rule symlink_logs:
 #        but the resulting code seems a bit unnatural
 rule summarize_annotation:
     input:
-        "annotation/dfast/genome.fna",
-        "annotation/eggnog/eggnog.emapper.annotations",
-        "annotation/gtdbtk/gtdbtk.summary.tsv",
-        expand("annotation/coverage/{type}_coverage.tsv",
-            type=["short_read", "long_read"] if SHORT_R1 != "None" else ["long_read"]),
-        "annotation/logs",
-        "annotation/stats"
+        "{sample}/annotation/dfast/genome.fna",
+        "{sample}/annotation/eggnog/eggnog.emapper.annotations",
+        "{sample}/annotation/gtdbtk/gtdbtk.summary.tsv",
+        expand("{{sample}}/annotation/coverage/{type}_coverage.tsv",
+            type=["short_read", "long_read"] if POLISH_WITH_SHORT_READS == True else ["long_read"]),
+        "{sample}/annotation/logs",
+        "{sample}/annotation/stats"
     output:
-        "summary.zip"
+        "{sample}/summary.zip"
     log:
-        "logs/annotation/summarize_annotation.log"
+        "{sample}/logs/annotation/summarize_annotation.log"
     params:
-        zipdir="annotation"
+        zipdir=lambda wildcards: f"{wildcards.sample}/annotation"
     shell:
         """
         cd {params.zipdir}
-        zip -r ../{output} * -x \*.bam\* gtdbtk/run_files/\* > "../summarize_annotation.log" 2>&1
+        zip -r ../{output} * -x \*.bam\* {wildcards.sample}/gtdbtk/run_files/\* > "../summarize_annotation.log" 2>&1
         cd ..
         mv "summarize_annotation.log" {log}
         """
@@ -1235,7 +1225,7 @@ rule summarize_annotation:
 
 rule annotation:
     input:
-        "summary.zip"
+        expand("{sample}/summary.zip",sample=SAMPLE_NAMES),
     output:
         temp(touch("checkpoints/annotation"))
 
