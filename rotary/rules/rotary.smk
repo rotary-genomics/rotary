@@ -254,15 +254,15 @@ rule set_up_sample_directories:
 
 rule nanopore_qc_filter:
     input:
-        LONG
+        "{sample}/{sample}_long.fastq.gz"
     output:
-        "qc_long/nanopore_qc.fastq.gz"
+        "{sample}/qc_long/nanopore_qc.fastq.gz"
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/qc/qc_long.log"
+        "{sample}/logs/qc/qc_long.log"
     benchmark:
-        "benchmarks/qc/qc_long.benchmark.txt"
+        "{sample}/benchmarks/qc/qc_long.benchmark.txt"
     threads:
         config.get("threads",1)
     resources:
@@ -279,15 +279,15 @@ rule nanopore_qc_filter:
 
 rule qc_long_length_hist:
     input:
-        "qc_long/nanopore_qc.fastq.gz"
+        "{sample}/qc_long/nanopore_qc.fastq.gz"
     output:
-        "qc_long/length_hist.tsv"
+        "{sample}/qc_long/length_hist.tsv"
     conda:
         "../envs/mapping.yaml"
     log:
-        "logs/qc/qc_long_length_hist.log"
+        "{sample}/logs/qc/qc_long_length_hist.log"
     benchmark:
-        "benchmarks/qc/qc_long_length_hist.benchmark.txt"
+        "{sample}/benchmarks/qc/qc_long_length_hist.benchmark.txt"
     threads:
         config.get("threads",1)
     resources:
@@ -301,13 +301,13 @@ rule qc_long_length_hist:
 
 rule qc_long_length_stats:
     input:
-        "qc_long/length_hist.tsv"
+        "{sample}/qc_long/length_hist.tsv"
     output:
-        "stats/qc_long_length_stats.txt"
+        "{sample}/stats/qc_long_length_stats.txt"
     log:
-        "logs/qc/qc_long_length_stats.log"
+        "{sample}/logs/qc/qc_long_length_stats.log"
     benchmark:
-        "benchmarks/qc/qc_long_length_stats.benchmark.txt"
+        "{sample}/benchmarks/qc/qc_long_length_stats.benchmark.txt"
     run:
         length_hist = pd.read_csv(input[0], sep='\t')
 
@@ -331,23 +331,23 @@ rule qc_long_length_stats:
 
 rule qc_long:
     input:
-        "stats/qc_long_length_stats.txt"
+        expand("{sample}/stats/qc_long_length_stats.txt",sample=SAMPLE_NAMES)
     output:
         temp(touch("checkpoints/qc_long"))
 
 
 rule assembly_flye:
     input:
-        "qc_long/nanopore_qc.fastq.gz"
+        "{sample}/qc_long/nanopore_qc.fastq.gz"
     output:
-        "assembly/flye/assembly.fasta",
-        "assembly/flye/assembly_info.txt"
+        "{sample}/assembly/flye/assembly.fasta",
+        "{sample}/assembly/flye/assembly_info.txt"
     conda:
         "../envs/assembly_flye.yaml"
     log:
-        "logs/assembly/assembly_flye.log"
+        "{sample}/logs/assembly/assembly_flye.log"
     benchmark:
-        "benchmarks/assembly/assembly_flye.benchmark.txt"
+        "{sample}/benchmarks/assembly/assembly_flye.benchmark.txt"
     params:
         output_dir="assembly/flye",
         input_mode=config.get("flye_input_mode"),
@@ -367,18 +367,18 @@ rule assembly_flye:
 # TODO - the math for memory per thread should really be done somewhere other than 'resources' - what is best practice?
 rule assembly_end_repair:
     input:
-        qc_long_reads="qc_long/nanopore_qc.fastq.gz",
-        assembly="assembly/flye/assembly.fasta",
-        info="assembly/flye/assembly_info.txt"
+        qc_long_reads="{sample}/qc_long/nanopore_qc.fastq.gz",
+        assembly="{sample}/assembly/flye/assembly.fasta",
+        info="{sample}/assembly/flye/assembly_info.txt"
     output:
-        assembly="assembly/end_repair/repaired.fasta",
-        info="assembly/end_repair/repaired_info.tsv"
+        assembly="{sample}/assembly/end_repair/repaired.fasta",
+        info="{sample}/assembly/end_repair/repaired_info.tsv",
+        output_dir=directory("{sample}/assembly/end_repair"),
     log:
-        "logs/assembly/end_repair.log"
+        "{sample}/logs/assembly/end_repair.log"
     benchmark:
-        "benchmarks/assembly/end_repair.txt"
+        "{sample}/benchmarks/assembly/end_repair.txt"
     params:
-        output_dir="assembly/end_repair",
         flye_input_mode=config.get("flye_input_mode"),
         flye_read_error="0" if config.get("flye_read_error") == "auto" else config.get("flye_read_error"),
         min_id=config.get("circlator_merge_min_id"),
@@ -395,7 +395,7 @@ rule assembly_end_repair:
         rotary-repair --long_read_filepath {input.qc_long_reads} \
           --assembly_fasta_filepath {input.assembly} \
           --assembly_info_filepath {input.info} \
-          --output_dir {params.output_dir} \
+          --output_dir {output.output_dir} \
           --flye_read_mode {params.flye_input_mode} \
           --flye_read_error {params.flye_read_error} \
           --circlator_min_id {params.min_id} \
@@ -413,11 +413,11 @@ rule assembly_end_repair:
 
 rule finalize_assembly:
     input:
-        assembly="assembly/end_repair/repaired.fasta",
-        info="assembly/end_repair/repaired_info.tsv"
+        assembly="{sample}/assembly/end_repair/repaired.fasta",
+        info="{sample}/assembly/end_repair/repaired_info.tsv"
     output:
-        assembly="assembly/assembly.fasta",
-        info="assembly/circular_info.tsv"
+        assembly="{sample}/assembly/assembly.fasta",
+        info="{sample}/assembly/circular_info.tsv"
     run:
         source_relpath = os.path.relpath(str(input.assembly),os.path.dirname(str(output.assembly)))
         os.symlink(source_relpath,str(output.assembly))
@@ -428,8 +428,8 @@ rule finalize_assembly:
 
 rule assembly:
     input:
-        "assembly/assembly.fasta",
-        "assembly/circular_info.tsv"
+        expand("{sample}/assembly/assembly.fasta",sample=SAMPLE_NAMES),
+        expand("{sample}/assembly/circular_info.tsv", sample=SAMPLE_NAMES)
     output:
         temp(touch("checkpoints/assembly"))
 
