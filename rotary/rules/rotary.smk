@@ -7,7 +7,8 @@ import pandas as pd
 import itertools
 from snakemake.utils import min_version
 
-from rotary.sample import parse_sample_tsv
+from rotary.sample import parse_sample_tsv, file_is_gzipped
+from rotary.utils import gzip_file
 
 
 VERSION_POLYPOLISH="0.5.0"
@@ -19,6 +20,8 @@ VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
 DB_DIR_PATH = config.get('db_dir')
 sample_tsv_path = 'samples.tsv'
 SAMPLES = parse_sample_tsv(sample_tsv_path)
+
+SAMPLE_NAMES = list(SAMPLES.keys())
 
 first_sample = next(iter(SAMPLES.values()))
 
@@ -219,6 +222,34 @@ rule build_gtdb_mash_ref_database:
         find {params.fast_ani_genomes_dir} -name *_genomic.fna.gz -type f > {output.ref_genome_path_list}
         mash sketch -l {output.ref_genome_path_list} -p {threads} -o {output.ref_msh_file} -k 16 -s 5000 > {log} 2>&1   
         """
+
+
+rule set_up_sample_directories:
+    input:
+        "samples.tsv"
+    output:
+        long_reads = expand("{sample}/{sample}_long.fastq.gz", sample=SAMPLE_NAMES),
+        short_R1_reads = expand("{sample}/{sample}_R1.fastq.gz", sample=SAMPLE_NAMES),
+        short_R2_reads = expand("{sample}/{sample}_R2.fastq.gz", sample=SAMPLE_NAMES),
+    run:
+        def symlink_or_compress(in_file_path, out_file_path):
+            """
+            Symlinks the input file to the new path if it is already compressed or
+            compresses and saves it at the new path otherwise.
+
+            :param in_file_path: The path to the input file.
+            :param out_file_path: The path to the output file.
+            """
+            if file_is_gzipped(in_file_path):
+                os.symlink(in_file_path, out_file_path)
+            else:
+                gzip_file(in_file_path, out_file_path)
+
+        for sample in SAMPLES.values():
+            identifier = sample.identifier
+            symlink_or_compress(sample.long_read_path,f'{identifier}/{identifier}_long.fastq.gz')
+            symlink_or_compress(sample.short_read_left_path,f'{identifier}/{identifier}_R1.fastq.gz')
+            symlink_or_compress(sample.short_read_right_path,f'{identifier}/{identifier}_R2.fastq.gz')
 
 
 rule nanopore_qc_filter:
@@ -679,7 +710,6 @@ if (config.get("meandepth_cutoff_short_read") == "None") & (config.get("evenness
             os.symlink(source_relpath,str(output))
 
 else:
-
     rule filter_contigs_by_coverage:
         input:
             contigs="polish/medaka/consensus.fasta" if SHORT_R1 == "None" else "polish/polca/polca.fasta",
