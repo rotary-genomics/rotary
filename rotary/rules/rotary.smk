@@ -531,7 +531,6 @@ rule polish_polca:
         polca_output = "{sample}/polish/polca/polca.fasta",
         polypolish_sam = temp("{sample}/polish/polca/polypolish.fasta.unSorted.sam"),
         polypolish_bam = temp("{sample}/polish/polca/polypolish.fasta.alignSorted.bam"),
-        outdir=directory("{sample}/polish/polca")
     conda:
         "../envs/masurca.yaml"
     log:
@@ -544,10 +543,10 @@ rule polish_polca:
         mem=config.get("memory")
     shell:
         """
-        cd {output.outdir}
-        polca.sh -a ../../{input.polished} -r "{input.qc_short_r1} {input.qc_short_r2}" -t {threads} -m {resources.mem}G > ../../{log} 2>&1
-        ln -s "polypolish.fasta.PolcaCorrected.fa" "polca.fasta"
-        cd ../..
+        polca.sh -a {input.polished} -r "{input.qc_short_r1} {input.qc_short_r2}" -t {threads} -m {resources.mem}G > {log} 2>&1
+        mv "polypolish.fasta.PolcaCorrected.fa" {output.polca_output}
+        mv "polypolish.fasta.unSorted.sam" {output.polypolish_sam}
+        mv "polypolish.fasta.alignSorted.bam" {output.polypolish_bam}
         """
 
 
@@ -1217,7 +1216,7 @@ rule summarize_annotation:
     shell:
         """
         cd {params.zipdir}
-        zip -r ../{output} * -x \*.bam\* {wildcards.sample}/gtdbtk/run_files/\* > "../summarize_annotation.log" 2>&1
+        zip -r ../{output} * -x \*.bam\* gtdbtk/run_files/\* > "../summarize_annotation.log" 2>&1
         cd ..
         mv "summarize_annotation.log" {log}
         """
