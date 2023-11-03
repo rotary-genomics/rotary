@@ -530,7 +530,7 @@ rule polish_polca:
     output:
         polca_output = "{sample}/polish/polca/polca.fasta",
         polypolish_sam = temp("{sample}/polish/polca/polypolish.fasta.unSorted.sam"),
-        polypolish_bam = temp("{sample}/polish/polca/polypolish.fasta.alignSorted.bam"),
+        polypolish_bam = temp("{sample}/polish/polca/polypolish.fasta.alignSorted.bam")
     conda:
         "../envs/masurca.yaml"
     log:
@@ -1036,7 +1036,7 @@ rule run_dfast:
         "{sample}/benchmarks/annotation/annotation_dfast.txt"
     params:
         db=directory(os.path.join(DB_DIR_PATH,"dfast_" + VERSION_DFAST)),
-        strain=lambda wildcards: wildcards.sample # Get sample name from wildcards.
+        strain='{sample}'
     threads:
         config.get("threads",1)
     shell:
@@ -1101,7 +1101,7 @@ rule run_gtdbtk:
         "{sample}/benchmarks/annotation/gtdbtk.txt"
     params:
         db=directory(os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE)),
-        genome_id=lambda wildcards: wildcards.sample, # Get sample name from wildcards.
+        genome_id='{sample}', # Get sample name from wildcards.
         gtdbtk_mode="--full_tree" if config.get("gtdbtk_mode") == "full_tree" else ""
     threads:
         config.get("threads",1)
@@ -1185,8 +1185,8 @@ rule symlink_logs:
         logs=temp(directory("{sample}/annotation/logs")),
         stats=temp(directory("{sample}/annotation/stats"))
     params:
-        logs=lambda wildcards: f"{wildcards.sample}/logs",
-        stats=lambda wildcards: f"{wildcards.sample}/stats"
+        logs="{sample}/logs",
+        stats="{sample}/stats"
     run:
         source_relpath = os.path.relpath(str(params.logs),os.path.dirname(str(output.logs)))
         os.symlink(source_relpath, str(output.logs))
@@ -1212,7 +1212,7 @@ rule summarize_annotation:
     log:
         "{sample}/logs/annotation/summarize_annotation.log"
     params:
-        zipdir=lambda wildcards: f"{wildcards.sample}/annotation"
+        zipdir="{sample}/annotation"
     shell:
         """
         cd {params.zipdir}
