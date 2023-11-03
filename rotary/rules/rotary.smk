@@ -7,8 +7,8 @@ import pandas as pd
 import itertools
 from snakemake.utils import min_version
 
-from rotary.sample import parse_sample_tsv, file_is_gzipped
-from rotary.utils import gzip_file
+from rotary.sample import parse_sample_tsv
+from rotary.utils import symlink_or_compress
 
 
 VERSION_POLYPOLISH="0.5.0"
@@ -225,19 +225,6 @@ rule set_up_sample_directories:
         short_R1_reads = expand("{sample}/{sample}_R1.fastq.gz", sample=SAMPLE_NAMES),
         short_R2_reads = expand("{sample}/{sample}_R2.fastq.gz", sample=SAMPLE_NAMES),
     run:
-        def symlink_or_compress(in_file_path, out_file_path):
-            """
-            Symlinks the input file to the new path if it is already compressed or
-            compresses and saves it at the new path otherwise.
-
-            :param in_file_path: The path to the input file.
-            :param out_file_path: The path to the output file.
-            """
-            if file_is_gzipped(in_file_path):
-                os.symlink(in_file_path, out_file_path)
-            else:
-                gzip_file(in_file_path, out_file_path)
-
         for sample in SAMPLES.values():
             identifier = sample.identifier
             symlink_or_compress(sample.long_read_path,f'{identifier}/{identifier}_long.fastq.gz')
