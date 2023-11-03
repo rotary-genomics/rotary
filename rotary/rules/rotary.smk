@@ -551,7 +551,7 @@ rule pre_coverage_filter:
 # Different coverage methods can be used for the filter: short, long, a combo, or neither (bypass)
 filtration_method = []
 
-if (POLISH_WITH_SHORT_READS != False) & \
+if (POLISH_WITH_SHORT_READS == True) & \
         ((config.get("meandepth_cutoff_short_read") != "None") | (config.get("evenness_cutoff_short_read") != "None")):
     filtration_method.append("short_read")
 
