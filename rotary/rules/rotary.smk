@@ -333,8 +333,9 @@ rule assembly_flye:
     input:
         "{sample}/qc_long/nanopore_qc.fastq.gz"
     output:
-        "{sample}/assembly/flye/assembly.fasta",
-        "{sample}/assembly/flye/assembly_info.txt"
+        assembly="{sample}/assembly/flye/assembly.fasta",
+        info="{sample}/assembly/flye/assembly_info.txt",
+        output_dir=directory("{sample}/assembly/flye")
     conda:
         "../envs/assembly_flye.yaml"
     log:
@@ -342,7 +343,6 @@ rule assembly_flye:
     benchmark:
         "{sample}/benchmarks/assembly/assembly_flye.benchmark.txt"
     params:
-        output_dir="assembly/flye",
         input_mode=config.get("flye_input_mode"),
         read_error="" if config.get("flye_read_error") == "auto" else "--read-error " + config.get("flye_read_error"),
         meta_mode="--meta" if config.get("flye_meta_mode") == "True" else "",
@@ -351,7 +351,7 @@ rule assembly_flye:
         config.get("threads",1)
     shell:
         """
-        flye --{params.input_mode} {input} {params.read_error} --out-dir {params.output_dir} {params.meta_mode} \
+        flye --{params.input_mode} {input} {params.read_error} --out-dir {output.output_dir} {params.meta_mode} \
           --iterations {params.polishing_rounds} -t {threads} > {log} 2>&1
         """
 
