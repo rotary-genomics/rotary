@@ -18,8 +18,8 @@ START_HMM_NAME = os.path.splitext(os.path.basename(config.get("hmm_url")))[0]
 VERSION_GTDB_COMPLETE= "214.1" # See https://data.gtdb.ecogenomic.org/releases/
 VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
 DB_DIR_PATH = config.get('db_dir')
-sample_tsv_path = 'samples.tsv'
-SAMPLES = parse_sample_tsv(sample_tsv_path)
+SAMPLE_TSV_PATH = 'samples.tsv'
+SAMPLES = parse_sample_tsv(SAMPLE_TSV_PATH)
 
 SAMPLE_NAMES = list(SAMPLES.keys())
 
@@ -219,7 +219,7 @@ rule build_gtdb_mash_ref_database:
 
 rule set_up_sample_directories:
     input:
-        "samples.tsv"
+        SAMPLE_TSV_PATH
     output:
         long_reads = expand("{sample}/{sample}_long.fastq.gz", sample=SAMPLE_NAMES),
         short_R1_reads = expand("{sample}/{sample}_R1.fastq.gz", sample=SAMPLE_NAMES),
