@@ -524,16 +524,18 @@ rule polish_polca:
         "{sample}/logs/polish/polca.log"
     benchmark:
         "{sample}/benchmarks/polish/polca.txt"
+    params:
+        outdir="{sample}/polish/polca"
     threads:
         config.get("threads",1)
     resources:
         mem=config.get("memory")
     shell:
         """
-        polca.sh -a {input.polished} -r "{input.qc_short_r1} {input.qc_short_r2}" -t {threads} -m {resources.mem}G > {log} 2>&1
-        mv "polypolish.fasta.PolcaCorrected.fa" {output.polca_output}
-        mv "polypolish.fasta.unSorted.sam" {output.polypolish_sam}
-        mv "polypolish.fasta.alignSorted.bam" {output.polypolish_bam}
+        cd {params.outdir}
+        polca.sh -a ../../../{input.polished} -r "../../../{input.qc_short_r1} ../../../{input.qc_short_r2}" -t {threads} -m {resources.mem}G > ../../../{log} 2>&1
+        ln -s "polypolish.fasta.PolcaCorrected.fa" "polca.fasta"
+        cd ../../../
         """
 
 
