@@ -647,11 +647,14 @@ rule summarize_contigs_by_coverage:
 
         input_list = list(input)
 
+        short_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/short_read_coverage.tsv"
+        long_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/long_read_coverage.tsv"
+
         if len(input_list) == 1:
-            if input_list[0] == "polish/cov_filter/short_read_coverage.tsv":
+            if input_list[0] == short_read_coverage_tsv_path:
                 contigs = filter_coverage_data(input_list[0], params.meandepth_short, params.evenness_short)
 
-            elif input_list[0] == "polish/cov_filter/long_read_coverage.tsv":
+            elif input_list[0] == long_read_coverage_tsv_path:
                 contigs = filter_coverage_data(input_list[0], params.meandepth_long, params.evenness_long)
 
             else:
@@ -660,8 +663,8 @@ rule summarize_contigs_by_coverage:
         elif len(input_list) == 2:
             input_list.sort()
 
-            if (input_list[0] != "polish/cov_filter/long_read_coverage.tsv") |\
-                    (input_list[1] != "polish/cov_filter/short_read_coverage.tsv"):
+            if (input_list[0] != long_read_coverage_tsv_path) |\
+                    (input_list[1] != short_read_coverage_tsv_path):
                 sys.exit("At least one unexpected coverage file detected in 'polish/cov_filter'.")
 
             set1 = set(filter_coverage_data(input_list[0], params.meandepth_long, params.evenness_long))
