@@ -1205,8 +1205,8 @@ rule summarize_annotation:
     shell:
         """
         cd {params.zipdir}
-        zip -r ../{output} * -x \*.bam\* gtdbtk/run_files/\* > "../summarize_annotation.log" 2>&1
-        cd ..
+        zip -r ../../{output} * -x \*.bam\* gtdbtk/run_files/\* > "../../summarize_annotation.log" 2>&1
+        cd ../../
         mv "summarize_annotation.log" {log}
         """
 
