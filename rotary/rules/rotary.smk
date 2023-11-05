@@ -972,11 +972,13 @@ rule bypass_circularization:
 # This function allows the DAG to figure out whether to run the circular / linear specific processing steps
 #   based on the split_circular_and_linear_contigs checkpoint made earlier.
 def aggregate_contigs(wildcards):
-    # TODO - I do not further use this variable, but checkpoints needs to be called to trigger the checkpoint. Am I doing something wrong?
+    # TODO - I do not further use this variable, but checkpoints needs to be called to trigger the checkpoint.
+    # Am I doing something wrong?
     checkpoint_output = checkpoints.split_circular_and_linear_contigs.get(**wildcards).output[0]
+    circularize_lists_path = f"{wildcards.sample}/circularize/filter/lists"
 
     return expand("{{sample}}/circularize/combine/{circular_or_linear}.fasta",
-                  circular_or_linear=glob_wildcards(os.path.join("circularize/filter/lists", "{i}.list")).i)
+                  circular_or_linear=glob_wildcards(os.path.join(circularize_lists_path, "{i}.list")).i)
 
 
 # TODO - consider sorting contigs by length (or by circular and then by length)
