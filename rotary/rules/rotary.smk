@@ -1133,8 +1133,8 @@ if POLISH_WITH_SHORT_READS == True:
             mem=int(config.get("memory") / config.get("threads",1))
         shell:
             """
-            bwa index {input} 2> {log}
-            bwa mem -t {threads} {input} {input.qc_short_r1} {input.qc_short_r2} 2>> {log} | \
+            bwa index {input.dfast_genome} 2> {log}
+            bwa mem -t {threads} {input.dfast_genome} {input.qc_short_r1} {input.qc_short_r2} 2>> {log} | \
               samtools view -b -@ {threads} 2>> {log} | \
               samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
               > {output.mapping}
