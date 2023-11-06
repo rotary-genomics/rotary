@@ -920,7 +920,7 @@ rule run_circlator:
         fi
         
         printf "### Circlator log output ###\n" >> {log}
-        cat "circularize/circlator/rotated.log" >> {log}
+        cat "{wildcards.sample}/circularize/circlator/rotated.log" >> {log}
         """
 
 
