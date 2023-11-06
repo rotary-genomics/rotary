@@ -1056,7 +1056,7 @@ rule run_eggnog:
         install_finished=os.path.join(DB_DIR_PATH,"checkpoints","eggnog_" + VERSION_EGGNOG)
     output:
         eggnog_annotations="{sample}/annotation/eggnog/eggnog.emapper.annotations",
-        outdir= directory("{sample}annotation/eggnog")
+        outdir= directory("{sample}/annotation/eggnog")
     conda:
         "../envs/eggnog.yaml"
     log:
