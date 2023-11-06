@@ -29,7 +29,10 @@ min_version("7.0")
 shell.executable("/bin/bash")
 shell.prefix("set -o pipefail; ")
 
-POLISH_WITH_SHORT_READS = True
+if str(config.get('polish_with_short_reads')).lower() == 'true':
+    POLISH_WITH_SHORT_READS = True
+else:
+    POLISH_WITH_SHORT_READS = False
 
 rule all:
     input:
