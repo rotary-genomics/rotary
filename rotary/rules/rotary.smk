@@ -342,7 +342,9 @@ rule assembly_flye:
     shell:
         """
         flye --{params.input_mode} {input} {params.read_error} --out-dir {output.output_dir} {params.meta_mode} \
-          --iterations {params.polishing_rounds} -t {threads} > {log} 2>&1
+          --iterations {params.polishing_rounds} -t {threads} > {log} 2>&1 
+        mv {output.output_dir}/assembly.fasta {output.assembly} 
+        mv {output.output_dir}/assembly_info.txt {output.info} 
         """
 
 
@@ -391,6 +393,8 @@ rule assembly_end_repair:
           --overwrite \
           {params.keep_going} \
           > {log} 2>&1
+        mv {output.output_dir}/repaired.fasta {output.assembly} 
+        mv {output.output_dir}/repaired_info.tsv {output.info}
         """
 
 
@@ -449,6 +453,7 @@ rule polish_medaka:
         """
         medaka_consensus -i {input.qc_long_reads} -d {input.contigs} -o {output.dir} \
           -m {params.medaka_model} -t {threads} -b {params.batch_size} > {log} 2>&1
+        mv {output.dir}/consensus.fasta {output.contigs}
         """
 
 
@@ -537,7 +542,7 @@ rule polish_polca:
         """
         cd {params.outdir}
         polca.sh -a ../../../{input.polished} -r "../../../{input.qc_short_r1} ../../../{input.qc_short_r2}" -t {threads} -m {resources.mem}G > ../../../{log} 2>&1
-        ln -s "polypolish.fasta.PolcaCorrected.fa" "polca.fasta"
+        ln -s "{wildcards.sample}_polypolish.fasta.PolcaCorrected.fa" "{wildcards.sample}_polca.fasta"
         cd ../../../
         """
 
@@ -921,6 +926,8 @@ rule run_circlator:
             {input.contigs} {output.circlator_dir}/rotated >> {log} 2>&1
             
         fi
+        
+        mv {output.circlator_dir}/rotated.fasta {output.rotated}
         
         printf "### Circlator log output ###\n" >> {log}
         cat "{wildcards.sample}/circularize/circlator/rotated.log" >> {log}
