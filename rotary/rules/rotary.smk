@@ -685,8 +685,8 @@ rule prepare_polypolish_polish_input:
 
 rule polish_polypolish:
     input:
-        qc_short_r1 = "{sample}/raw/{sample}_R1.fastq.gz",
-        qc_short_r2 = "{sample}/raw/{sample}_R2.fastq.gz",
+        qc_short_r1 = "{sample}/qc/{sample}_QC_R1.fastq.gz",
+        qc_short_r2 = "{sample}/qc/{sample}_QC_R2.fastq.gz",
         contigs="{sample}/{step}/polypolish/input/{sample}_input.fasta",
         polypolish_filter=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish_insert_filter.py"),
         polypolish=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish"),
@@ -735,8 +735,8 @@ rule polish_polypolish:
 # TODO - the relative path workarounds in the shell here are a bit odd because polca outputs files in the present working directory
 rule polish_polca:
     input:
-        qc_short_r1 = "{sample}/raw/{sample}_R1.fastq.gz",
-        qc_short_r2 = "{sample}/raw/{sample}_R2.fastq.gz",
+        qc_short_r1 = "{sample}/qc/{sample}_QC_R1.fastq.gz",
+        qc_short_r2 = "{sample}/qc/{sample}_QC_R2.fastq.gz",
         polished = "{sample}/polish/polypolish/{sample}_polypolish.fasta"
     output:
         polca_output = "{sample}/polish/polca/{sample}_polca.fasta",
@@ -784,8 +784,8 @@ if (POLISH_WITH_SHORT_READS == True) & \
     # TODO - consider mapping to medaka polished contigs instead
     rule calculate_short_read_coverage:
         input:
-            qc_short_r1 = "{sample}/raw/{sample}_R1.fastq.gz",
-            qc_short_r2 = "{sample}/raw/{sample}_R2.fastq.gz",
+            qc_short_r1 = "{sample}/qc/{sample}_QC_R1.fastq.gz",
+            qc_short_r2 = "{sample}/qc/{sample}_QC_R2.fastq.gz",
             contigs = "{sample}/polish/cov_filter/{sample}_pre_filtered.fasta"
         output:
             mapping=temp("{sample}/polish/cov_filter/{sample}_short_read.bam"),
@@ -1344,8 +1344,8 @@ if POLISH_WITH_SHORT_READS == True:
     # TODO - clarify name compared to previous mapping step
     rule calculate_final_short_read_coverage:
         input:
-            qc_short_r1 = "{sample}/raw/{sample}_R1.fastq.gz",
-            qc_short_r2 = "{sample}/raw/{sample}_R2.fastq.gz",
+            qc_short_r1 = "{sample}/qc/{sample}_QC_R1.fastq.gz",
+            qc_short_r2 = "{sample}/qc/{sample}_QC_R2.fastq.gz",
             dfast_genome = "{sample}/annotation/dfast/{sample}_genome.fna"
         output:
             mapping="{sample}/annotation/coverage/{sample}_short_read.bam",
