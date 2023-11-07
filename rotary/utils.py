@@ -104,7 +104,7 @@ def symlink_or_compress(in_file_path, out_file_path):
 
 def get_contamination_reference_files(config_entry: list, db_path: str, phix_accession: str, human_accession: str):
     """
-    Returns a list of file paths for contamination references
+    Returns a list of file paths for contamination references based on short IDs
 
     :param config_entry: value of config.get('contamination_references'); should be a list
     :param db_path: path to the rotary database folder
@@ -128,11 +128,9 @@ def get_contamination_reference_files(config_entry: list, db_path: str, phix_acc
                     f'human_{human_accession}.fna.gz'))
 
             else:
-                # Assume that the full path to a different file of interest was provided
-                contamination_reference_paths.append(contamination_entry)
+                raise ValueError(f'Contaminant genome must be PhiX or human, but you provided {contamination_entry}')
 
     else:
-        print(f'ERROR: input type must be a list, but you provided type {type(config_entry)}')
-        raise TypeError
+        raise TypeError(f'Input type must be a list, but you provided type {type(config_entry)}')
 
     return contamination_reference_paths

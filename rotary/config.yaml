@@ -30,9 +30,10 @@ minimum_average_quality_score_post_trim: 20
 minimum_read_length: 10
 # K-mer length for filtering contaminant genome info out of the data
 contamination_filter_kmer_length: 27
-# Contaminant reference genomes to use for the contamination search
-# If you want to provide your own custom genome(s), add the file path(s) to the list below (for FastA nucleotide files)
+# Contaminant reference genomes (provided within rotary) for filtering contaminants out of raw short reads
 contamination_references: ["PhiX", "human"]
+# If you want to provide a custom genome for contaminant filtration, add the path to the FastA nucleotide file here:
+custom_contamination_reference: "None"
 
 ## Assembly
 # nano-hq (if <5% error) or nano-raw

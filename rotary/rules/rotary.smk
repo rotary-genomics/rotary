@@ -73,8 +73,8 @@ rule download_contamination_references:
         phix_zip = temp(os.path.join(DB_DIR_PATH, 'contamination_references', f'PhiX_{PHIX_GENOME_ACCESSION}.zip')),
         phix_dir = temp(directory(os.path.join(DB_DIR_PATH, 'contamination_references', f'PhiX_{PHIX_GENOME_ACCESSION}'))),
         human_genome = os.path.join(DB_DIR_PATH, 'contamination_references', f'human_{HUMAN_GENOME_ACCESSION}.fna.gz'),
-        human_zip = temp(os.path.join(DB_DIR_PATH, 'contamination_references', f'PhiX_{HUMAN_GENOME_ACCESSION}.zip')),
-        human_dir= temp(directory(os.path.join(DB_DIR_PATH, 'contamination_references', f'PhiX_{HUMAN_GENOME_ACCESSION}')))
+        human_zip = temp(os.path.join(DB_DIR_PATH, 'contamination_references', f'human_{HUMAN_GENOME_ACCESSION}.zip')),
+        human_dir= temp(directory(os.path.join(DB_DIR_PATH, 'contamination_references', f'human_{HUMAN_GENOME_ACCESSION}')))
     conda:
         "../envs/ncbi_datasets.yaml"
     log:
@@ -88,8 +88,8 @@ rule download_contamination_references:
         """
         echo "### Downloading PhiX genome ###" > {log}
         datasets download genome accession {params.phix_accession} --include genome \
-          --filename {output.phix_zip} 2> {log}
-        unzip {output.phix_zip} > /dev/null
+          --filename {output.phix_zip} 2>> {log}
+        unzip -d {output.phix_dir} {output.phix_zip} > /dev/null
         
         # Confirm that there is only one genome file matching the expected pattern in the unzipped folder
         genome_file=($(find {output.phix_dir}/ncbi_dataset/data/{params.phix_accession} -type f -name "{params.phix_accession}_*_genomic.fna"))
@@ -99,13 +99,13 @@ rule download_contamination_references:
           echo "ERROR: more than 1 genome file (or no genome file) in dir {output.phix_dir}/ncbi_dataset/data/{params.phix_accession}"
           exit 1
         fi
-        echo ""
+        echo "" >> {log}
         
         # TODO - this is just a repeat of the above code and can probably be refactored
-        echo "### Downloading human genome ###" > {log}
+        echo "### Downloading human genome ###" >> {log}
         datasets download genome accession {params.human_accession} --include genome \
-          --filename {output.human_zip} 2> {log}
-        unzip {output.human_zip} > /dev/null
+          --filename {output.human_zip} 2>> {log}
+        unzip -d {output.human_dir} {output.human_zip} > /dev/null
         
         # Confirm that there is only one genome file matching the expected pattern in the unzipped folder
         genome_file=($(find {output.human_dir}/ncbi_dataset/data/{params.human_accession} -type f -name "{params.human_accession}_*_genomic.fna"))
@@ -430,7 +430,7 @@ rule short_read_reformat:
     shell:
         """
         reformat.sh -Xmx{resources.mem}g threads={threads} in={input.short_r1} in2={input.short_r2} \
-          out={output.short_reformat_r1} out2={output.short_reformat_r1} qhist={output.quality_histogram} \
+          out={output.short_reformat_r1} out2={output.short_reformat_r2} qhist={output.quality_histogram} \
           overwrite=t interleaved=f qin=33 verifypaired=t trimreaddescription=t tossjunk=t \
           2> {log}
         """
@@ -481,8 +481,7 @@ rule short_read_adapter_and_quality_trimming:
         """
 
 
-# TODO - make sure that the references returns a comma-separated list (no spaces) for the script
-# TODO - confirm that custom references can be handled by this code
+# TODO - this rule needs to be bypassed if no contaminant references are provided in the config
 rule short_read_contamination_filter:
     """
     Filters short reads based on match to a reference 
@@ -504,15 +503,23 @@ rule short_read_contamination_filter:
     benchmark:
         "{sample}/benchmarks/qc/short/short_read_contamination_filter.benchmark.txt"
     params:
-        contamination_filter_kmer_length = config.get("contamination_filter_kmer_length", 27)
+        contamination_filter_kmer_length = config.get("contamination_filter_kmer_length"),
+        custom_contamination_reference = config.get("custom_contamination_reference")
     threads:
         config.get("threads", 1)
     resources:
         mem = config.get("memory")
     shell:
         """
+        # Define the comma-separated list of reference genomes to use
+        refs=$(echo "{input.contamination_references}" | sed 's/  */,/g')
+        
+        if [[ {params.custom_contamination_reference} != "None" ]]; then
+          refs="${{refs}},{params.custom_contamination_reference}"
+        fi
+        
         bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_trim_r1} in2={input.short_trim_r2} \
-          ref={input.contamination_references} out={output.short_filter_r1} out2={output.short_filter_r2} \
+          ref=${{refs}} out={output.short_filter_r1} out2={output.short_filter_r2} \
           stats={output.filter_stats} qhist={output.quality_histogram} \
           k={params.contamination_filter_kmer_length} ktrim=f rcomp=t \
           overwrite=t interleaved=f qin=33 \
