@@ -8,7 +8,7 @@ import itertools
 from snakemake.utils import min_version
 
 from rotary.sample import parse_sample_tsv
-from rotary.utils import symlink_or_compress
+from rotary.utils import symlink_or_compress, get_contamination_reference_files
 
 
 PHIX_GENOME_ACCESSION = "GCF_000819615.1"
@@ -464,41 +464,6 @@ rule short_read_adapter_and_quality_trimming:
           overwrite=t interleaved=f qin=33 \
           2> {log}
         """
-
-
-def get_contamination_reference_files(config_entry: list, db_path: str, phix_accession: str, human_accession: str):
-    """
-    Returns a list of file paths for contamination references based on the entry in the config file
-    :param config_entry: value of config.get('contamination_references'); should be a list
-    :param db_path: path to the rotary database folder
-    :param phix_accession: NCBI assembly accession code for the PhiX genome assembly
-    :param human_accession: NCBI assembly accession code for the human genome assembly
-    :return: list of file paths for the contamination reference sequences
-    """
-
-    contamination_reference_paths = []
-
-    if isinstance(config_entry, list) is True:
-
-        for contamination_entry in config_entry:
-
-            if contamination_entry.lower() == 'phix':
-                contamination_reference_paths.append(os.path.join(db_path, 'contamination_references',
-                    f'PhiX_{phix_accession}.fna.gz'))
-
-            elif contamination_entry.lower() == 'human':
-                contamination_reference_paths.append(os.path.join(db_path,'contamination_references',
-                    f'human_{human_accession}.fna.gz'))
-
-            else:
-                # Assume that the full path to a different file of interest was provided
-                contamination_reference_paths.append(contamination_entry)
-
-    else:
-        print(f'ERROR: input type must be a list, but you provided type {type(config_entry)}')
-        raise TypeError
-
-    return contamination_reference_paths
 
 
 # TODO - make sure that the references returns a comma-separated list (no spaces) for the script
