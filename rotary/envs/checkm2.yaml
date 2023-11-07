@@ -3,5 +3,5 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  - checkm2
-  - diamond
+  - checkm2=1.0.1
+  - diamond=2.0.4
