@@ -1055,7 +1055,10 @@ rule run_dfast:
          # --complete t \
          # --seq_names "Chromosome,unnamed" \
          # --seq_types "chromosome,plasmid" \
-         # --seq_topologies "circular,circular" \
+         # --seq_topologies "circular,circular" 
+         
+         mv {output.outdir}/genome.fna {output.dfast_genome}
+         mv {output.outdir}/protein.faa {output.dfast_proteins}
          """
 
 
