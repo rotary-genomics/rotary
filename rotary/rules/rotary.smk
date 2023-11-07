@@ -11,6 +11,8 @@ from rotary.sample import parse_sample_tsv
 from rotary.utils import symlink_or_compress
 
 
+PHIX_GENOME_ACCESSION = "GCF_000819615.1"
+HUMAN_GENOME_ACCESSION = "GCF_000001405.40"
 VERSION_POLYPOLISH="0.5.0"
 VERSION_DFAST="1.2.18"
 VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
@@ -36,11 +38,69 @@ else:
 
 rule all:
     input:
-        "checkpoints/qc_long",
+        "checkpoints/qc",
         "checkpoints/assembly",
         "checkpoints/polish",
         "checkpoints/circularize",
         "checkpoints/annotation"
+
+
+# TODO - make a separate adapters file from ATLAS
+# Currently using the adapters.fa file from metagenome ATLAS, under a Creative Commons Attribution 4.0 International
+# License (file available at https://zenodo.org/records/1134890; Github repo at https://github.com/metagenome-atlas/atlas)
+rule download_short_read_adapters:
+    """
+    Downloads sequence adapters to trim from short reads (for now, uses the ATLAS version)
+    """
+    output:
+        os.path.join(DB_DIR_PATH, "adapters.fasta")
+    log:
+        "logs/download/download_short_read_adapters.log"
+    benchmark:
+        "benchmarks/download/download_short_read_adapters.benchmark.txt"
+    shell:
+        """
+        wget -O {output} https://zenodo.org/records/1134890/files/adapters.fa?download=1 > {log} 2>&1
+        """
+
+
+rule download_contamination_references:
+    """
+    Downloads references genomes commonly used for contamination screening
+    """
+    output:
+        phix_genome = os.path.join(DB_DIR_PATH, 'contamination_references', f'PhiX_{PHIX_GENOME_ACCESSION}.fna.gz'),
+        phix_zip = temp(os.path.join(DB_DIR_PATH, 'contamination_references', f'PhiX_{PHIX_GENOME_ACCESSION}.zip')),
+        phix_dir = temp(directory(os.path.join(DB_DIR_PATH, 'contamination_references', f'PhiX_{PHIX_GENOME_ACCESSION}'))),
+        human_genome = os.path.join(DB_DIR_PATH, 'contamination_references', f'human_{HUMAN_GENOME_ACCESSION}.fna.gz'),
+        human_zip = temp(os.path.join(DB_DIR_PATH, 'contamination_references', f'PhiX_{HUMAN_GENOME_ACCESSION}.zip')),
+        human_dir= temp(directory(os.path.join(DB_DIR_PATH, 'contamination_references', f'PhiX_{HUMAN_GENOME_ACCESSION}')))
+    conda:
+        "../envs/ncbi_datasets.yaml"
+    log:
+        "logs/download/download_contamination_references.log"
+    benchmark:
+        "benchmarks/download/download_contamination_references.benchmark.txt"
+    params:
+        phix_accession = PHIX_GENOME_ACCESSION,
+        human_accession = HUMAN_GENOME_ACCESSION
+    shell:
+        """
+        echo "### Downloading PhiX genome ###" > {log}
+        datasets download genome accession {params.phix_accession} --include genome \
+          --filename {output.phix_zip} 2> {log}
+        unzip {output.phix_zip} > /dev/null
+        gzip -c {output.phix_dir}/ncbi_dataset/data/{params.phix_accession}/{params.phix_accession}_*_genomic.fna \
+          > {output.phix_genome}
+        
+        echo "" > {log}
+        echo "### Downloading human genome ###" > {log}
+        datasets download genome accession {params.human_accession} --include genome \
+          --filename {output.human_zip} 2> {log}
+        unzip {output.human_zip} > /dev/null
+        gzip -c {output.human_dir}/ncbi_dataset/data/{params.human_accession}/{params.human_accession}_*_genomic.fna \
+          > {output.human_genome}
+        """
 
 
 rule install_polypolish:
@@ -239,13 +299,13 @@ rule nanopore_qc_filter:
     input:
         "{sample}/raw/{sample}_long.fastq.gz"
     output:
-        "{sample}/qc_long/{sample}_nanopore_qc.fastq.gz"
+        "{sample}/qc/long/{sample}_nanopore_qc.fastq.gz"
     conda:
         "../envs/mapping.yaml"
     log:
-        "{sample}/logs/qc/qc_long.log"
+        "{sample}/logs/qc/long/qc_long.log"
     benchmark:
-        "{sample}/benchmarks/qc/qc_long.benchmark.txt"
+        "{sample}/benchmarks/qc/long/qc_long.benchmark.txt"
     threads:
         config.get("threads",1)
     resources:
@@ -262,15 +322,15 @@ rule nanopore_qc_filter:
 
 rule qc_long_length_hist:
     input:
-        "{sample}/qc_long/{sample}_nanopore_qc.fastq.gz"
+        "{sample}/qc/long/{sample}_nanopore_qc.fastq.gz"
     output:
-        "{sample}/qc_long/{sample}_length_hist.tsv"
+        "{sample}/qc/long/{sample}_length_hist.tsv"
     conda:
         "../envs/mapping.yaml"
     log:
-        "{sample}/logs/qc/qc_long_length_hist.log"
+        "{sample}/logs/qc/long/qc_long_length_hist.log"
     benchmark:
-        "{sample}/benchmarks/qc/qc_long_length_hist.benchmark.txt"
+        "{sample}/benchmarks/qc/long/qc_long_length_hist.benchmark.txt"
     threads:
         config.get("threads",1)
     resources:
@@ -284,13 +344,13 @@ rule qc_long_length_hist:
 
 rule qc_long_length_stats:
     input:
-        "{sample}/qc_long/{sample}_length_hist.tsv"
+        "{sample}/qc/long/{sample}_length_hist.tsv"
     output:
         "{sample}/stats/{sample}_qc_long_length_stats.txt"
     log:
-        "{sample}/logs/qc/qc_long_length_stats.log"
+        "{sample}/logs/qc/long/qc_long_length_stats.log"
     benchmark:
-        "{sample}/benchmarks/qc/qc_long_length_stats.benchmark.txt"
+        "{sample}/benchmarks/qc/long/qc_long_length_stats.benchmark.txt"
     run:
         length_hist = pd.read_csv(input[0], sep='\t')
 
@@ -312,16 +372,207 @@ rule qc_long_length_stats:
         length_stats.to_csv(output[0], sep='\t', header=None, index=True)
 
 
+rule finalize_qc_long:
+    input:
+        "{sample}/qc/long/{sample}_nanopore_qc.fastq.gz"
+    output:
+        "{sample}/qc/{sample}_QC_long.fastq.gz"
+    run:
+        source_relpath = os.path.relpath(str(input), os.path.dirname(str(output)))
+        os.symlink(source_relpath, str(output))
+
+
 rule qc_long:
     input:
-        expand("{sample}/stats/{sample}_qc_long_length_stats.txt",sample=SAMPLE_NAMES)
+        expand("{sample}/qc/{sample}_QC_long.fastq.gz", sample=SAMPLE_NAMES),
+        expand("{sample}/stats/{sample}_qc_long_length_stats.txt", sample=SAMPLE_NAMES)
     output:
         temp(touch("checkpoints/qc_long"))
 
 
+rule short_read_reformat:
+    """
+    Makes the input format of the short reads consistent (e.g., by trimming read descriptions and tossing invalid 
+    nucleotide characters). Threads are locked at a maximum of 4 because this code is IO limited.
+    """
+    input:
+        short_r1 = "{sample}/raw/{sample}_R1.fastq.gz",
+        short_r2 = "{sample}/raw/{sample}_R2.fastq.gz"
+    output:
+        short_reformat_r1 = temp("{sample}/qc/short/{sample}_reformat_R1.fastq.gz"),
+        short_reformat_r2 = temp("{sample}/qc/short/{sample}_reformat_R2.fastq.gz"),
+        quality_histogram = "{sample}/qc/short/{sample}_reformat_qhist.tsv"
+    conda:
+        "../envs/qc.yaml"
+    log:
+        "{sample}/logs/qc/short/short_read_reformat.log"
+    benchmark:
+        "{sample}/benchmarks/qc/short/short_read_reformat.benchmark.txt"
+    threads:
+        min(config.get("threads", 1), 4)
+    resources:
+        mem = config.get("memory")
+    shell:
+        """
+        reformat.sh -Xmx{resources.mem}g threads={threads} in={input.short_r1} in2={input.short_r2} \
+          out={output.short_reformat_r1} out2={output.short_reformat_r1} qhist={output.quality_histogram} \
+          overwrite=t interleaved=f qin=33 verifypaired=t trimreaddescription=t tossjunk=t \
+          2> {log}
+        """
+
+
+rule short_read_adapter_and_quality_trimming:
+    """
+    Trims 3' adapters off the reads (e.g., that are caused by having a short insert). 
+    Performs quality trimming after trimming adapters. 
+    """
+    input:
+        short_reformat_r1 = "{sample}/qc/short/{sample}_reformat_R1.fastq.gz",
+        short_reformat_r2 = "{sample}/qc/short/{sample}_reformat_R2.fastq.gz",
+        adapters = os.path.join(DB_DIR_PATH, "adapters.fasta")
+    output:
+        short_trim_r1 = temp("{sample}/qc/short/{sample}_trim_R1.fastq.gz"),
+        short_trim_r2 = temp("{sample}/qc/short/{sample}_trim_R2.fastq.gz"),
+        quality_histogram = "{sample}/qc/short/{sample}_trim_qhist.tsv",
+        adapter_trim_stats= "{sample}/stats/{sample}_short_read_adapter_trimming.txt"
+    conda:
+        "../envs/qc.yaml"
+    log:
+        "{sample}/logs/qc/short/short_read_adapter_and_quality_trimming.log"
+    benchmark:
+        "{sample}/benchmarks/qc/short/short_read_adapter_and_quality_trimming.benchmark.txt"
+    params:
+        adapter_trimming_kmer_length = config.get("adapter_trimming_kmer_length"),
+        minimum_detectable_adapter_length_on_read_end = config.get("minimum_detectable_adapter_length_on_read_end"),
+        quality_trim_direction = "rl" if config.get("quality_trim_direction") == "both" else "r" if config.get("quality_trim_direction") == "right",
+        quality_trim_cutoff = config.get("quality_trim_score_cutoff"),
+        min_read_length = config.get("minimum_read_length"),
+        min_average_quality = config.get("minimum_average_quality_score_post_trim")
+    threads:
+        config.get("threads", 1)
+    resources:
+        mem = config.get("memory")
+    shell:
+        """
+        bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_reformat_r1}} in2={input.short_reformat_r2} \
+          ref={input.adapters} out={output.short_trim_r1} out2={output.short_trim_r2} \
+          stats={output.adapter_trim_stats} qhist={output.quality_histogram} \
+          k={params.adapter_trimming_kmer_length} ktrim=r mink={params.minimum_detectable_adapter_length_on_read_end} \
+          rcomp=t trimbyoverlap=t minoverlap=14 mininsert=40 \
+          qtrim={params.quality_trim_direction} trimq={params.quality_trim_cutoff} minlength={params.min_read_length} \
+          minavgquality={params.min_average_quality} \
+          overwrite=t interleaved=f qin=33 \
+          2> {log}
+        """
+
+
+def get_contamination_reference_files(config_entry: list, db_path: str, phix_accession: str, human_accession: str):
+    """
+    Returns a list of file paths for contamination references based on the entry in the config file
+    :param config_entry: value of config.get('contamination_references'); should be a list
+    :param db_path: path to the rotary database folder
+    :param phix_accession: NCBI assembly accession code for the PhiX genome assembly
+    :param human_accession: NCBI assembly accession code for the human genome assembly
+    :return: list of file paths for the contamination reference sequences
+    """
+
+    contamination_reference_paths = []
+
+    if isinstance(config_entry, list) is True:
+
+        for contamination_entry in config_entry:
+
+            if contamination_entry.lower() == 'phix':
+                contamination_reference_paths.append(os.path.join(db_path, 'contamination_references',
+                    f'PhiX_{phix_accession}.fna.gz'))
+
+            elif contamination_entry.lower() == 'human':
+                contamination_reference_paths.append(os.path.join(db_path,'contamination_references',
+                    f'human_{human_accession}.fna.gz'))
+
+            else:
+                # Assume that the full path to a different file of interest was provided
+                contamination_reference_paths.append(contamination_entry)
+
+    else:
+        print(f'ERROR: input type must be a list, but you provided type {type(config_entry)}')
+        raise TypeError
+
+    return contamination_reference_paths
+
+
+# TODO - make sure that the references returns a comma-separated list (no spaces) for the script
+# TODO - confirm that custom references can be handled by this code
+rule short_read_contamination_filter:
+    """
+    Filters short reads based on match to a reference 
+    """
+    input:
+        short_trim_r1 = "{sample}/qc/short/{sample}_trim_R1.fastq.gz",
+        short_trim_r2 = "{sample}/qc/short/{sample}_trim_R2.fastq.gz",
+        contamination_references = get_contamination_reference_files(config.get("contamination_references"),
+            DB_DIR_PATH, PHIX_GENOME_ACCESSION, HUMAN_GENOME_ACCESSION)
+    output:
+        short_filter_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz",
+        short_filter_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz",
+        quality_histogram = "{sample}/qc/short/{sample}_filter_qhist.tsv",
+        filter_stats= "{sample}/stats/{sample}_short_read_contamination_filter.txt"
+    conda:
+        "../envs/qc.yaml"
+    log:
+        "{sample}/logs/qc/short/short_read_contamination_filter.log"
+    benchmark:
+        "{sample}/benchmarks/qc/short/short_read_contamination_filter.benchmark.txt"
+    params:
+        contamination_filter_kmer_length = config.get("contamination_filter_kmer_length", 27)
+    threads:
+        config.get("threads", 1)
+    resources:
+        mem = config.get("memory")
+    shell:
+        """
+        bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_trim_r1} in2={input.short_trim_r2} \
+          ref={input.contamination_references} out={output.short_filter_r1} out2={output.short_filter_r2} \
+          stats={output.filter_stats} qhist={output.quality_histogram} \
+          k={params.contamination_filter_kmer_length} ktrim=f rcomp=t \
+          overwrite=t interleaved=f qin=33 \
+          2> {log}
+        """
+
+
+rule finalize_qc_short:
+    input:
+        short_filter_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz",
+        short_filter_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz"
+    output:
+        short_final_r1 = "{sample}/qc/{sample}_QC_R1.fastq.gz",
+        short_final_r2 = "{sample}/qc/{sample}_QC_R2.fastq.gz"
+    run:
+        source_relpath = os.path.relpath(str(input.short_filter_r1), os.path.dirname(str(output.short_final_r1)))
+        os.symlink(source_relpath, str(output.short_final_r1))
+
+        source_relpath = os.path.relpath(str(input.short_filter_r2), os.path.dirname(str(output.short_final_r2)))
+        os.symlink(source_relpath, str(output.short_final_r2))
+
+
+rule qc_short:
+    input:
+        expand("{sample}/qc/{sample}_QC_R1.fastq.gz", sample=SAMPLE_NAMES),
+        expand("{sample}/qc/{sample}_QC_R2.fastq.gz", sample=SAMPLE_NAMES)
+    output:
+        temp(touch("checkpoints/qc_short"))
+
+
+rule qc:
+    input:
+        ["checkpoints/qc_long"] if POLISH_WITH_SHORT_READS == False else ["checkpoints/qc_long", "checkpoints/qc_short"]
+    output:
+        temp(touch("checkpoints/qc"))
+
+
 rule assembly_flye:
     input:
-        "{sample}/qc_long/{sample}_nanopore_qc.fastq.gz"
+        "{sample}/qc/{sample}_QC_long.fastq.gz"
     output:
         assembly="{sample}/assembly/flye/{sample}_assembly.fasta",
         info="{sample}/assembly/flye/{sample}_assembly_info.txt",
@@ -352,7 +603,7 @@ rule assembly_flye:
 # TODO - the math for memory per thread should really be done somewhere other than 'resources' - what is best practice?
 rule assembly_end_repair:
     input:
-        qc_long_reads="{sample}/qc_long/{sample}_nanopore_qc.fastq.gz",
+        qc_long_reads="{sample}/qc/{sample}_QC_long.fastq.gz",
         assembly="{sample}/assembly/flye/{sample}_assembly.fasta",
         info="{sample}/assembly/flye/{sample}_assembly_info.txt"
     output:
@@ -433,7 +684,7 @@ rule prepare_medaka_polish_input:
 
 rule polish_medaka:
     input:
-        qc_long_reads="{sample}/qc_long/{sample}_nanopore_qc.fastq.gz",
+        qc_long_reads="{sample}/qc/{sample}_QC_long.fastq.gz",
         contigs="{sample}/{step}/medaka_input/{sample}_input.fasta"
     output:
         dir=directory("{sample}/{step}/medaka"),
@@ -604,7 +855,7 @@ if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_
     rule calculate_long_read_coverage:
         input:
             contigs="{sample}/polish/cov_filter/{sample}_pre_filtered.fasta",
-            qc_long_reads="{sample}/qc_long/{sample}_nanopore_qc.fastq.gz"
+            qc_long_reads="{sample}/qc/{sample}_QC_long.fastq.gz"
         output:
             mapping=temp("{sample}/polish/cov_filter/{sample}_long_read.bam"),
             mapping_index=temp("{sample}/polish/cov_filter/{sample}_long_read.bam.bai"),
@@ -1160,7 +1411,7 @@ if POLISH_WITH_SHORT_READS == True:
 rule calculate_final_long_read_coverage:
     input:
         contigs="{sample}/annotation/dfast/{sample}_genome.fna",
-        qc_long_reads="{sample}/qc_long/{sample}_nanopore_qc.fastq.gz"
+        qc_long_reads="{sample}/qc/{sample}_QC_long.fastq.gz"
     output:
         mapping="{sample}/annotation/coverage/{sample}_long_read.bam",
         index="{sample}/annotation/coverage/{sample}_long_read.bam.bai",
