@@ -1067,6 +1067,7 @@ rule run_eggnog:
     benchmark:
         "{sample}/benchmarks/annotation/eggnog.txt"
     params:
+        prefix='{sample}',
         db=directory(os.path.join(DB_DIR_PATH,"eggnog_" + VERSION_EGGNOG)),
         sensmode=config.get("eggnog_sensmode")
     threads:
@@ -1075,7 +1076,7 @@ rule run_eggnog:
         """
         mkdir -p {output.outdir}/tmp
         emapper.py --cpu {threads} -i {input.protein} --itype proteins -m diamond --sensmode {params.sensmode} \
-          --dbmem --output eggnog --output_dir {output.outdir} --temp_dir {output.outdir}/tmp \
+          --dbmem --output eggnog --output_dir {output.outdir} --temp_dir {output.outdir}/tmp --output {params.prefix}  \
           --data_dir {params.db} --override > {log} 2>&1
         rm -r {output.outdir}/tmp
         """
