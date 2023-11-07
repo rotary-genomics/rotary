@@ -20,8 +20,8 @@ minavgquality: 13
 adapter_trimming_kmer_length: 27
 # Minimum adapter length to be detectable on the (right-hand) end of a read. Lower number = more false positives
 minimum_detectable_adapter_length_on_read_end: 6
-# Whether to perform quality trimming on the "right" side of each read or on "both" the left and right sides
-quality_trim_direction: "both"
+# Whether to perform quality trimming on the right ("r") side of each read or on both the left and right ("rl") sides
+quality_trim_direction: "rl"
 # Quality score cutoff for quality trimming
 quality_trim_score_cutoff: 20
 # Minimum average quality score required for a read after quality trimming

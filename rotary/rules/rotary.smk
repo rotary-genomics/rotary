@@ -90,16 +90,31 @@ rule download_contamination_references:
         datasets download genome accession {params.phix_accession} --include genome \
           --filename {output.phix_zip} 2> {log}
         unzip {output.phix_zip} > /dev/null
-        gzip -c {output.phix_dir}/ncbi_dataset/data/{params.phix_accession}/{params.phix_accession}_*_genomic.fna \
-          > {output.phix_genome}
         
-        echo "" > {log}
+        # Confirm that there is only one genome file matching the expected pattern in the unzipped folder
+        genome_file=($(find {output.phix_dir}/ncbi_dataset/data/{params.phix_accession} -type f -name "{params.phix_accession}_*_genomic.fna"))
+        if [[ "${{#genome_file[@]}}" == 1 ]]; then
+          gzip -c "${{genome_file[0]}}" > {output.phix_genome}
+        else
+          echo "ERROR: more than 1 genome file (or no genome file) in dir {output.phix_dir}/ncbi_dataset/data/{params.phix_accession}"
+          exit 1
+        fi
+        echo ""
+        
+        # TODO - this is just a repeat of the above code and can probably be refactored
         echo "### Downloading human genome ###" > {log}
         datasets download genome accession {params.human_accession} --include genome \
           --filename {output.human_zip} 2> {log}
         unzip {output.human_zip} > /dev/null
-        gzip -c {output.human_dir}/ncbi_dataset/data/{params.human_accession}/{params.human_accession}_*_genomic.fna \
-          > {output.human_genome}
+        
+        # Confirm that there is only one genome file matching the expected pattern in the unzipped folder
+        genome_file=($(find {output.human_dir}/ncbi_dataset/data/{params.human_accession} -type f -name "{params.human_accession}_*_genomic.fna"))
+        if [[ "${{#genome_file[@]}}" == 1 ]]; then
+          gzip -c "${{genome_file[0]}}" > {output.human_genome}
+        else
+          echo "ERROR: more than 1 genome file (or no genome file) in dir {output.human_dir}/ncbi_dataset/data/{params.human_accession}"
+          exit 1
+        fi
         """
 
 
@@ -444,7 +459,7 @@ rule short_read_adapter_and_quality_trimming:
     params:
         adapter_trimming_kmer_length = config.get("adapter_trimming_kmer_length"),
         minimum_detectable_adapter_length_on_read_end = config.get("minimum_detectable_adapter_length_on_read_end"),
-        quality_trim_direction = "rl" if config.get("quality_trim_direction") == "both" else "r" if config.get("quality_trim_direction") == "right",
+        quality_trim_direction = config.get("quality_trim_direction"),
         quality_trim_cutoff = config.get("quality_trim_score_cutoff"),
         min_read_length = config.get("minimum_read_length"),
         min_average_quality = config.get("minimum_average_quality_score_post_trim")
@@ -454,7 +469,7 @@ rule short_read_adapter_and_quality_trimming:
         mem = config.get("memory")
     shell:
         """
-        bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_reformat_r1}} in2={input.short_reformat_r2} \
+        bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_reformat_r1} in2={input.short_reformat_r2} \
           ref={input.adapters} out={output.short_trim_r1} out2={output.short_trim_r2} \
           stats={output.adapter_trim_stats} qhist={output.quality_histogram} \
           k={params.adapter_trimming_kmer_length} ktrim=r mink={params.minimum_detectable_adapter_length_on_read_end} \
