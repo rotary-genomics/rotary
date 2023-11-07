@@ -117,7 +117,7 @@ rule download_eggnog_db:
     shell:
         """
         mkdir -p {params.db_dir}
-        download_eggnog_data.py -y --data_dir {params.db_dir} > {log} 2>&1
+        download_eggnog_data.py -y -M --data_dir {params.db_dir} > {log} 2>&1
         touch {output.install_finished}
         """
 
@@ -1068,7 +1068,7 @@ rule run_eggnog:
         protein="{sample}/annotation/dfast/{sample}_protein.faa",
         install_finished=os.path.join(DB_DIR_PATH,"checkpoints","eggnog_" + VERSION_EGGNOG)
     output:
-        eggnog_annotations="{sample}/annotation/eggnog/eggnog.emapper.annotations",
+        eggnog_annotations="{sample}/annotation/eggnog/{sample}.emapper.annotations",
         outdir= directory("{sample}/annotation/eggnog")
     conda:
         "../envs/eggnog.yaml"
@@ -1079,14 +1079,16 @@ rule run_eggnog:
     params:
         prefix='{sample}',
         db=directory(os.path.join(DB_DIR_PATH,"eggnog_" + VERSION_EGGNOG)),
-        sensmode=config.get("eggnog_sensmode")
+        sensmode=config.get("eggnog_sensmode"),
+        search_tool=config.get('eggnog_search_tool')
     threads:
         config.get("threads",1)
     shell:
         """
         mkdir -p {output.outdir}/tmp
-        emapper.py --cpu {threads} -i {input.protein} --itype proteins -m diamond --sensmode {params.sensmode} \
-          --dbmem --output eggnog --output_dir {output.outdir} --temp_dir {output.outdir}/tmp --output {params.prefix}  \
+        emapper.py --cpu {threads} -i {input.protein} --itype proteins -m {params.search_tool} \
+          --sensmode {params.sensmode} --dbmem --output eggnog --output_dir {output.outdir} \
+          --temp_dir {output.outdir}/tmp --output {params.prefix} \
           --data_dir {params.db} --override > {log} 2>&1
         rm -r {output.outdir}/tmp
         """
@@ -1100,7 +1102,7 @@ rule run_gtdbtk:
     output:
         batchfile=temp("{sample}/annotation/gtdbtk/batchfile.tsv"),
         annotation="{sample}/annotation/gtdbtk/{sample}_gtdbtk.summary.tsv",
-        outdir=directory("{sample}annotation/gtdbtk/run_files")
+        outdir=directory("{sample}/annotation/gtdbtk/run_files")
     conda:
         "../envs/gtdbtk.yaml"
     log:
@@ -1209,7 +1211,7 @@ rule symlink_logs:
 rule summarize_annotation:
     input:
         "{sample}/annotation/dfast/{sample}_genome.fna",
-        "{sample}/annotation/eggnog/eggnog.emapper.annotations",
+        "{sample}/annotation/eggnog/{sample}.emapper.annotations",
         "{sample}/annotation/gtdbtk/{sample}_gtdbtk.summary.tsv",
         expand("{{sample}}/annotation/coverage/{{sample}}_{type}_coverage.tsv",
             type=["short_read", "long_read"] if POLISH_WITH_SHORT_READS == True else ["long_read"]),
