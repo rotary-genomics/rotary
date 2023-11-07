@@ -230,9 +230,9 @@ rule set_up_sample_directories:
     run:
         for sample in SAMPLES.values():
             identifier = sample.identifier
-            symlink_or_compress(sample.long_read_path,f'{identifier}/{identifier}_long.fastq.gz')
-            symlink_or_compress(sample.short_read_left_path,f'{identifier}/{identifier}_R1.fastq.gz')
-            symlink_or_compress(sample.short_read_right_path,f'{identifier}/{identifier}_R2.fastq.gz')
+            symlink_or_compress(sample.long_read_path,f'{identifier}/raw/{identifier}_long.fastq.gz')
+            symlink_or_compress(sample.short_read_left_path,f'{identifier}/raw/{identifier}_R1.fastq.gz')
+            symlink_or_compress(sample.short_read_right_path,f'{identifier}/raw/{identifier}_R2.fastq.gz')
 
 
 rule nanopore_qc_filter:
