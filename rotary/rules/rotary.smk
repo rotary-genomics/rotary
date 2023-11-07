@@ -151,7 +151,6 @@ rule download_gtdb_db:
         touch {output.install_finished}
         """
 
-
 rule setup_gtdb:
     input:
         os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_download")
@@ -219,6 +218,22 @@ rule build_gtdb_mash_ref_database:
         mash sketch -l {output.ref_genome_path_list} -p {threads} -o {output.ref_msh_file} -k 16 -s 5000 > {log} 2>&1   
         """
 
+rule download_checkm:
+    output:
+        db=directory(os.path.join(DB_DIR_PATH,"checkm2")),
+        install_finished=os.path.join(DB_DIR_PATH,"checkpoints","checkm2")
+    conda:
+        "../envs/checkm2.yaml"
+    log:
+        "logs/download/checkm2_db_download.log"
+    benchmark:
+        "benchmarks/download/checkm2_db_download.txt"
+    shell:
+        """
+        mkdir -p {output.db}
+        checkm2 database --download --path {output.db} > {log} 2>&1
+        touch {output.install_finished}
+        """
 
 rule set_up_sample_directories:
     input:
@@ -1124,6 +1139,26 @@ rule run_gtdbtk:
         tail -n +2 {output.outdir}/gtdbtk.*.summary.tsv >> {output.annotation}
         """
 
+rule run_checkm2:
+    input:
+        genome="{sample}/annotation/dfast/{sample}_genome.fna",
+        install_finished=os.path.join(DB_DIR_PATH,"checkpoints","checkm2")
+    output:
+        outdir=directory("{sample}/annotation/checkm/")
+    log:
+        "{sample}/logs/annotation/gtdbtk.log"
+    benchmark:
+        "{sample}/benchmarks/annotation/checkm.txt"
+    params:
+        db=directory(os.path.join(DB_DIR_PATH,"checkm2"))
+    threads:
+        config.get("threads",1)
+    shell:
+        """
+        mkdir -p {output.outdir}
+        checkm2 predict --threads {threads} --input {input.genome} --output-directory {output.outdir} 
+        """
+
 
 if POLISH_WITH_SHORT_READS == True:
 
@@ -1210,9 +1245,11 @@ rule symlink_logs:
 #        but the resulting code seems a bit unnatural
 rule summarize_annotation:
     input:
+        ""
         "{sample}/annotation/dfast/{sample}_genome.fna",
         "{sample}/annotation/eggnog/{sample}.emapper.annotations",
         "{sample}/annotation/gtdbtk/{sample}_gtdbtk.summary.tsv",
+        "{sample}/annotation/checkm/",
         expand("{{sample}}/annotation/coverage/{{sample}}_{type}_coverage.tsv",
             type=["short_read", "long_read"] if POLISH_WITH_SHORT_READS == True else ["long_read"]),
         "{sample}/annotation/logs",
