@@ -33,6 +33,8 @@ perform_contaminant_filtration: "True"
 # K-mer length for filtering contaminants
 contamination_filter_kmer_length: 27
 # Contaminant reference genomes (provided within rotary) for filtering contaminants out of raw short reads
+# If you do not want to filter with either of these (but do want to filter with your own custom genome below), then
+# set contamination_references to []
 contamination_references: ["PhiX", "human"]
 # If you want to provide a custom genome for contaminant filtration, add the path to the FastA nucleotide file here:
 custom_contamination_reference: "False"
