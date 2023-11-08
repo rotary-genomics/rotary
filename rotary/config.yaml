@@ -50,6 +50,8 @@ keep_unrepaired_contigs: 'False'
 medaka_model: "r941_min_sup_g507"
 # Batch size: related to memory usage; can reduce if you get OOM (out of memory) errors
 medaka_batch_size: 100
+# Should the pipeline polish with short reads using polypolish.
+polish_with_short_reads: 'True'
 
 ## Post-polishing contig filter
 # My advice: Only filter by short reads if you have short reads.
@@ -74,3 +76,5 @@ gtdbtk_mode: "default"
 # EggNOG annotation sensitivity mode (using DIAMOND)
 #    Options: fast, mid-sensitive, sensitive, more-sensitive, very-sensitive, ultra-sensitive
 eggnog_sensmode: "sensitive"
+# The search tool that emapper.py should use (diamond or mmseqs).
+eggnog_search_tool: 'mmseqs'

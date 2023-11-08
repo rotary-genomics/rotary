@@ -183,3 +183,17 @@ def create_sample_tsv(output_dir_path, samples):
             tsv_writer.writerow(current_sample.sample_file_row)
 
     return sample_tsv_path
+
+def file_is_gzipped(file_path):
+    """
+    Determine if a file is gzipped based in file extension.
+
+    :param file_path: The path to the file to be checked.
+    :return: True if the file is gzipped, False otherwise.
+    """
+    extension = os.path.splitext(file_path)[1]
+
+    if extension == '.gz':
+        return True
+    else:
+        return False
