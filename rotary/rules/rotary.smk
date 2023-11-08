@@ -1144,6 +1144,7 @@ rule run_checkm2:
         genome="{sample}/annotation/dfast/{sample}_genome.fna",
         install_finished=os.path.join(DB_DIR_PATH,"checkpoints","checkm2")
     output:
+        quality_report="{sample}/annotation/checkm/{sample}_checkm_quality_report.tsv",
         outdir=directory("{sample}/annotation/checkm/")
     log:
         "{sample}/logs/annotation/checkm.log"
@@ -1159,6 +1160,7 @@ rule run_checkm2:
         """
         mkdir -p {output.outdir}
         checkm2 predict --threads {threads} --input {input.genome} --output-directory {output.outdir} > {log} 2>&1
+        mv {output.outdir}/quality_report.tsv {output.quality_report}
         """
 
 
@@ -1247,7 +1249,6 @@ rule symlink_logs:
 #        but the resulting code seems a bit unnatural
 rule summarize_annotation:
     input:
-        ""
         "{sample}/annotation/dfast/{sample}_genome.fna",
         "{sample}/annotation/eggnog/{sample}.emapper.annotations",
         "{sample}/annotation/gtdbtk/{sample}_gtdbtk.summary.tsv",
@@ -1257,7 +1258,7 @@ rule summarize_annotation:
         "{sample}/annotation/logs",
         "{sample}/annotation/stats"
     output:
-        "{sample}/{sample}_summary.zip"
+        "{sample}/{sample}_annotation_summary.zip"
     log:
         "{sample}/logs/annotation/summarize_annotation.log"
     params:
@@ -1273,7 +1274,7 @@ rule summarize_annotation:
 
 rule annotation:
     input:
-        expand("{sample}/{sample}_summary.zip",sample=SAMPLE_NAMES),
+        expand("{sample}/{sample}_annotation_summary.zip",sample=SAMPLE_NAMES),
     output:
         temp(touch("checkpoints/annotation"))
 
