@@ -464,8 +464,11 @@ rule short_read_adapter_and_quality_trimming:
 rule short_read_contamination_filter:
     """
     Filters short reads based on match to a reference. 
-    The get_contamination_reference_files function returns paths that can be understood by 
-    rule download_contamination_reference
+    Note that contamination_references in the input is only there to trigger download of the genome files; the actual 
+    text to be input into the shell (with proper comma separation) is prepared in all_contaminant_references in params. 
+    The function get_contamination_reference_files called by this rule returns genome paths that can be understood by 
+    rule download_contamination_reference, which allows the download rule to be triggered as needed depending on which 
+    genomes the user wants to use as references. 
     """
     input:
         short_trim_r1 = "{sample}/qc/short/{sample}_trim_R1.fastq.gz",
