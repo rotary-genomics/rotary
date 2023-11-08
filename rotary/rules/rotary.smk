@@ -1146,9 +1146,11 @@ rule run_checkm2:
     output:
         outdir=directory("{sample}/annotation/checkm/")
     log:
-        "{sample}/logs/annotation/gtdbtk.log"
+        "{sample}/logs/annotation/checkm.log"
     benchmark:
         "{sample}/benchmarks/annotation/checkm.txt"
+    conda:
+        "../envs/checkm2.yaml"
     params:
         db=directory(os.path.join(DB_DIR_PATH,"checkm2"))
     threads:
@@ -1156,7 +1158,7 @@ rule run_checkm2:
     shell:
         """
         mkdir -p {output.outdir}
-        checkm2 predict --threads {threads} --input {input.genome} --output-directory {output.outdir} 
+        checkm2 predict --threads {threads} --input {input.genome} --output-directory {output.outdir} > {log} 2>&1
         """
 
 
