@@ -100,3 +100,5 @@ gtdbtk_mode: "default"
 # EggNOG annotation sensitivity mode (using DIAMOND)
 #    Options: fast, mid-sensitive, sensitive, more-sensitive, very-sensitive, ultra-sensitive
 eggnog_sensmode: "sensitive"
+# The search tool that emapper.py should use (diamond or mmseqs).
+eggnog_search_tool: 'mmseqs'

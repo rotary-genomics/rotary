@@ -5,3 +5,4 @@ channels:
 dependencies:
   - eggnog-mapper=2.1.3 # Remember to update VERSION_EGGNOG in the snakefile if the eggnog DB version updates
   - diamond=2.0.6
+  - mmseqs2=13.45111
