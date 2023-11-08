@@ -117,7 +117,7 @@ rule download_eggnog_db:
     shell:
         """
         mkdir -p {params.db_dir}
-        download_eggnog_data.py -y --data_dir {params.db_dir} > {log} 2>&1
+        download_eggnog_data.py -y -M --data_dir {params.db_dir} > {log} 2>&1
         touch {output.install_finished}
         """
 
@@ -224,22 +224,22 @@ rule set_up_sample_directories:
     input:
         SAMPLE_TSV_PATH
     output:
-        long_reads = expand("{sample}/{sample}_long.fastq.gz", sample=SAMPLE_NAMES),
-        short_R1_reads = expand("{sample}/{sample}_R1.fastq.gz", sample=SAMPLE_NAMES),
-        short_R2_reads = expand("{sample}/{sample}_R2.fastq.gz", sample=SAMPLE_NAMES),
+        long_reads = expand("{sample}/raw/{sample}_long.fastq.gz", sample=SAMPLE_NAMES),
+        short_R1_reads = expand("{sample}/raw/{sample}_R1.fastq.gz", sample=SAMPLE_NAMES),
+        short_R2_reads = expand("{sample}/raw/{sample}_R2.fastq.gz", sample=SAMPLE_NAMES),
     run:
         for sample in SAMPLES.values():
             identifier = sample.identifier
-            symlink_or_compress(sample.long_read_path,f'{identifier}/{identifier}_long.fastq.gz')
-            symlink_or_compress(sample.short_read_left_path,f'{identifier}/{identifier}_R1.fastq.gz')
-            symlink_or_compress(sample.short_read_right_path,f'{identifier}/{identifier}_R2.fastq.gz')
+            symlink_or_compress(sample.long_read_path,f'{identifier}/raw/{identifier}_long.fastq.gz')
+            symlink_or_compress(sample.short_read_left_path,f'{identifier}/raw/{identifier}_R1.fastq.gz')
+            symlink_or_compress(sample.short_read_right_path,f'{identifier}/raw/{identifier}_R2.fastq.gz')
 
 
 rule nanopore_qc_filter:
     input:
-        "{sample}/{sample}_long.fastq.gz"
+        "{sample}/raw/{sample}_long.fastq.gz"
     output:
-        "{sample}/qc_long/nanopore_qc.fastq.gz"
+        "{sample}/qc_long/{sample}_nanopore_qc.fastq.gz"
     conda:
         "../envs/mapping.yaml"
     log:
@@ -262,9 +262,9 @@ rule nanopore_qc_filter:
 
 rule qc_long_length_hist:
     input:
-        "{sample}/qc_long/nanopore_qc.fastq.gz"
+        "{sample}/qc_long/{sample}_nanopore_qc.fastq.gz"
     output:
-        "{sample}/qc_long/length_hist.tsv"
+        "{sample}/qc_long/{sample}_length_hist.tsv"
     conda:
         "../envs/mapping.yaml"
     log:
@@ -284,9 +284,9 @@ rule qc_long_length_hist:
 
 rule qc_long_length_stats:
     input:
-        "{sample}/qc_long/length_hist.tsv"
+        "{sample}/qc_long/{sample}_length_hist.tsv"
     output:
-        "{sample}/stats/qc_long_length_stats.txt"
+        "{sample}/stats/{sample}_qc_long_length_stats.txt"
     log:
         "{sample}/logs/qc/qc_long_length_stats.log"
     benchmark:
@@ -314,17 +314,17 @@ rule qc_long_length_stats:
 
 rule qc_long:
     input:
-        expand("{sample}/stats/qc_long_length_stats.txt",sample=SAMPLE_NAMES)
+        expand("{sample}/stats/{sample}_qc_long_length_stats.txt",sample=SAMPLE_NAMES)
     output:
         temp(touch("checkpoints/qc_long"))
 
 
 rule assembly_flye:
     input:
-        "{sample}/qc_long/nanopore_qc.fastq.gz"
+        "{sample}/qc_long/{sample}_nanopore_qc.fastq.gz"
     output:
-        assembly="{sample}/assembly/flye/assembly.fasta",
-        info="{sample}/assembly/flye/assembly_info.txt",
+        assembly="{sample}/assembly/flye/{sample}_assembly.fasta",
+        info="{sample}/assembly/flye/{sample}_assembly_info.txt",
         output_dir=directory("{sample}/assembly/flye")
     conda:
         "../envs/assembly_flye.yaml"
@@ -342,7 +342,9 @@ rule assembly_flye:
     shell:
         """
         flye --{params.input_mode} {input} {params.read_error} --out-dir {output.output_dir} {params.meta_mode} \
-          --iterations {params.polishing_rounds} -t {threads} > {log} 2>&1
+          --iterations {params.polishing_rounds} -t {threads} > {log} 2>&1 
+        mv {output.output_dir}/assembly.fasta {output.assembly} 
+        mv {output.output_dir}/assembly_info.txt {output.info} 
         """
 
 
@@ -350,12 +352,12 @@ rule assembly_flye:
 # TODO - the math for memory per thread should really be done somewhere other than 'resources' - what is best practice?
 rule assembly_end_repair:
     input:
-        qc_long_reads="{sample}/qc_long/nanopore_qc.fastq.gz",
-        assembly="{sample}/assembly/flye/assembly.fasta",
-        info="{sample}/assembly/flye/assembly_info.txt"
+        qc_long_reads="{sample}/qc_long/{sample}_nanopore_qc.fastq.gz",
+        assembly="{sample}/assembly/flye/{sample}_assembly.fasta",
+        info="{sample}/assembly/flye/{sample}_assembly_info.txt"
     output:
-        assembly="{sample}/assembly/end_repair/repaired.fasta",
-        info="{sample}/assembly/end_repair/repaired_info.tsv",
+        assembly="{sample}/assembly/end_repair/{sample}_repaired.fasta",
+        info="{sample}/assembly/end_repair/{sample}_repaired_info.tsv",
         output_dir=directory("{sample}/assembly/end_repair"),
     log:
         "{sample}/logs/assembly/end_repair.log"
@@ -391,16 +393,18 @@ rule assembly_end_repair:
           --overwrite \
           {params.keep_going} \
           > {log} 2>&1
+        mv {output.output_dir}/repaired.fasta {output.assembly} 
+        mv {output.output_dir}/repaired_info.tsv {output.info}
         """
 
 
 rule finalize_assembly:
     input:
-        assembly="{sample}/assembly/end_repair/repaired.fasta",
-        info="{sample}/assembly/end_repair/repaired_info.tsv"
+        assembly="{sample}/assembly/end_repair/{sample}_repaired.fasta",
+        info="{sample}/assembly/end_repair/{sample}_repaired_info.tsv"
     output:
-        assembly="{sample}/assembly/assembly.fasta",
-        info="{sample}/assembly/circular_info.tsv"
+        assembly="{sample}/assembly/{sample}_assembly.fasta",
+        info="{sample}/assembly/{sample}_circular_info.tsv"
     run:
         source_relpath = os.path.relpath(str(input.assembly),os.path.dirname(str(output.assembly)))
         os.symlink(source_relpath,str(output.assembly))
@@ -411,17 +415,17 @@ rule finalize_assembly:
 
 rule assembly:
     input:
-        expand("{sample}/assembly/assembly.fasta",sample=SAMPLE_NAMES),
-        expand("{sample}/assembly/circular_info.tsv", sample=SAMPLE_NAMES)
+        expand("{sample}/assembly/{sample}_assembly.fasta",sample=SAMPLE_NAMES),
+        expand("{sample}/assembly/{sample}_circular_info.tsv", sample=SAMPLE_NAMES)
     output:
         temp(touch("checkpoints/assembly"))
 
 
 rule prepare_medaka_polish_input:
     input:
-        "{sample}/assembly/assembly.fasta"
+        "{sample}/assembly/{sample}_assembly.fasta"
     output:
-        temp("{sample}/polish/medaka_input/input.fasta")
+        temp("{sample}/polish/medaka_input/{sample}_input.fasta")
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -429,11 +433,11 @@ rule prepare_medaka_polish_input:
 
 rule polish_medaka:
     input:
-        qc_long_reads="{sample}/qc_long/nanopore_qc.fastq.gz",
-        contigs="{sample}/{step}/medaka_input/input.fasta"
+        qc_long_reads="{sample}/qc_long/{sample}_nanopore_qc.fastq.gz",
+        contigs="{sample}/{step}/medaka_input/{sample}_input.fasta"
     output:
         dir=directory("{sample}/{step}/medaka"),
-        contigs="{sample}/{step}/medaka/consensus.fasta"
+        contigs="{sample}/{step}/medaka/{sample}_consensus.fasta"
     conda:
         "../envs/medaka.yaml"
     log:
@@ -449,14 +453,15 @@ rule polish_medaka:
         """
         medaka_consensus -i {input.qc_long_reads} -d {input.contigs} -o {output.dir} \
           -m {params.medaka_model} -t {threads} -b {params.batch_size} > {log} 2>&1
+        mv {output.dir}/consensus.fasta {output.contigs}
         """
 
 
 rule prepare_polypolish_polish_input:
     input:
-        "{sample}/polish/medaka/consensus.fasta"
+        "{sample}/polish/medaka/{sample}_consensus.fasta"
     output:
-        "{sample}/polish/polypolish/input/input.fasta"
+        "{sample}/polish/polypolish/input/{sample}_input.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -464,18 +469,18 @@ rule prepare_polypolish_polish_input:
 
 rule polish_polypolish:
     input:
-        qc_short_r1 = "{sample}/{sample}_R1.fastq.gz",
-        qc_short_r2 = "{sample}/{sample}_R2.fastq.gz",
-        contigs="{sample}/{step}/polypolish/input/input.fasta",
+        qc_short_r1 = "{sample}/raw/{sample}_R1.fastq.gz",
+        qc_short_r2 = "{sample}/raw/{sample}_R2.fastq.gz",
+        contigs="{sample}/{step}/polypolish/input/{sample}_input.fasta",
         polypolish_filter=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish_insert_filter.py"),
         polypolish=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish"),
         install_finished=os.path.join(DB_DIR_PATH,"checkpoints","polypolish_" + VERSION_POLYPOLISH)
     output:
-        mapping_r1=temp("{sample}/{step}/polypolish/R1.sam"),
-        mapping_r2=temp("{sample}/{step}/polypolish/R2.sam"),
-        mapping_clean_r1=temp("{sample}/{step}/polypolish/R1.clean.sam"),
-        mapping_clean_r2=temp("{sample}/{step}/polypolish/R2.clean.sam"),
-        polished="{sample}/{step}/polypolish/polypolish.fasta",
+        mapping_r1=temp("{sample}/{step}/polypolish/{sample}_R1.sam"),
+        mapping_r2=temp("{sample}/{step}/polypolish/{sample}_R2.sam"),
+        mapping_clean_r1=temp("{sample}/{step}/polypolish/{sample}_R1.clean.sam"),
+        mapping_clean_r2=temp("{sample}/{step}/polypolish/{sample}_R2.clean.sam"),
+        polished="{sample}/{step}/polypolish/{sample}_polypolish.fasta",
         debug="{sample}/{step}/polypolish/polypolish.debug.log",
         debug_stats="{sample}/stats/{step}/polypolish_changes.log"
     conda:
@@ -514,13 +519,13 @@ rule polish_polypolish:
 # TODO - the relative path workarounds in the shell here are a bit odd because polca outputs files in the present working directory
 rule polish_polca:
     input:
-        qc_short_r1 = "{sample}/{sample}_R1.fastq.gz",
-        qc_short_r2 = "{sample}/{sample}_R2.fastq.gz",
-        polished = "{sample}/polish/polypolish/polypolish.fasta"
+        qc_short_r1 = "{sample}/raw/{sample}_R1.fastq.gz",
+        qc_short_r2 = "{sample}/raw/{sample}_R2.fastq.gz",
+        polished = "{sample}/polish/polypolish/{sample}_polypolish.fasta"
     output:
-        polca_output = "{sample}/polish/polca/polca.fasta",
-        polypolish_sam = temp("{sample}/polish/polca/polypolish.fasta.unSorted.sam"),
-        polypolish_bam = temp("{sample}/polish/polca/polypolish.fasta.alignSorted.bam")
+        polca_output = "{sample}/polish/polca/{sample}_polca.fasta",
+        polypolish_sam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.unSorted.sam"),
+        polypolish_bam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.alignSorted.bam")
     conda:
         "../envs/masurca.yaml"
     log:
@@ -537,7 +542,7 @@ rule polish_polca:
         """
         cd {params.outdir}
         polca.sh -a ../../../{input.polished} -r "../../../{input.qc_short_r1} ../../../{input.qc_short_r2}" -t {threads} -m {resources.mem}G > ../../../{log} 2>&1
-        ln -s "polypolish.fasta.PolcaCorrected.fa" "polca.fasta"
+        ln -s "{wildcards.sample}_polypolish.fasta.PolcaCorrected.fa" "{wildcards.sample}_polca.fasta"
         cd ../../../
         """
 
@@ -545,9 +550,9 @@ rule polish_polca:
 # Conditional based on whether short read polishing was performed
 rule pre_coverage_filter:
     input:
-        "{sample}/polish/medaka/consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/polish/polca/polca.fasta"
+        "{sample}/polish/medaka/{sample}_consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/polish/polca/{sample}_polca.fasta"
     output:
-        "{sample}/polish/cov_filter/pre_filtered.fasta"
+        "{sample}/polish/cov_filter/{sample}_pre_filtered.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -563,13 +568,13 @@ if (POLISH_WITH_SHORT_READS == True) & \
     # TODO - consider mapping to medaka polished contigs instead
     rule calculate_short_read_coverage:
         input:
-            qc_short_r1 = "{sample}/{sample}_R1.fastq.gz",
-            qc_short_r2 = "{sample}/{sample}_R2.fastq.gz",
-            contigs = "{sample}/polish/cov_filter/pre_filtered.fasta"
+            qc_short_r1 = "{sample}/raw/{sample}_R1.fastq.gz",
+            qc_short_r2 = "{sample}/raw/{sample}_R2.fastq.gz",
+            contigs = "{sample}/polish/cov_filter/{sample}_pre_filtered.fasta"
         output:
-            mapping=temp("{sample}/polish/cov_filter/short_read.bam"),
-            mapping_index=temp("{sample}/polish/cov_filter/short_read.bam.bai"),
-            coverage="{sample}/polish/cov_filter/short_read_coverage.tsv"
+            mapping=temp("{sample}/polish/cov_filter/{sample}_short_read.bam"),
+            mapping_index=temp("{sample}/polish/cov_filter/{sample}_short_read.bam.bai"),
+            coverage="{sample}/polish/cov_filter/{sample}_short_read_coverage.tsv"
         conda:
             "../envs/mapping.yaml"
         log:
@@ -598,12 +603,12 @@ if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_
 
     rule calculate_long_read_coverage:
         input:
-            contigs="{sample}/polish/cov_filter/pre_filtered.fasta",
-            qc_long_reads="{sample}/qc_long/nanopore_qc.fastq.gz"
+            contigs="{sample}/polish/cov_filter/{sample}_pre_filtered.fasta",
+            qc_long_reads="{sample}/qc_long/{sample}_nanopore_qc.fastq.gz"
         output:
-            mapping=temp("{sample}/polish/cov_filter/long_read.bam"),
-            mapping_index=temp("{sample}/polish/cov_filter/long_read.bam.bai"),
-            coverage="{sample}/polish/cov_filter/long_read_coverage.tsv"
+            mapping=temp("{sample}/polish/cov_filter/{sample}_long_read.bam"),
+            mapping_index=temp("{sample}/polish/cov_filter/{sample}_long_read.bam.bai"),
+            coverage="{sample}/polish/cov_filter/{sample}_long_read_coverage.tsv"
         conda:
             "../envs/mapping.yaml"
         log:
@@ -628,10 +633,10 @@ if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_
 
 rule summarize_contigs_by_coverage:
     input:
-        expand("{{sample}}/polish/cov_filter/{type}_coverage.tsv",
+        expand("{{sample}}/polish/cov_filter/{{sample}}_{type}_coverage.tsv",
           type=filtration_method)
     output:
-        "{sample}/polish/cov_filter/filtered_contigs.list"
+        "{sample}/polish/cov_filter/{sample}_filtered_contigs.list"
     params:
         meandepth_short=config.get("meandepth_cutoff_short_read"),
         evenness_short=config.get("evenness_cutoff_short_read"),
@@ -650,8 +655,8 @@ rule summarize_contigs_by_coverage:
 
         input_list = list(input)
 
-        short_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/short_read_coverage.tsv"
-        long_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/long_read_coverage.tsv"
+        short_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/{wildcards.sample}_short_read_coverage.tsv"
+        long_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/{wildcards.sample}_long_read_coverage.tsv"
 
         if len(input_list) == 1:
             if input_list[0] == short_read_coverage_tsv_path:
@@ -686,9 +691,9 @@ if (config.get("meandepth_cutoff_short_read") == "None") & (config.get("evenness
 
     rule bypass_coverage_filter:
         input:
-            "{sample}/polish/cov_filter/pre_filtered.fasta"
+            "{sample}/polish/cov_filter/{sample}_pre_filtered.fasta"
         output:
-            "{sample}/polish/cov_filter/filtered_contigs.fasta"
+            "{sample}/polish/cov_filter/{sample}_filtered_contigs.fasta"
         run:
             source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
             os.symlink(source_relpath,str(output))
@@ -696,10 +701,10 @@ if (config.get("meandepth_cutoff_short_read") == "None") & (config.get("evenness
 else:
     rule filter_contigs_by_coverage:
         input:
-            contigs="{sample}/polish/medaka/consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/polish/polca/polca.fasta",
-            filter_list="{sample}/polish/cov_filter/filtered_contigs.list"
+            contigs="{sample}/polish/medaka/{sample}_consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/polish/polca/{sample}_polca.fasta",
+            filter_list="{sample}/polish/cov_filter/{sample}_filtered_contigs.list"
         output:
-            "{sample}/polish/cov_filter/filtered_contigs.fasta"
+            "{sample}/polish/cov_filter/{sample}_filtered_contigs.fasta"
         conda:
             "../envs/mapping.yaml"
         shell:
@@ -710,9 +715,9 @@ else:
 
 rule symlink_polish:
         input:
-            "{sample}/polish/cov_filter/filtered_contigs.fasta"
+            "{sample}/polish/cov_filter/{sample}_filtered_contigs.fasta"
         output:
-            "{sample}/polish/polish.fasta"
+            "{sample}/polish/{sample}_polish.fasta"
         run:
             source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
             os.symlink(source_relpath,str(output))
@@ -720,7 +725,7 @@ rule symlink_polish:
 
 rule polish:
     input:
-        expand("{sample}/polish/polish.fasta",sample=SAMPLE_NAMES)
+        expand("{sample}/polish/{sample}_polish.fasta",sample=SAMPLE_NAMES)
     output:
         temp(touch("checkpoints/polish"))
 
@@ -731,8 +736,8 @@ rule polish:
 # Based on clustering tutorial at https://snakemake.readthedocs.io/en/stable/snakefiles/rules.html (accessed 2022.3.31)
 checkpoint split_circular_and_linear_contigs:
     input:
-        assembly_stats="{sample}/assembly/circular_info.tsv",
-        filter_list="{sample}/polish/cov_filter/filtered_contigs.list"
+        assembly_stats="{sample}/assembly/{sample}_circular_info.tsv",
+        filter_list="{sample}/polish/cov_filter/{sample}_filtered_contigs.list"
     output:
         directory("{sample}/circularize/filter/lists")
     run:
@@ -757,10 +762,10 @@ checkpoint split_circular_and_linear_contigs:
 # Makes separate files for circular and linear contigs as needed
 rule get_polished_contigs:
     input:
-        contigs="{sample}/polish/polish.fasta",
+        contigs="{sample}/polish/{sample}_polish.fasta",
         list="{sample}/circularize/filter/lists/{status}.list"
     output:
-        "{sample}/circularize/filter/{status}.fasta"
+        "{sample}/circularize/filter/{sample}_{status}.fasta"
     conda:
         "../envs/mapping.yaml"
     shell:
@@ -771,14 +776,14 @@ rule get_polished_contigs:
 
 rule search_contig_start:
     input:
-        contigs="{sample}/circularize/filter/circular.fasta",
+        contigs="{sample}/circularize/filter/{sample}_circular.fasta",
         hmm=os.path.join(DB_DIR_PATH,"hmm",START_HMM_NAME + ".hmm")
     output:
-        orf_predictions=temp("{sample}/circularize/identify/circular.faa"),
-        gene_predictions=temp("{sample}/circularize/identify/circular.ffn"),
-        annotation_gff=temp("{sample}/circularize/identify/circular.gff"),
-        search_hits="{sample}/circularize/identify/hmmsearch_hits.txt",
-        search_hits_no_comments=temp("{sample}/circularize/identify/hmmsearch_hits_no_comments.txt")
+        orf_predictions=temp("{sample}/circularize/identify/{sample}_circular.faa"),
+        gene_predictions=temp("{sample}/circularize/identify/{sample}_circular.ffn"),
+        annotation_gff=temp("{sample}/circularize/identify/{sample}_circular.gff"),
+        search_hits="{sample}/circularize/identify/{sample}_hmmsearch_hits.txt",
+        search_hits_no_comments=temp("{sample}/circularize/identify/{sample}_hmmsearch_hits_no_comments.txt")
     conda:
         "../envs/mapping.yaml"
     log:
@@ -807,9 +812,9 @@ rule search_contig_start:
 
 rule process_start_genes:
     input:
-        "{sample}/circularize/identify/hmmsearch_hits_no_comments.txt"
+        "{sample}/circularize/identify/{sample}_hmmsearch_hits_no_comments.txt"
     output:
-        "{sample}/circularize/identify/start_genes.list"
+        "{sample}/circularize/identify/{sample}_start_genes.list"
     log:
         "{sample}/logs/circularize/process_start_genes.log"
     run:
@@ -877,10 +882,10 @@ rule process_start_genes:
 
 rule get_start_genes:
     input:
-        gene_predictions="{sample}/circularize/identify/circular.ffn",
-        start_gene_list="{sample}/circularize/identify/start_genes.list"
+        gene_predictions="{sample}/circularize/identify/{sample}_circular.ffn",
+        start_gene_list="{sample}/circularize/identify/{sample}_start_genes.list"
     output:
-        "{sample}/circularize/identify/start_gene.ffn"
+        "{sample}/circularize/identify{sample}_start_gene.ffn"
     conda:
         "../envs/mapping.yaml"
     shell:
@@ -891,10 +896,10 @@ rule get_start_genes:
 
 rule run_circlator:
     input:
-        contigs="{sample}/circularize/filter/circular.fasta",
-        start_gene="{sample}/circularize/identify/start_gene.ffn"
+        contigs="{sample}/circularize/filter/{sample}_circular.fasta",
+        start_gene="{sample}/circularize/identify{sample}_start_gene.ffn"
     output:
-        rotated="{sample}/circularize/circlator/rotated.fasta",
+        rotated="{sample}/circularize/circlator/{sample}_rotated.fasta",
         circlator_dir=directory('{sample}/circularize/circlator')
     conda:
         "../envs/circlator.yaml"
@@ -922,6 +927,8 @@ rule run_circlator:
             
         fi
         
+        mv {output.circlator_dir}/rotated.fasta {output.rotated}
+        
         printf "### Circlator log output ###\n" >> {log}
         cat "{wildcards.sample}/circularize/circlator/rotated.log" >> {log}
         """
@@ -930,9 +937,9 @@ rule run_circlator:
 # Points to the main medaka rule (polish_medaka) above
 rule prepare_medaka_circularize_input:
     input:
-        "{sample}/circularize/circlator/rotated.fasta"
+        "{sample}/circularize/circlator/{sample}_rotated.fasta"
     output:
-        temp("{sample}/circularize/medaka_input/input.fasta")
+        temp("{sample}/circularize/medaka_input/{sample}_input.fasta")
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -941,9 +948,9 @@ rule prepare_medaka_circularize_input:
 # Points to the main polypolish rule (polish_polypolish) above
 rule prepare_polypolish_circularize_input:
     input:
-        "{sample}/circularize/circlator/rotated.fasta"
+        "{sample}/circularize/circlator/{sample}_rotated.fasta"
     output:
-        "{sample}/circularize/polypolish/input/input.fasta"
+        "{sample}/circularize/polypolish/input/{sample}_input.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -952,9 +959,9 @@ rule prepare_polypolish_circularize_input:
 # Determines whether a second round of long vs. short read polishing is performed
 rule finalize_circular_contig_rotation:
     input:
-        "{sample}/circularize/medaka/consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/circularize/polypolish/polypolish.fasta"
+        "{sample}/circularize/medaka/{sample}_consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/circularize/polypolish/{sample}_polypolish.fasta"
     output:
-        "{sample}/circularize/combine/circular.fasta"
+        "{sample}/circularize/combine/{sample}_circular.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -962,9 +969,9 @@ rule finalize_circular_contig_rotation:
 
 rule bypass_circularization:
     input:
-        "{sample}/circularize/filter/linear.fasta"
+        "{sample}/circularize/filter/{sample}_linear.fasta"
     output:
-        "{sample}/circularize/combine/linear.fasta"
+        "{sample}/circularize/combine/{sample}_linear.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -980,7 +987,7 @@ def aggregate_contigs(wildcards):
     checkpoint_output = checkpoints.split_circular_and_linear_contigs.get(**wildcards).output[0]
     circularize_lists_path = f"{wildcards.sample}/circularize/filter/lists"
 
-    return expand("{{sample}}/circularize/combine/{circular_or_linear}.fasta",
+    return expand("{{sample}}/circularize/combine/{{sample}}_{circular_or_linear}.fasta",
                   circular_or_linear=glob_wildcards(os.path.join(circularize_lists_path, "{i}.list")).i)
 
 
@@ -989,7 +996,7 @@ rule combine_circular_and_linear_contigs:
     input:
         aggregate_contigs
     output:
-        "{sample}/circularize/combine/combined.fasta"
+        "{sample}/circularize/combine/{sample}_combined.fasta"
     conda:
         "../envs/mapping.yaml"
     shell:
@@ -1000,9 +1007,9 @@ rule combine_circular_and_linear_contigs:
 
 rule symlink_circularization:
     input:
-        "{sample}/circularize/combine/combined.fasta"
+        "{sample}/circularize/combine/{sample}_combined.fasta"
     output:
-        "{sample}/circularize/circularize.fasta"
+        "{sample}/circularize/{sample}_circularize.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -1010,7 +1017,7 @@ rule symlink_circularization:
 
 rule circularize:
     input:
-        expand("{sample}/circularize/circularize.fasta",sample=SAMPLE_NAMES)
+        expand("{sample}/circularize/{sample}_circularize.fasta",sample=SAMPLE_NAMES)
     output:
         temp(touch("checkpoints/circularize"))
 
@@ -1019,11 +1026,11 @@ rule circularize:
 # TODO - can I auto-predict genome completeness, names, types, topologies?
 rule run_dfast:
     input:
-        contigs="{sample}/circularize/circularize.fasta",
+        contigs="{sample}/circularize/{sample}_circularize.fasta",
         install_finished=os.path.join(DB_DIR_PATH,"checkpoints","dfast_" + VERSION_DFAST)
     output:
-        dfast_genome = "{sample}/annotation/dfast/genome.fna",
-        dfast_proteins = "{sample}/annotation/dfast/protein.faa",
+        dfast_genome = "{sample}/annotation/dfast/{sample}_genome.fna",
+        dfast_proteins = "{sample}/annotation/dfast/{sample}_protein.faa",
         outdir = directory("{sample}/annotation/dfast")
     conda:
         "../envs/annotation_dfast.yaml"
@@ -1048,17 +1055,20 @@ rule run_dfast:
          # --complete t \
          # --seq_names "Chromosome,unnamed" \
          # --seq_types "chromosome,plasmid" \
-         # --seq_topologies "circular,circular" \
+         # --seq_topologies "circular,circular" 
+         
+         mv {output.outdir}/genome.fna {output.dfast_genome}
+         mv {output.outdir}/protein.faa {output.dfast_proteins}
          """
 
 
 # TODO - add option to control whether --dbmem flag is set (uses more RAM but does faster analysis)
 rule run_eggnog:
     input:
-        protein="{sample}/annotation/dfast/protein.faa",
+        protein="{sample}/annotation/dfast/{sample}_protein.faa",
         install_finished=os.path.join(DB_DIR_PATH,"checkpoints","eggnog_" + VERSION_EGGNOG)
     output:
-        eggnog_annotations="{sample}/annotation/eggnog/eggnog.emapper.annotations",
+        eggnog_annotations="{sample}/annotation/eggnog/{sample}.emapper.annotations",
         outdir= directory("{sample}/annotation/eggnog")
     conda:
         "../envs/eggnog.yaml"
@@ -1067,15 +1077,18 @@ rule run_eggnog:
     benchmark:
         "{sample}/benchmarks/annotation/eggnog.txt"
     params:
+        prefix='{sample}',
         db=directory(os.path.join(DB_DIR_PATH,"eggnog_" + VERSION_EGGNOG)),
-        sensmode=config.get("eggnog_sensmode")
+        sensmode=config.get("eggnog_sensmode"),
+        search_tool=config.get('eggnog_search_tool')
     threads:
         config.get("threads",1)
     shell:
         """
         mkdir -p {output.outdir}/tmp
-        emapper.py --cpu {threads} -i {input.protein} --itype proteins -m diamond --sensmode {params.sensmode} \
-          --dbmem --output eggnog --output_dir {output.outdir} --temp_dir {output.outdir}/tmp \
+        emapper.py --cpu {threads} -i {input.protein} --itype proteins -m {params.search_tool} \
+          --sensmode {params.sensmode} --dbmem --output eggnog --output_dir {output.outdir} \
+          --temp_dir {output.outdir}/tmp --output {params.prefix} \
           --data_dir {params.db} --override > {log} 2>&1
         rm -r {output.outdir}/tmp
         """
@@ -1083,13 +1096,13 @@ rule run_eggnog:
 
 rule run_gtdbtk:
     input:
-        genome="{sample}/annotation/dfast/genome.fna",
+        genome="{sample}/annotation/dfast/{sample}_genome.fna",
         setup_finished=os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_validate"),
         ref_msh_file=os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE + '_mash','gtdb_ref_sketch.msh')
     output:
         batchfile=temp("{sample}/annotation/gtdbtk/batchfile.tsv"),
-        annotation="{sample}/annotation/gtdbtk/gtdbtk.summary.tsv",
-        outdir=directory("{sample}annotation/gtdbtk/run_files")
+        annotation="{sample}/annotation/gtdbtk/{sample}_gtdbtk.summary.tsv",
+        outdir=directory("{sample}/annotation/gtdbtk/run_files")
     conda:
         "../envs/gtdbtk.yaml"
     log:
@@ -1117,13 +1130,13 @@ if POLISH_WITH_SHORT_READS == True:
     # TODO - clarify name compared to previous mapping step
     rule calculate_final_short_read_coverage:
         input:
-            qc_short_r1 = "{sample}/{sample}_R1.fastq.gz",
-            qc_short_r2 = "{sample}/{sample}_R2.fastq.gz",
-            dfast_genome = "{sample}/annotation/dfast/genome.fna"
+            qc_short_r1 = "{sample}/raw/{sample}_R1.fastq.gz",
+            qc_short_r2 = "{sample}/raw/{sample}_R2.fastq.gz",
+            dfast_genome = "{sample}/annotation/dfast/{sample}_genome.fna"
         output:
-            mapping="{sample}/annotation/coverage/short_read.bam",
-            index="{sample}/annotation/coverage/short_read.bam.bai",
-            coverage="{sample}/annotation/coverage/short_read_coverage.tsv"
+            mapping="{sample}/annotation/coverage/{sample}_short_read.bam",
+            index="{sample}/annotation/coverage/{sample}_short_read.bam.bai",
+            coverage="{sample}/annotation/coverage/{sample}_short_read_coverage.tsv"
         conda:
             "../envs/mapping.yaml"
         log:
@@ -1148,12 +1161,12 @@ if POLISH_WITH_SHORT_READS == True:
 
 rule calculate_final_long_read_coverage:
     input:
-        contigs="{sample}/annotation/dfast/genome.fna",
-        qc_long_reads="{sample}/qc_long/nanopore_qc.fastq.gz"
+        contigs="{sample}/annotation/dfast/{sample}_genome.fna",
+        qc_long_reads="{sample}/qc_long/{sample}_nanopore_qc.fastq.gz"
     output:
-        mapping="{sample}/annotation/coverage/long_read.bam",
-        index="{sample}/annotation/coverage/long_read.bam.bai",
-        coverage="{sample}/annotation/coverage/long_read_coverage.tsv"
+        mapping="{sample}/annotation/coverage/{sample}_long_read.bam",
+        index="{sample}/annotation/coverage/{sample}_long_read.bam.bai",
+        coverage="{sample}/annotation/coverage/{sample}_long_read_coverage.tsv"
     conda:
         "../envs/mapping.yaml"
     log:
@@ -1177,7 +1190,7 @@ rule calculate_final_long_read_coverage:
 
 rule symlink_logs:
     input:
-        long_read_coverage="{sample}/annotation/coverage/long_read_coverage.tsv",
+        long_read_coverage="{sample}/annotation/coverage/{sample}_long_read_coverage.tsv",
     output:
         logs=temp(directory("{sample}/annotation/logs")),
         stats=temp(directory("{sample}/annotation/stats"))
@@ -1197,15 +1210,15 @@ rule symlink_logs:
 #        but the resulting code seems a bit unnatural
 rule summarize_annotation:
     input:
-        "{sample}/annotation/dfast/genome.fna",
-        "{sample}/annotation/eggnog/eggnog.emapper.annotations",
-        "{sample}/annotation/gtdbtk/gtdbtk.summary.tsv",
-        expand("{{sample}}/annotation/coverage/{type}_coverage.tsv",
+        "{sample}/annotation/dfast/{sample}_genome.fna",
+        "{sample}/annotation/eggnog/{sample}.emapper.annotations",
+        "{sample}/annotation/gtdbtk/{sample}_gtdbtk.summary.tsv",
+        expand("{{sample}}/annotation/coverage/{{sample}}_{type}_coverage.tsv",
             type=["short_read", "long_read"] if POLISH_WITH_SHORT_READS == True else ["long_read"]),
         "{sample}/annotation/logs",
         "{sample}/annotation/stats"
     output:
-        "{sample}/summary.zip"
+        "{sample}/{sample}_summary.zip"
     log:
         "{sample}/logs/annotation/summarize_annotation.log"
     params:
@@ -1221,7 +1234,7 @@ rule summarize_annotation:
 
 rule annotation:
     input:
-        expand("{sample}/summary.zip",sample=SAMPLE_NAMES),
+        expand("{sample}/{sample}_summary.zip",sample=SAMPLE_NAMES),
     output:
         temp(touch("checkpoints/annotation"))
 
