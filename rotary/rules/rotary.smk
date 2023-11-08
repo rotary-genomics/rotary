@@ -64,55 +64,35 @@ rule download_short_read_adapters:
         """
 
 
-rule download_contamination_references:
+rule download_contamination_reference:
     """
-    Downloads references genomes commonly used for contamination screening
+    Downloads references genome for contamination screening
     """
     output:
-        phix_genome = os.path.join(DB_DIR_PATH, 'contamination_references', f'PhiX_{PHIX_GENOME_ACCESSION}.fna.gz'),
-        phix_zip = temp(os.path.join(DB_DIR_PATH, 'contamination_references', f'PhiX_{PHIX_GENOME_ACCESSION}.zip')),
-        phix_dir = temp(directory(os.path.join(DB_DIR_PATH, 'contamination_references', f'PhiX_{PHIX_GENOME_ACCESSION}'))),
-        human_genome = os.path.join(DB_DIR_PATH, 'contamination_references', f'human_{HUMAN_GENOME_ACCESSION}.fna.gz'),
-        human_zip = temp(os.path.join(DB_DIR_PATH, 'contamination_references', f'human_{HUMAN_GENOME_ACCESSION}.zip')),
-        human_dir= temp(directory(os.path.join(DB_DIR_PATH, 'contamination_references', f'human_{HUMAN_GENOME_ACCESSION}')))
+        genome = os.path.join(DB_DIR_PATH, 'contamination_references', '{name}__{accession}.fna.gz'),
+        zip = temp(os.path.join(DB_DIR_PATH, 'contamination_references', '{name}__{accession}.zip')),
+        zip_dir = temp(directory(os.path.join(DB_DIR_PATH, 'contamination_references', '{name}__{accession}')))
     conda:
         "../envs/ncbi_datasets.yaml"
     log:
-        "logs/download/download_contamination_references.log"
+        "logs/download/download_contamination_reference_{name}__{accession}.log"
     benchmark:
-        "benchmarks/download/download_contamination_references.benchmark.txt"
+        "benchmarks/download/download_contamination_reference_{name}__{accession}.benchmark.txt"
     params:
-        phix_accession = PHIX_GENOME_ACCESSION,
-        human_accession = HUMAN_GENOME_ACCESSION
+        accession = "{accession}",
+        name = "{name}"
     shell:
-        """
-        echo "### Downloading PhiX genome ###" > {log}
-        datasets download genome accession {params.phix_accession} --include genome \
-          --filename {output.phix_zip} 2>> {log}
-        unzip -d {output.phix_dir} {output.phix_zip} > /dev/null
+        """        
+        echo "### Downloading genome: {params.name} {params.accession} ###" > {log}
+        datasets download genome accession {params.accession} --include genome --filename {output.zip} 2>> {log}
+        unzip -d {output.zip_dir} {output.zip} > /dev/null
         
         # Confirm that there is only one genome file matching the expected pattern in the unzipped folder
-        genome_file=($(find {output.phix_dir}/ncbi_dataset/data/{params.phix_accession} -type f -name "{params.phix_accession}_*_genomic.fna"))
+        genome_file=($(find {output.zip_dir}/ncbi_dataset/data/{params.accession} -type f -name "{params.accession}_*_genomic.fna"))
         if [[ "${{#genome_file[@]}}" == 1 ]]; then
-          gzip -c "${{genome_file[0]}}" > {output.phix_genome}
+          gzip -c "${{genome_file[0]}}" > {output.genome}
         else
-          echo "ERROR: more than 1 genome file (or no genome file) in dir {output.phix_dir}/ncbi_dataset/data/{params.phix_accession}"
-          exit 1
-        fi
-        echo "" >> {log}
-        
-        # TODO - this is just a repeat of the above code and can probably be refactored
-        echo "### Downloading human genome ###" >> {log}
-        datasets download genome accession {params.human_accession} --include genome \
-          --filename {output.human_zip} 2>> {log}
-        unzip -d {output.human_dir} {output.human_zip} > /dev/null
-        
-        # Confirm that there is only one genome file matching the expected pattern in the unzipped folder
-        genome_file=($(find {output.human_dir}/ncbi_dataset/data/{params.human_accession} -type f -name "{params.human_accession}_*_genomic.fna"))
-        if [[ "${{#genome_file[@]}}" == 1 ]]; then
-          gzip -c "${{genome_file[0]}}" > {output.human_genome}
-        else
-          echo "ERROR: more than 1 genome file (or no genome file) in dir {output.human_dir}/ncbi_dataset/data/{params.human_accession}"
+          echo "ERROR: more than 1 genome file (or no genome file) in dir {output.zip_dir}/ncbi_dataset/data/{params.accession}"
           exit 1
         fi
         """
@@ -446,8 +426,8 @@ rule short_read_adapter_and_quality_trimming:
         short_reformat_r2 = "{sample}/qc/short/{sample}_reformat_R2.fastq.gz",
         adapters = os.path.join(DB_DIR_PATH, "adapters.fasta")
     output:
-        short_trim_r1 = temp("{sample}/qc/short/{sample}_trim_R1.fastq.gz"),
-        short_trim_r2 = temp("{sample}/qc/short/{sample}_trim_R2.fastq.gz"),
+        short_trim_r1 = temp("{sample}/qc/short/{sample}_trim_R1.fastq.gz") if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_trim_R1.fastq.gz",
+        short_trim_r2 = temp("{sample}/qc/short/{sample}_trim_R2.fastq.gz") if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_trim_R2.fastq.gz",
         quality_histogram = "{sample}/qc/short/{sample}_trim_qhist.tsv",
         adapter_trim_stats= "{sample}/stats/{sample}_short_read_adapter_trimming.txt"
     conda:
@@ -481,10 +461,11 @@ rule short_read_adapter_and_quality_trimming:
         """
 
 
-# TODO - this rule needs to be bypassed if no contaminant references are provided in the config
 rule short_read_contamination_filter:
     """
-    Filters short reads based on match to a reference 
+    Filters short reads based on match to a reference. 
+    The get_contamination_reference_files function returns paths that can be understood by 
+    rule download_contamination_reference
     """
     input:
         short_trim_r1 = "{sample}/qc/short/{sample}_trim_R1.fastq.gz",
@@ -529,16 +510,16 @@ rule short_read_contamination_filter:
 
 rule finalize_qc_short:
     input:
-        short_filter_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz",
-        short_filter_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz"
+        short_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz" if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_trim_R1.fastq.gz",
+        short_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz" if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_trim_R2.fastq.gz"
     output:
         short_final_r1 = "{sample}/qc/{sample}_QC_R1.fastq.gz",
         short_final_r2 = "{sample}/qc/{sample}_QC_R2.fastq.gz"
     run:
-        source_relpath = os.path.relpath(str(input.short_filter_r1), os.path.dirname(str(output.short_final_r1)))
+        source_relpath = os.path.relpath(str(input.short_r1), os.path.dirname(str(output.short_final_r1)))
         os.symlink(source_relpath, str(output.short_final_r1))
 
-        source_relpath = os.path.relpath(str(input.short_filter_r2), os.path.dirname(str(output.short_final_r2)))
+        source_relpath = os.path.relpath(str(input.short_r2), os.path.dirname(str(output.short_final_r2)))
         os.symlink(source_relpath, str(output.short_final_r2))
 
 

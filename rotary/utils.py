@@ -121,11 +121,11 @@ def get_contamination_reference_files(config_entry: list, db_path: str, phix_acc
 
             if contamination_entry.lower() == 'phix':
                 contamination_reference_paths.append(os.path.join(db_path, 'contamination_references',
-                    f'PhiX_{phix_accession}.fna.gz'))
+                                                                  f'PhiX__{phix_accession}.fna.gz'))
 
             elif contamination_entry.lower() == 'human':
-                contamination_reference_paths.append(os.path.join(db_path,'contamination_references',
-                    f'human_{human_accession}.fna.gz'))
+                contamination_reference_paths.append(os.path.join(db_path, 'contamination_references',
+                                                                  f'human__{human_accession}.fna.gz'))
 
             else:
                 raise ValueError(f'Contaminant genome must be PhiX or human, but you provided {contamination_entry}')
