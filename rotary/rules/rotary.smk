@@ -485,22 +485,19 @@ rule short_read_contamination_filter:
         "{sample}/benchmarks/qc/short/short_read_contamination_filter.benchmark.txt"
     params:
         contamination_filter_kmer_length = config.get("contamination_filter_kmer_length"),
-        custom_contamination_reference = config.get("custom_contamination_reference")
+        all_contaminant_references = ','.join(get_contamination_reference_files(config.get("contamination_references"),
+                DB_DIR_PATH, PHIX_GENOME_ACCESSION, HUMAN_GENOME_ACCESSION)) \
+            if str(config.get("custom_contamination_reference")).lower() == "false" \
+            else ','.join(get_contamination_reference_files(config.get("contamination_references"),
+                DB_DIR_PATH, PHIX_GENOME_ACCESSION, HUMAN_GENOME_ACCESSION) + [config.get("custom_contamination_reference")])
     threads:
         config.get("threads", 1)
     resources:
         mem = config.get("memory")
     shell:
         """
-        # Define the comma-separated list of reference genomes to use
-        refs=$(echo "{input.contamination_references}" | sed 's/  */,/g')
-        
-        if [[ {params.custom_contamination_reference} != "None" ]]; then
-          refs="${{refs}},{params.custom_contamination_reference}"
-        fi
-        
         bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_trim_r1} in2={input.short_trim_r2} \
-          ref=${{refs}} out={output.short_filter_r1} out2={output.short_filter_r2} \
+          ref={params.all_contaminant_references} out={output.short_filter_r1} out2={output.short_filter_r2} \
           stats={output.filter_stats} qhist={output.quality_histogram} \
           k={params.contamination_filter_kmer_length} ktrim=f rcomp=t \
           overwrite=t interleaved=f qin=33 \

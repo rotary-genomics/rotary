@@ -131,6 +131,8 @@ def get_contamination_reference_files(config_entry: list, db_path: str, phix_acc
                 raise ValueError(f'Contaminant genome must be PhiX or human, but you provided {contamination_entry}')
 
     else:
-        raise TypeError(f'Input type must be a list, but you provided type {type(config_entry)}')
+        raise TypeError(f'Contaminant genome names must be in a list, but you provided type {type(config_entry)}. '
+                        'Try editing the config file and make sure that contamination_references is a list like '
+                        '[PhiX] or [PhiX, human], not just "PhiX" or "human".')
 
     return contamination_reference_paths
