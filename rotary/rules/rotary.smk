@@ -11,6 +11,7 @@ from rotary.sample import parse_sample_tsv
 from rotary.utils import symlink_or_compress, get_contamination_reference_files
 
 
+ZENODO_VERSION = "10087395"
 PHIX_GENOME_ACCESSION = "GCF_000819615.1"
 HUMAN_GENOME_ACCESSION = "GCF_000001405.40"
 VERSION_POLYPOLISH="0.5.0"
@@ -45,9 +46,6 @@ rule all:
         "checkpoints/annotation"
 
 
-# TODO - make a separate adapters file from ATLAS
-# Currently using the adapters.fa file from metagenome ATLAS, under a Creative Commons Attribution 4.0 International
-# License (file available at https://zenodo.org/records/1134890; Github repo at https://github.com/metagenome-atlas/atlas)
 rule download_short_read_adapters:
     """
     Downloads sequence adapters to trim from short reads (for now, uses the ATLAS version)
@@ -58,9 +56,11 @@ rule download_short_read_adapters:
         "logs/download/download_short_read_adapters.log"
     benchmark:
         "benchmarks/download/download_short_read_adapters.benchmark.txt"
+    params:
+        url = f"https://zenodo.org/records/{ZENODO_VERSION}/files/adapters.fasta"
     shell:
         """
-        wget -O {output} https://zenodo.org/records/1134890/files/adapters.fa?download=1 > {log} 2>&1
+        wget -O {output} {params.url} > {log} 2>&1
         """
 
 
