@@ -3,3 +3,4 @@ channels:
   - defaults
 dependencies:
   - ncbi-datasets-cli=15.27
+  - pigz=2.8

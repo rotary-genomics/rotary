@@ -115,21 +115,16 @@ def get_contamination_reference_files(config_entry: list, db_path: str, phix_acc
 
     contamination_reference_paths = []
 
-    if isinstance(config_entry, list) is True:
-
+    if isinstance(config_entry, list):
         for contamination_entry in config_entry:
-
             if contamination_entry.lower() == 'phix':
                 contamination_reference_paths.append(os.path.join(db_path, 'contamination_references',
                                                                   f'PhiX__{phix_accession}.fna.gz'))
-
             elif contamination_entry.lower() == 'human':
                 contamination_reference_paths.append(os.path.join(db_path, 'contamination_references',
                                                                   f'human__{human_accession}.fna.gz'))
-
             else:
                 raise ValueError(f'Contaminant genome must be PhiX or human, but you provided {contamination_entry}')
-
     else:
         raise TypeError(f'Contaminant genome names must be in a list, but you provided type {type(config_entry)}. '
                         'Try editing the config file and make sure that contamination_references is a list like '

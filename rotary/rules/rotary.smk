@@ -73,7 +73,7 @@ rule download_contamination_reference:
         zip = temp(os.path.join(DB_DIR_PATH, 'contamination_references', '{name}__{accession}.zip')),
         zip_dir = temp(directory(os.path.join(DB_DIR_PATH, 'contamination_references', '{name}__{accession}')))
     conda:
-        "../envs/ncbi_datasets.yaml"
+        "../envs/download.yaml"
     log:
         "logs/download/download_contamination_reference_{name}__{accession}.log"
     benchmark:
@@ -81,6 +81,8 @@ rule download_contamination_reference:
     params:
         accession = "{accession}",
         name = "{name}"
+    threads:
+        min(config.get("threads", 1), 4)
     shell:
         """        
         echo "### Downloading genome: {params.name} {params.accession} ###" > {log}
@@ -90,7 +92,7 @@ rule download_contamination_reference:
         # Confirm that there is only one genome file matching the expected pattern in the unzipped folder
         genome_file=($(find {output.zip_dir}/ncbi_dataset/data/{params.accession} -type f -name "{params.accession}_*_genomic.fna"))
         if [[ "${{#genome_file[@]}}" == 1 ]]; then
-          gzip -c "${{genome_file[0]}}" > {output.genome}
+          pigz -c -p {threads} "${{genome_file[0]}}" > {output.genome}
         else
           echo "ERROR: more than 1 genome file (or no genome file) in dir {output.zip_dir}/ncbi_dataset/data/{params.accession}"
           exit 1
@@ -371,7 +373,7 @@ rule finalize_qc_long:
     input:
         "{sample}/qc/long/{sample}_nanopore_qc.fastq.gz"
     output:
-        "{sample}/qc/{sample}_QC_long.fastq.gz"
+        "{sample}/qc/{sample}_qc_long.fastq.gz"
     run:
         source_relpath = os.path.relpath(str(input), os.path.dirname(str(output)))
         os.symlink(source_relpath, str(output))
@@ -379,7 +381,7 @@ rule finalize_qc_long:
 
 rule qc_long:
     input:
-        expand("{sample}/qc/{sample}_QC_long.fastq.gz", sample=SAMPLE_NAMES),
+        expand("{sample}/qc/{sample}_qc_long.fastq.gz", sample=SAMPLE_NAMES),
         expand("{sample}/stats/{sample}_qc_long_length_stats.txt", sample=SAMPLE_NAMES)
     output:
         temp(touch("checkpoints/qc_long"))
@@ -513,8 +515,8 @@ rule finalize_qc_short:
         short_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz" if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_trim_R1.fastq.gz",
         short_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz" if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_trim_R2.fastq.gz"
     output:
-        short_final_r1 = "{sample}/qc/{sample}_QC_R1.fastq.gz",
-        short_final_r2 = "{sample}/qc/{sample}_QC_R2.fastq.gz"
+        short_final_r1 = "{sample}/qc/{sample}_qc_R1.fastq.gz",
+        short_final_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz"
     run:
         source_relpath = os.path.relpath(str(input.short_r1), os.path.dirname(str(output.short_final_r1)))
         os.symlink(source_relpath, str(output.short_final_r1))
@@ -525,8 +527,8 @@ rule finalize_qc_short:
 
 rule qc_short:
     input:
-        expand("{sample}/qc/{sample}_QC_R1.fastq.gz", sample=SAMPLE_NAMES),
-        expand("{sample}/qc/{sample}_QC_R2.fastq.gz", sample=SAMPLE_NAMES)
+        expand("{sample}/qc/{sample}_qc_R1.fastq.gz", sample=SAMPLE_NAMES),
+        expand("{sample}/qc/{sample}_qc_R2.fastq.gz", sample=SAMPLE_NAMES)
     output:
         temp(touch("checkpoints/qc_short"))
 
@@ -540,7 +542,7 @@ rule qc:
 
 rule assembly_flye:
     input:
-        "{sample}/qc/{sample}_QC_long.fastq.gz"
+        "{sample}/qc/{sample}_qc_long.fastq.gz"
     output:
         assembly="{sample}/assembly/flye/{sample}_assembly.fasta",
         info="{sample}/assembly/flye/{sample}_assembly_info.txt",
@@ -571,7 +573,7 @@ rule assembly_flye:
 # TODO - the math for memory per thread should really be done somewhere other than 'resources' - what is best practice?
 rule assembly_end_repair:
     input:
-        qc_long_reads="{sample}/qc/{sample}_QC_long.fastq.gz",
+        qc_long_reads="{sample}/qc/{sample}_qc_long.fastq.gz",
         assembly="{sample}/assembly/flye/{sample}_assembly.fasta",
         info="{sample}/assembly/flye/{sample}_assembly_info.txt"
     output:
@@ -652,7 +654,7 @@ rule prepare_medaka_polish_input:
 
 rule polish_medaka:
     input:
-        qc_long_reads="{sample}/qc/{sample}_QC_long.fastq.gz",
+        qc_long_reads="{sample}/qc/{sample}_qc_long.fastq.gz",
         contigs="{sample}/{step}/medaka_input/{sample}_input.fasta"
     output:
         dir=directory("{sample}/{step}/medaka"),
@@ -688,8 +690,8 @@ rule prepare_polypolish_polish_input:
 
 rule polish_polypolish:
     input:
-        qc_short_r1 = "{sample}/qc/{sample}_QC_R1.fastq.gz",
-        qc_short_r2 = "{sample}/qc/{sample}_QC_R2.fastq.gz",
+        qc_short_r1 = "{sample}/qc/{sample}_qc_R1.fastq.gz",
+        qc_short_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz",
         contigs="{sample}/{step}/polypolish/input/{sample}_input.fasta",
         polypolish_filter=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish_insert_filter.py"),
         polypolish=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish"),
@@ -738,8 +740,8 @@ rule polish_polypolish:
 # TODO - the relative path workarounds in the shell here are a bit odd because polca outputs files in the present working directory
 rule polish_polca:
     input:
-        qc_short_r1 = "{sample}/qc/{sample}_QC_R1.fastq.gz",
-        qc_short_r2 = "{sample}/qc/{sample}_QC_R2.fastq.gz",
+        qc_short_r1 = "{sample}/qc/{sample}_qc_R1.fastq.gz",
+        qc_short_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz",
         polished = "{sample}/polish/polypolish/{sample}_polypolish.fasta"
     output:
         polca_output = "{sample}/polish/polca/{sample}_polca.fasta",
@@ -787,8 +789,8 @@ if (POLISH_WITH_SHORT_READS == True) & \
     # TODO - consider mapping to medaka polished contigs instead
     rule calculate_short_read_coverage:
         input:
-            qc_short_r1 = "{sample}/qc/{sample}_QC_R1.fastq.gz",
-            qc_short_r2 = "{sample}/qc/{sample}_QC_R2.fastq.gz",
+            qc_short_r1 = "{sample}/qc/{sample}_qc_R1.fastq.gz",
+            qc_short_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz",
             contigs = "{sample}/polish/cov_filter/{sample}_pre_filtered.fasta"
         output:
             mapping=temp("{sample}/polish/cov_filter/{sample}_short_read.bam"),
@@ -823,7 +825,7 @@ if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_
     rule calculate_long_read_coverage:
         input:
             contigs="{sample}/polish/cov_filter/{sample}_pre_filtered.fasta",
-            qc_long_reads="{sample}/qc/{sample}_QC_long.fastq.gz"
+            qc_long_reads="{sample}/qc/{sample}_qc_long.fastq.gz"
         output:
             mapping=temp("{sample}/polish/cov_filter/{sample}_long_read.bam"),
             mapping_index=temp("{sample}/polish/cov_filter/{sample}_long_read.bam.bai"),
@@ -1349,8 +1351,8 @@ if POLISH_WITH_SHORT_READS == True:
     # TODO - clarify name compared to previous mapping step
     rule calculate_final_short_read_coverage:
         input:
-            qc_short_r1 = "{sample}/qc/{sample}_QC_R1.fastq.gz",
-            qc_short_r2 = "{sample}/qc/{sample}_QC_R2.fastq.gz",
+            qc_short_r1 = "{sample}/qc/{sample}_qc_R1.fastq.gz",
+            qc_short_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz",
             dfast_genome = "{sample}/annotation/dfast/{sample}_genome.fna"
         output:
             mapping="{sample}/annotation/coverage/{sample}_short_read.bam",
@@ -1381,7 +1383,7 @@ if POLISH_WITH_SHORT_READS == True:
 rule calculate_final_long_read_coverage:
     input:
         contigs="{sample}/annotation/dfast/{sample}_genome.fna",
-        qc_long_reads="{sample}/qc/{sample}_QC_long.fastq.gz"
+        qc_long_reads="{sample}/qc/{sample}_qc_long.fastq.gz"
     output:
         mapping="{sample}/annotation/coverage/{sample}_long_read.bam",
         index="{sample}/annotation/coverage/{sample}_long_read.bam.bai",
