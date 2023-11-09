@@ -418,47 +418,78 @@ rule short_read_reformat:
         """
 
 
-rule short_read_adapter_and_quality_trimming:
+rule short_read_adapter_trimming:
     """
-    Trims 3' adapters off the reads (e.g., that are caused by having a short insert). 
-    Performs quality trimming after trimming adapters. 
+    Trims 3' adapters off the reads (e.g., that are caused by having a short insert).
     """
     input:
-        short_reformat_r1 = "{sample}/qc/short/{sample}_reformat_R1.fastq.gz",
-        short_reformat_r2 = "{sample}/qc/short/{sample}_reformat_R2.fastq.gz",
+        short_r1 = "{sample}/qc/short/{sample}_reformat_R1.fastq.gz",
+        short_r2 = "{sample}/qc/short/{sample}_reformat_R2.fastq.gz",
         adapters = os.path.join(DB_DIR_PATH, "adapters.fasta")
     output:
-        short_trim_r1 = temp("{sample}/qc/short/{sample}_trim_R1.fastq.gz") if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_trim_R1.fastq.gz",
-        short_trim_r2 = temp("{sample}/qc/short/{sample}_trim_R2.fastq.gz") if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_trim_R2.fastq.gz",
-        quality_histogram = "{sample}/qc/short/{sample}_trim_qhist.tsv",
+        short_r1 = temp("{sample}/qc/short/{sample}_adapter_trim_R1.fastq.gz"),
+        short_r2 = temp("{sample}/qc/short/{sample}_adapter_trim_R2.fastq.gz"),
         adapter_trim_stats= "{sample}/stats/{sample}_short_read_adapter_trimming.txt"
     conda:
         "../envs/qc.yaml"
     log:
-        "{sample}/logs/qc/short/short_read_adapter_and_quality_trimming.log"
+        "{sample}/logs/qc/short/short_read_adapter_trimming.log"
     benchmark:
-        "{sample}/benchmarks/qc/short/short_read_adapter_and_quality_trimming.benchmark.txt"
+        "{sample}/benchmarks/qc/short/short_read_adapter_trimming.benchmark.txt"
     params:
         adapter_trimming_kmer_length = config.get("adapter_trimming_kmer_length"),
         minimum_detectable_adapter_length_on_read_end = config.get("minimum_detectable_adapter_length_on_read_end"),
-        quality_trim_direction = config.get("quality_trim_direction"),
-        quality_trim_cutoff = config.get("quality_trim_score_cutoff"),
-        min_read_length = config.get("minimum_read_length"),
-        min_average_quality = config.get("minimum_average_quality_score_post_trim")
+        trim_adapters_by_overlap = "t" if str(config.get("overlap_based_trimming")).lower() == "true" else "f",
+        min_read_length = config.get("minimum_read_length_adapter_trim")
     threads:
         config.get("threads", 1)
     resources:
         mem = config.get("memory")
     shell:
         """
-        bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_reformat_r1} in2={input.short_reformat_r2} \
-          ref={input.adapters} out={output.short_trim_r1} out2={output.short_trim_r2} \
-          stats={output.adapter_trim_stats} qhist={output.quality_histogram} \
+        bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_r1} in2={input.short_r2} \
+          out={output.short_r1} out2={output.short_r2} ref={input.adapters} \
           k={params.adapter_trimming_kmer_length} ktrim=r mink={params.minimum_detectable_adapter_length_on_read_end} \
-          rcomp=t trimbyoverlap=t minoverlap=14 mininsert=40 \
+          rcomp=t trimbyoverlap={params.trim_adapters_by_overlap} minoverlap=14 mininsert=40 \
+          minlength={params.min_read_length} stats={output.adapter_trim_stats} overwrite=t interleaved=f qin=33 \
+          2> {log}
+        """
+
+
+rule short_read_quality_trimming:
+    """
+    Performs quality trimming after trimming adapters.
+    The conditional statements in the input field select whether to skip adapter trimming based on the config file.
+    Note: if quality_trim_direction is set as "f", the reads are just passed through this rule and not trimmed.
+    """
+    input:
+        short_r1 = "{sample}/qc/short/{sample}_adapter_trim_R1.fastq.gz" if str(config.get("perform_adapter_trimming")).lower() == 'true' else "{sample}/qc/short/{sample}_reformat_R1.fastq.gz",
+        short_r2 = "{sample}/qc/short/{sample}_adapter_trim_R2.fastq.gz" if str(config.get("perform_adapter_trimming")).lower() == 'true' else "{sample}/qc/short/{sample}_reformat_R2.fastq.gz"
+    output:
+        short_r1 = temp("{sample}/qc/short/{sample}_quality_trim_R1.fastq.gz"),
+        short_r2 = temp("{sample}/qc/short/{sample}_quality_trim_R2.fastq.gz"),
+        quality_histogram = "{sample}/qc/short/{sample}_quality_trim_qhist.tsv"
+    conda:
+        "../envs/qc.yaml"
+    log:
+        "{sample}/logs/qc/short/short_read_quality_trimming.log"
+    benchmark:
+        "{sample}/benchmarks/qc/short/short_read_quality_trimming.benchmark.txt"
+    params:
+        quality_trim_direction = config.get("quality_trim_direction"),
+        quality_trim_cutoff = config.get("quality_trim_score_cutoff"),
+        min_read_length = config.get("minimum_read_length_quality_trim"),
+        min_average_quality = config.get("minimum_average_quality_score_post_trim") if config.get("quality_trim_direction") != "f" else 0
+    threads:
+        config.get("threads", 1)
+    resources:
+        mem = config.get("memory")
+    shell:
+        """
+        bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_r1} in2={input.short_r2} \
+          out={output.short_r1} out2={output.short_r2} qhist={output.quality_histogram} \
           qtrim={params.quality_trim_direction} trimq={params.quality_trim_cutoff} minlength={params.min_read_length} \
-          minavgquality={params.min_average_quality} \
-          overwrite=t interleaved=f qin=33 \
+          minavgquality={params.min_average_quality} overwrite=t interleaved=f qin=33 \
           2> {log}
         """
 
@@ -473,13 +504,13 @@ rule short_read_contamination_filter:
     genomes the user wants to use as references. 
     """
     input:
-        short_trim_r1 = "{sample}/qc/short/{sample}_trim_R1.fastq.gz",
-        short_trim_r2 = "{sample}/qc/short/{sample}_trim_R2.fastq.gz",
+        short_r1 = "{sample}/qc/short/{sample}_quality_trim_R1.fastq.gz",
+        short_r2 = "{sample}/qc/short/{sample}_quality_trim_R2.fastq.gz",
         contamination_references = get_contamination_reference_files(config.get("contamination_references"),
             DB_DIR_PATH, PHIX_GENOME_ACCESSION, HUMAN_GENOME_ACCESSION)
     output:
-        short_filter_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz",
-        short_filter_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz",
+        short_r1 = temp("{sample}/qc/short/{sample}_filter_R1.fastq.gz"),
+        short_r2 = temp("{sample}/qc/short/{sample}_filter_R2.fastq.gz"),
         quality_histogram = "{sample}/qc/short/{sample}_filter_qhist.tsv",
         filter_stats= "{sample}/stats/{sample}_short_read_contamination_filter.txt"
     conda:
@@ -501,8 +532,8 @@ rule short_read_contamination_filter:
         mem = config.get("memory")
     shell:
         """
-        bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_trim_r1} in2={input.short_trim_r2} \
-          ref={params.all_contaminant_references} out={output.short_filter_r1} out2={output.short_filter_r2} \
+        bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_r1} in2={input.short_r2} \
+          ref={params.all_contaminant_references} out={output.short_r1} out2={output.short_r2} \
           stats={output.filter_stats} qhist={output.quality_histogram} \
           k={params.contamination_filter_kmer_length} ktrim=f rcomp=t \
           overwrite=t interleaved=f qin=33 \
@@ -511,9 +542,26 @@ rule short_read_contamination_filter:
 
 
 rule finalize_qc_short:
+    """
+    The conditional statements in this rule control whether or not contaminant filtration is performed.
+    """
     input:
-        short_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz" if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_trim_R1.fastq.gz",
-        short_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz" if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_trim_R2.fastq.gz"
+        short_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz" if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_quality_trim_R1.fastq.gz",
+        short_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz" if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_quality_trim_R2.fastq.gz"
+    output:
+        short_r1 = "{sample}/qc/short/{sample}_qc_R1.fastq.gz",
+        short_r2 = "{sample}/qc/short/{sample}_qc_R2.fastq.gz"
+    shell:
+        """
+        cp {input.short_r1} {output.short_r1}
+        cp {input.short_r2} {output.short_r2}
+        """
+
+
+rule symlink_qc_short:
+    input:
+        short_r1 = "{sample}/qc/short/{sample}_qc_R1.fastq.gz",
+        short_r2 = "{sample}/qc/short/{sample}_qc_R2.fastq.gz"
     output:
         short_final_r1 = "{sample}/qc/{sample}_qc_R1.fastq.gz",
         short_final_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz"
