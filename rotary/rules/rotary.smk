@@ -1154,7 +1154,7 @@ rule get_start_genes:
         gene_predictions="{sample}/circularize/identify/{sample}_circular.ffn",
         start_gene_list="{sample}/circularize/identify/{sample}_start_genes.list"
     output:
-        "{sample}/circularize/identify{sample}_start_gene.ffn"
+        "{sample}/circularize/identify/{sample}_start_gene.ffn"
     conda:
         "../envs/mapping.yaml"
     shell:
@@ -1166,7 +1166,7 @@ rule get_start_genes:
 rule run_circlator:
     input:
         contigs="{sample}/circularize/filter/{sample}_circular.fasta",
-        start_gene="{sample}/circularize/identify{sample}_start_gene.ffn"
+        start_gene="{sample}/circularize/identify/{sample}_start_gene.ffn"
     output:
         rotated="{sample}/circularize/circlator/{sample}_rotated.fasta",
         circlator_dir=directory('{sample}/circularize/circlator')
