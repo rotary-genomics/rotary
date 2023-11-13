@@ -8,7 +8,7 @@ import itertools
 from snakemake.utils import min_version
 
 from rotary.sample import parse_sample_tsv
-from rotary.utils import symlink_or_compress, get_contamination_reference_file_paths
+from rotary.utils import symlink_or_compress
 
 
 ZENODO_VERSION = "10087395"
@@ -25,18 +25,18 @@ SAMPLES = parse_sample_tsv(SAMPLE_TSV_PATH)
 
 SAMPLE_NAMES = list(SAMPLES.keys())
 
-contamination_ncbi_accessions = config.get("contamination_references_ncbi_accessions")
-contamination_filepaths = config.get("contamination_references_custom_filepaths")
+CONTAMINATION_NCBI_ACCESSIONS = config.get("contamination_references_ncbi_accessions")
+CUSTOM_CONTAMINATION_FILEPATHS = config.get("contamination_references_custom_filepaths")
 
-CONTAMINANT_REFERENCE_GENOMES = []
-if contamination_ncbi_accessions:
-    CONTAMINANT_REFERENCE_GENOMES += get_contamination_reference_file_paths(contamination_ncbi_accessions, DB_DIR_PATH)
+if CUSTOM_CONTAMINATION_FILEPATHS:
+    CUSTOM_CONTAMINATION_FILE_NAMES = [os.path.basename(path).split('.')[0] for path in CUSTOM_CONTAMINATION_FILEPATHS]
+else:
+    CUSTOM_CONTAMINATION_FILE_NAMES = []
 
-if contamination_filepaths:
-    CONTAMINANT_REFERENCE_GENOMES += CONTAMINANT_REFERENCE_GENOMES
-
-if not CONTAMINANT_REFERENCE_GENOMES:
+if not CONTAMINATION_NCBI_ACCESSIONS and not CUSTOM_CONTAMINATION_FILEPATHS:
     CONTAMINANT_REFERENCE_GENOMES = False
+else:
+    CONTAMINANT_REFERENCE_GENOMES = True
 
 # Specify the minimum snakemake version allowable
 min_version("7.0")
@@ -76,14 +76,14 @@ rule download_short_read_adapters:
         """
 
 
-rule download_contamination_reference:
+rule download_ncbi_contamination_reference:
     """
     Downloads references genome for contamination screening using its NCBI genome accession
     """
     output:
-        genome = os.path.join(DB_DIR_PATH, 'contamination_references', '{accession}.fna.gz'),
-        zip = temp(os.path.join(DB_DIR_PATH, 'contamination_references', '{accession}.zip')),
-        zip_dir = temp(directory(os.path.join(DB_DIR_PATH, 'contamination_references', '{accession}')))
+        genome = os.path.join(DB_DIR_PATH, 'contamination_references', 'ncbi', '{accession}.fna.gz'),
+        zip = temp(os.path.join(DB_DIR_PATH, 'contamination_references', 'ncbi', '{accession}.zip')),
+        zip_dir = temp(directory(os.path.join(DB_DIR_PATH, 'contamination_references', 'ncbi', '{accession}')))
     conda:
         "../envs/download.yaml"
     log:
@@ -110,6 +110,13 @@ rule download_contamination_reference:
         fi
         """
 
+rule set_up_custom_contamination_references:
+    output:
+        expand(os.path.join(DB_DIR_PATH, 'contamination_references', 'custom', '{contaminant_name}.fna.gz'),
+            contaminant_name=CUSTOM_CONTAMINATION_FILE_NAMES),
+    run:
+        for name, path in zip(CUSTOM_CONTAMINATION_FILE_NAMES,CUSTOM_CONTAMINATION_FILEPATHS):
+            symlink_or_compress(path, os.path.join(DB_DIR_PATH, 'contamination_references', 'custom', f'{name}.fna.gz'))
 
 rule install_polypolish:
     output:
@@ -516,7 +523,8 @@ rule short_read_contamination_filter:
     input:
         short_r1 = "{sample}/qc/short/{sample}_quality_trim_R1.fastq.gz",
         short_r2 = "{sample}/qc/short/{sample}_quality_trim_R2.fastq.gz",
-        contamination_references = CONTAMINANT_REFERENCE_GENOMES_NCBI
+        ncbi_contamination_references = expand(os.path.join(DB_DIR_PATH, 'contamination_references', 'ncbi', '{accession}.fna.gz'), accession=CONTAMINATION_NCBI_ACCESSIONS),
+        custom_contamination_references = expand(os.path.join(DB_DIR_PATH, 'contamination_references', 'custom', '{contaminant_name}.fna.gz'), contaminant_name=CUSTOM_CONTAMINATION_FILE_NAMES)
     output:
         short_r1 = temp("{sample}/qc/short/{sample}_filter_R1.fastq.gz"),
         short_r2 = temp("{sample}/qc/short/{sample}_filter_R2.fastq.gz"),
@@ -530,7 +538,6 @@ rule short_read_contamination_filter:
         "{sample}/benchmarks/qc/short/short_read_contamination_filter.benchmark.txt"
     params:
         contamination_filter_kmer_length = config.get("contamination_filter_kmer_length"),
-        contaminant_references = ','.join(CONTAMINANT_REFERENCE_GENOMES)
     threads:
         config.get("threads", 1)
     resources:
@@ -538,7 +545,7 @@ rule short_read_contamination_filter:
     shell:
         """
         bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_r1} in2={input.short_r2} \
-          ref={params.contaminant_references} out={output.short_r1} out2={output.short_r2} \
+          ref={input.ncbi_contamination_references} {input.custom_contamination_references} out={output.short_r1} out2={output.short_r2} \
           stats={output.filter_stats} qhist={output.quality_histogram} \
           k={params.contamination_filter_kmer_length} ktrim=f rcomp=t \
           overwrite=t interleaved=f qin=33 pigz=t unpigz=t \
