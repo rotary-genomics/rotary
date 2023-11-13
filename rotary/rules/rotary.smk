@@ -19,12 +19,24 @@ START_HMM_NAME = os.path.splitext(os.path.basename(config.get("hmm_url")))[0]
 VERSION_GTDB_COMPLETE= "214.1" # See https://data.gtdb.ecogenomic.org/releases/
 VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
 DB_DIR_PATH = config.get('db_dir')
-CONTAMINANT_REFERENCE_GENOMES_NCBI=get_contamination_reference_file_paths(
-    config.get("contamination_references_ncbi_accessions"), DB_DIR_PATH)
+
 SAMPLE_TSV_PATH = 'samples.tsv'
 SAMPLES = parse_sample_tsv(SAMPLE_TSV_PATH)
 
 SAMPLE_NAMES = list(SAMPLES.keys())
+
+contamination_ncbi_accessions = config.get("contamination_references_ncbi_accessions")
+contamination_filepaths = config.get("contamination_references_custom_filepaths")
+
+CONTAMINANT_REFERENCE_GENOMES = []
+if contamination_ncbi_accessions:
+    CONTAMINANT_REFERENCE_GENOMES += get_contamination_reference_file_paths(contamination_ncbi_accessions, DB_DIR_PATH)
+
+if contamination_filepaths:
+    CONTAMINANT_REFERENCE_GENOMES += CONTAMINANT_REFERENCE_GENOMES
+
+if not CONTAMINANT_REFERENCE_GENOMES:
+    CONTAMINANT_REFERENCE_GENOMES = False
 
 # Specify the minimum snakemake version allowable
 min_version("7.0")
@@ -518,8 +530,7 @@ rule short_read_contamination_filter:
         "{sample}/benchmarks/qc/short/short_read_contamination_filter.benchmark.txt"
     params:
         contamination_filter_kmer_length = config.get("contamination_filter_kmer_length"),
-        all_contaminant_references = ','.join(CONTAMINANT_REFERENCE_GENOMES_NCBI +
-            config.get("contamination_references_custom_filepaths"))
+        contaminant_references = ','.join(CONTAMINANT_REFERENCE_GENOMES)
     threads:
         config.get("threads", 1)
     resources:
@@ -527,7 +538,7 @@ rule short_read_contamination_filter:
     shell:
         """
         bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_r1} in2={input.short_r2} \
-          ref={params.all_contaminant_references} out={output.short_r1} out2={output.short_r2} \
+          ref={params.contaminant_references} out={output.short_r1} out2={output.short_r2} \
           stats={output.filter_stats} qhist={output.quality_histogram} \
           k={params.contamination_filter_kmer_length} ktrim=f rcomp=t \
           overwrite=t interleaved=f qin=33 pigz=t unpigz=t \
@@ -540,8 +551,8 @@ rule finalize_qc_short:
     The conditional statements in this rule control whether or not contaminant filtration is performed.
     """
     input:
-        short_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz" if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_quality_trim_R1.fastq.gz",
-        short_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz" if str(config.get("perform_contaminant_filtration")).lower() == 'true' else "{sample}/qc/short/{sample}_quality_trim_R2.fastq.gz"
+        short_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz" if CONTAMINANT_REFERENCE_GENOMES != False else "{sample}/qc/short/{sample}_quality_trim_R1.fastq.gz",
+        short_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz" if CONTAMINANT_REFERENCE_GENOMES != False else "{sample}/qc/short/{sample}_quality_trim_R2.fastq.gz"
     output:
         short_r1 = "{sample}/qc/short/{sample}_qc_R1.fastq.gz",
         short_r2 = "{sample}/qc/short/{sample}_qc_R2.fastq.gz"
