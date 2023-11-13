@@ -42,13 +42,15 @@ minimum_read_length_quality_trim: 10
 # Search for and remove reads that match contaminant reference sequences?
 perform_contaminant_filtration: "True"
 # K-mer length for filtering contaminants
-contamination_filter_kmer_length: 27
-# Contaminant reference genomes (provided within rotary) for filtering contaminants out of raw short reads
-#  If you do not want to filter with either of these (but do want to filter with your own custom genome below), then
-#  set contamination_references to []
-contamination_references: ["PhiX", "human"]
-# If you want to provide a custom genome for contaminant filtration, add the path to the FastA nucleotide file here:
-custom_contamination_reference: "False"
+contamination_filter_kmer_length: 31
+# NCBI genome assembly accessions to use for filtering contaminants from short read data.
+#   Default accessions: GCF_000819615.1 (PhiX), GCF_000001405.40 (human)
+#   NOTE that contaminant filtration for the human genome takes ~60 GB RAM.
+#   If you do not want to use any NCBI genome accessions for filtering, then set this variable to []
+contamination_references_ncbi_accessions: ["GCF_000819615.1", "GCF_000001405.40"]
+# Filepaths to FastA nucleotide files to use for filtering contaminants from short read data.
+#   If you do not want to use any custom FastA files for filtering, then set this variable to []
+contamination_references_custom_filepaths: []
 
 ## Assembly
 # nano-hq (if <5% error) or nano-raw

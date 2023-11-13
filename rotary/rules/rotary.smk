@@ -8,12 +8,10 @@ import itertools
 from snakemake.utils import min_version
 
 from rotary.sample import parse_sample_tsv
-from rotary.utils import symlink_or_compress, get_contamination_reference_files
+from rotary.utils import symlink_or_compress, get_contamination_reference_file_paths
 
 
 ZENODO_VERSION = "10087395"
-PHIX_GENOME_ACCESSION = "GCF_000819615.1"
-HUMAN_GENOME_ACCESSION = "GCF_000001405.40"
 VERSION_POLYPOLISH="0.5.0"
 VERSION_DFAST="1.2.18"
 VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
@@ -66,26 +64,25 @@ rule download_short_read_adapters:
 
 rule download_contamination_reference:
     """
-    Downloads references genome for contamination screening
+    Downloads references genome for contamination screening using its NCBI genome accession
     """
     output:
-        genome = os.path.join(DB_DIR_PATH, 'contamination_references', '{name}__{accession}.fna.gz'),
-        zip = temp(os.path.join(DB_DIR_PATH, 'contamination_references', '{name}__{accession}.zip')),
-        zip_dir = temp(directory(os.path.join(DB_DIR_PATH, 'contamination_references', '{name}__{accession}')))
+        genome = os.path.join(DB_DIR_PATH, 'contamination_references', '{accession}.fna.gz'),
+        zip = temp(os.path.join(DB_DIR_PATH, 'contamination_references', '{accession}.zip')),
+        zip_dir = temp(directory(os.path.join(DB_DIR_PATH, 'contamination_references', '{accession}')))
     conda:
         "../envs/download.yaml"
     log:
-        "logs/download/download_contamination_reference_{name}__{accession}.log"
+        "logs/download/download_contamination_reference_{accession}.log"
     benchmark:
-        "benchmarks/download/download_contamination_reference_{name}__{accession}.benchmark.txt"
+        "benchmarks/download/download_contamination_reference_{accession}.benchmark.txt"
     params:
-        accession = "{accession}",
-        name = "{name}"
+        accession = "{accession}"
     threads:
         min(config.get("threads", 1), 4)
     shell:
         """        
-        echo "### Downloading genome: {params.name} {params.accession} ###" > {log}
+        echo "### Downloading genome: {params.accession} ###" > {log}
         datasets download genome accession {params.accession} --include genome --filename {output.zip} 2>> {log}
         unzip -d {output.zip_dir} {output.zip} > /dev/null
         
@@ -254,6 +251,7 @@ rule validate_gtdb:
         touch {output}
         """
 
+
 rule build_gtdb_mash_ref_database:
     input:
         os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_validate")
@@ -413,7 +411,7 @@ rule short_read_reformat:
         """
         reformat.sh -Xmx{resources.mem}g threads={threads} in={input.short_r1} in2={input.short_r2} \
           out={output.short_reformat_r1} out2={output.short_reformat_r2} qhist={output.quality_histogram} \
-          overwrite=t interleaved=f qin=33 verifypaired=t trimreaddescription=t tossjunk=t \
+          overwrite=t interleaved=f qin=33 verifypaired=t trimreaddescription=t tossjunk=t pigz=t unpigz=t \
           2> {log}
         """
 
@@ -452,6 +450,7 @@ rule short_read_adapter_trimming:
           k={params.adapter_trimming_kmer_length} ktrim=r mink={params.minimum_detectable_adapter_length_on_read_end} \
           rcomp=t trimbyoverlap={params.trim_adapters_by_overlap} minoverlap=14 mininsert=40 \
           minlength={params.min_read_length} stats={output.adapter_trim_stats} overwrite=t interleaved=f qin=33 \
+          pigz=t unpigz=t \
           2> {log}
         """
 
@@ -489,7 +488,7 @@ rule short_read_quality_trimming:
         bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_r1} in2={input.short_r2} \
           out={output.short_r1} out2={output.short_r2} qhist={output.quality_histogram} \
           qtrim={params.quality_trim_direction} trimq={params.quality_trim_cutoff} minlength={params.min_read_length} \
-          minavgquality={params.min_average_quality} overwrite=t interleaved=f qin=33 \
+          minavgquality={params.min_average_quality} overwrite=t interleaved=f qin=33 pigz=t unpigz=t \
           2> {log}
         """
 
@@ -498,16 +497,13 @@ rule short_read_contamination_filter:
     """
     Filters short reads based on match to a reference. 
     Note that contamination_references in the input is only there to trigger download of the genome files; the actual 
-    text to be input into the shell (with proper comma separation) is prepared in all_contaminant_references in params. 
-    The function get_contamination_reference_files called by this rule returns genome paths that can be understood by 
-    rule download_contamination_reference, which allows the download rule to be triggered as needed depending on which 
-    genomes the user wants to use as references. 
+    text to be input into the shell (with proper comma separation) is prepared in all_contaminant_references in params.
     """
     input:
         short_r1 = "{sample}/qc/short/{sample}_quality_trim_R1.fastq.gz",
         short_r2 = "{sample}/qc/short/{sample}_quality_trim_R2.fastq.gz",
-        contamination_references = get_contamination_reference_files(config.get("contamination_references"),
-            DB_DIR_PATH, PHIX_GENOME_ACCESSION, HUMAN_GENOME_ACCESSION)
+        contamination_references = get_contamination_reference_file_paths(
+            config.get("contamination_references_ncbi_accessions"), DB_DIR_PATH)
     output:
         short_r1 = temp("{sample}/qc/short/{sample}_filter_R1.fastq.gz"),
         short_r2 = temp("{sample}/qc/short/{sample}_filter_R2.fastq.gz"),
@@ -521,11 +517,9 @@ rule short_read_contamination_filter:
         "{sample}/benchmarks/qc/short/short_read_contamination_filter.benchmark.txt"
     params:
         contamination_filter_kmer_length = config.get("contamination_filter_kmer_length"),
-        all_contaminant_references = ','.join(get_contamination_reference_files(config.get("contamination_references"),
-                DB_DIR_PATH, PHIX_GENOME_ACCESSION, HUMAN_GENOME_ACCESSION)) \
-            if str(config.get("custom_contamination_reference")).lower() == "false" \
-            else ','.join(get_contamination_reference_files(config.get("contamination_references"),
-                DB_DIR_PATH, PHIX_GENOME_ACCESSION, HUMAN_GENOME_ACCESSION) + [config.get("custom_contamination_reference")])
+        all_contaminant_references = ','.join(
+            get_contamination_reference_file_paths(config.get("contamination_references_ncbi_accessions"), DB_DIR_PATH) +
+            config.get("contamination_references_custom_filepaths"))
     threads:
         config.get("threads", 1)
     resources:
@@ -536,7 +530,7 @@ rule short_read_contamination_filter:
           ref={params.all_contaminant_references} out={output.short_r1} out2={output.short_r2} \
           stats={output.filter_stats} qhist={output.quality_histogram} \
           k={params.contamination_filter_kmer_length} ktrim=f rcomp=t \
-          overwrite=t interleaved=f qin=33 \
+          overwrite=t interleaved=f qin=33 pigz=t unpigz=t \
           2> {log}
         """
 
