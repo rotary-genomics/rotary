@@ -19,6 +19,8 @@ START_HMM_NAME = os.path.splitext(os.path.basename(config.get("hmm_url")))[0]
 VERSION_GTDB_COMPLETE= "214.1" # See https://data.gtdb.ecogenomic.org/releases/
 VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
 DB_DIR_PATH = config.get('db_dir')
+CONTAMINANT_REFERENCE_GENOMES_NCBI=get_contamination_reference_file_paths(
+    config.get("contamination_references_ncbi_accessions"), DB_DIR_PATH)
 SAMPLE_TSV_PATH = 'samples.tsv'
 SAMPLES = parse_sample_tsv(SAMPLE_TSV_PATH)
 
@@ -502,8 +504,7 @@ rule short_read_contamination_filter:
     input:
         short_r1 = "{sample}/qc/short/{sample}_quality_trim_R1.fastq.gz",
         short_r2 = "{sample}/qc/short/{sample}_quality_trim_R2.fastq.gz",
-        contamination_references = get_contamination_reference_file_paths(
-            config.get("contamination_references_ncbi_accessions"), DB_DIR_PATH)
+        contamination_references = CONTAMINANT_REFERENCE_GENOMES_NCBI
     output:
         short_r1 = temp("{sample}/qc/short/{sample}_filter_R1.fastq.gz"),
         short_r2 = temp("{sample}/qc/short/{sample}_filter_R2.fastq.gz"),
@@ -517,8 +518,7 @@ rule short_read_contamination_filter:
         "{sample}/benchmarks/qc/short/short_read_contamination_filter.benchmark.txt"
     params:
         contamination_filter_kmer_length = config.get("contamination_filter_kmer_length"),
-        all_contaminant_references = ','.join(
-            get_contamination_reference_file_paths(config.get("contamination_references_ncbi_accessions"), DB_DIR_PATH) +
+        all_contaminant_references = ','.join(CONTAMINANT_REFERENCE_GENOMES_NCBI +
             config.get("contamination_references_custom_filepaths"))
     threads:
         config.get("threads", 1)
