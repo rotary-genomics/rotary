@@ -523,8 +523,10 @@ rule short_read_contamination_filter:
     input:
         short_r1 = "{sample}/qc/short/{sample}_quality_trim_R1.fastq.gz",
         short_r2 = "{sample}/qc/short/{sample}_quality_trim_R2.fastq.gz",
-        ncbi_contamination_references = expand(os.path.join(DB_DIR_PATH, 'contamination_references', 'ncbi', '{accession}.fna.gz'), accession=CONTAMINATION_NCBI_ACCESSIONS),
-        custom_contamination_references = expand(os.path.join(DB_DIR_PATH, 'contamination_references', 'custom', '{contaminant_name}.fna.gz'), contaminant_name=CUSTOM_CONTAMINATION_FILE_NAMES)
+        ncbi_contamination_references = expand(os.path.join(DB_DIR_PATH, 'contamination_references', 'ncbi',
+            '{accession}.fna.gz'), accession=CONTAMINATION_NCBI_ACCESSIONS),
+        custom_contamination_references = expand(os.path.join(DB_DIR_PATH, 'contamination_references', 'custom',
+            '{contaminant_name}.fna.gz'), contaminant_name=CUSTOM_CONTAMINATION_FILE_NAMES)
     output:
         short_r1 = temp("{sample}/qc/short/{sample}_filter_R1.fastq.gz"),
         short_r2 = temp("{sample}/qc/short/{sample}_filter_R2.fastq.gz"),
@@ -538,6 +540,8 @@ rule short_read_contamination_filter:
         "{sample}/benchmarks/qc/short/short_read_contamination_filter.benchmark.txt"
     params:
         contamination_filter_kmer_length = config.get("contamination_filter_kmer_length"),
+        contamination_references = lambda wildcards, input: ','.join(input.ncbi_contamination_references +
+                                                                     input.custom_contamination_references)
     threads:
         config.get("threads", 1)
     resources:
@@ -545,7 +549,7 @@ rule short_read_contamination_filter:
     shell:
         """
         bbduk.sh -Xmx{resources.mem}g threads={threads} in={input.short_r1} in2={input.short_r2} \
-          ref={input.ncbi_contamination_references} {input.custom_contamination_references} out={output.short_r1} out2={output.short_r2} \
+          ref={params.contamination_references} out={output.short_r1} out2={output.short_r2} \
           stats={output.filter_stats} qhist={output.quality_histogram} \
           k={params.contamination_filter_kmer_length} ktrim=f rcomp=t \
           overwrite=t interleaved=f qin=33 pigz=t unpigz=t \
