@@ -558,8 +558,8 @@ rule finalize_qc_short:
     The conditional statements in this rule control whether or not contaminant filtration is performed.
     """
     input:
-        short_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz" if CONTAMINANT_REFERENCE_GENOMES != False else "{sample}/qc/short/{sample}_quality_trim_R1.fastq.gz",
-        short_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz" if CONTAMINANT_REFERENCE_GENOMES != False else "{sample}/qc/short/{sample}_quality_trim_R2.fastq.gz"
+        short_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz" if CONTAMINANT_REFERENCE_GENOMES == True else "{sample}/qc/short/{sample}_quality_trim_R1.fastq.gz",
+        short_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz" if CONTAMINANT_REFERENCE_GENOMES == True else "{sample}/qc/short/{sample}_quality_trim_R2.fastq.gz"
     output:
         short_r1 = "{sample}/qc/short/{sample}_qc_R1.fastq.gz",
         short_r2 = "{sample}/qc/short/{sample}_qc_R2.fastq.gz"
