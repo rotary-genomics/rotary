@@ -294,7 +294,7 @@ rule build_gtdb_mash_ref_database:
         mash sketch -l {output.ref_genome_path_list} -p {threads} -o {output.ref_msh_file} -k 16 -s 5000 > {log} 2>&1   
         """
 
-rule download_checkm:
+rule download_checkm_db:
     output:
         db=directory(os.path.join(DB_DIR_PATH,"checkm2")),
         install_finished=os.path.join(DB_DIR_PATH,"checkpoints","checkm2")
