@@ -100,28 +100,3 @@ def symlink_or_compress(in_file_path, out_file_path):
         os.symlink(in_file_path, out_file_path)
     else:
         gzip_file(in_file_path, out_file_path)
-
-
-def get_contamination_reference_file_paths(ncbi_accessions: list, db_path: str):
-    """
-    Returns a list of file paths for contamination references based on NCBI genome assembly accessions
-
-    :param ncbi_accessions: value of config.get('contamination_references_ncbi_accessions'); should be a list
-    :param db_path: path to the rotary database folder
-    :return: list of file paths for the contamination reference genomes
-    """
-
-    contamination_reference_paths = []
-
-    if isinstance(ncbi_accessions, list):
-        for ncbi_accession in ncbi_accessions:
-            contamination_reference_paths.append(os.path.join(db_path, 'contamination_references',
-                                                              f'{ncbi_accession}.fna.gz'))
-
-    else:
-        raise TypeError(f'Contaminant genome accessions must be in a list, but you provided type '
-                        f'{type(ncbi_accessions)}. Try editing the config file and make sure that '
-                        f'contamination_references_ncbi_accessions is a list like '
-                        '["GCF_000819615.1"] or ["GCF_000819615.1", "GCF_000001405.40"], not just "GCF_000819615.1".')
-
-    return contamination_reference_paths
