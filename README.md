@@ -89,7 +89,7 @@ rotary run_one -l s1_long.fastq.gz -r1 s1_R1.fastq.gz -r2 s1_R2.fastq.gz -d ../r
 ### 2b. Run Multiple Samples
 
 Rotary can target a directory containing numerous FASTQ files derived from various samples.
-It effortlessly organizes these files into sets corresponding to each sample and constructs a project 
+It automatically organizes these files into sets corresponding to each sample and constructs a project 
 directory that includes the necessary configuration files for executing the `rotary run` command. The 
 `rotary run` command can then be used to run the workflow on an entire batch of samples.
 
@@ -162,7 +162,7 @@ please feel free to use this basic working version.
 
 ### _rotary_ workflow summary
 
-1. Perform simple short read QC (e.g., score, length, and adapter trimming) using [bbduk.sh from bbmap](https://jgi.doe.gov/data-and-tools/software-tools/bbtools/bb-tools-user-guide/bbduk-guide/)
+1. Perform short read QC (e.g., score, length, and adapter trimming) using [bbduk.sh from bbmap](https://jgi.doe.gov/data-and-tools/software-tools/bbtools/bb-tools-user-guide/bbduk-guide/)
 2. Remove short read contamination using [bbduk.sh from bbmap](https://jgi.doe.gov/data-and-tools/software-tools/bbtools/bb-tools-user-guide/bbduk-guide/)
 3. Perform simple long read QC using
    [reformat.sh from bbmap](https://jgi.doe.gov/data-and-tools/software-tools/bbtools/bb-tools-user-guide/reformat-guide/)
@@ -187,13 +187,15 @@ please feel free to use this basic working version.
 - Minimum supported length for circular contigs is 100 kb (it should be a fairly easy fix in a future version to
   decrease this threshold)
 - Edge case: If you get "unlucky" and genome rotation is not substantial (e.g., _dnaA_ is already at the end of the
-  contig, re-polishing will have an effect on improving assembly quality). Ideally, I should add a test of how the contig
-  was rotated after finding _dnaA_.
+  contig), re-polishing will have limited effect on improving assembly quality. Ideally, I should add a test of how the 
+  contig was rotated after finding _dnaA_.
 - Very rare edge case: Similarly, for short contigs, the error-prone region from end repair might end up near the end of
   short contigs (e.g., < 100kb long). This means that it could miss the benefits of long read polishing. It will still
   receive short read polishing after the circularization module, but sometimes short read polishing is less efficient if
   long read polishing has not been performed properly in advance. Ideally, I should add a check of how short contigs
   have been rotated after end repair.
+- If rotary is run in batch mode, then all samples in one batch must have only long reads, or all samples in one batch 
+  must have long and short reads. In the future, we hope to make the pipeline more flexible in this area.
 
 ### Future to-do's and ideas
 
