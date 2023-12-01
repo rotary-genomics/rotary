@@ -133,19 +133,18 @@ In addition, please check the following in each sample folder:
 - QC results (`logs/qc/qc_long.log`) -- shows how many reads were retained vs. discarded during the QC filter step (this
   is technically in the `logs` folder mentioned above, but I wanted to add it here again to stress that it is worth
   checking)
-- Assembly quality (`assembly/assembly_info.txt`) -- see how many contigs you got and circular vs linear status
-- Detailed end repair log (`assembly/end_repair/verbose.log`) -- this is hard to read, but it's helpful to look for any
-  signs of errors or warnings. You can also see how contig rotation went after the stitch.
-- Filtering of contigs by coverage (`polish/cov_filter/filtered_contigs.list`) -- did anything get removed that you
+- Assembly quality (`assembly/flye/[SAMPLE_ID]_assembly_info.txt`) -- see how many contigs you got and circular vs linear status
+- End repair results (`assembly/[SAMPLE_ID]_circular_info.tsv`) -- you can see if any circular contigs could not be 
+  repaired successfully at their ends
+- Filtering of contigs by coverage (`polish/cov_filter/[SAMPLE_ID]_filtered_contigs.list`) -- did anything get removed that you
   wanted?
-- Identification of the start marker gene (e.g., _dnaA_) - see `circularize/identify/hmmsearch_hits.txt`
-  and `start_genes.ffn` in the same folder. Did you get the hits you expected? Were they appropriately filtered into 
+- Identification of the start marker gene (e.g., _dnaA_) - see `circularize/identify/[SAMPLE_ID]_hmmsearch_hits.txt`
+  and `[SAMPLE_ID]_start_genes.ffn` in the same folder. Did you get the hits you expected? Were they appropriately filtered into 
   the `.ffn` file?
 - Contig rotation (`circularize/circlator/rotated.log`) -- was the start gene reasonably far off from the contig end
   (so that the second round of polishing will actually improve things?)
 - Re-polishing (`stats/circularize/polypolish_changes.log`) - there should be few to zero changes if everything went
-  smoothly.
-  If you see more than about 20 changes, it means your genome might have some odd difficult-to-correct regions.
+  smoothly. If you see more than about 20 changes, it means your genome might have some odd difficult-to-correct regions.
 
 ## Citation
 
