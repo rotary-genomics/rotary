@@ -1396,8 +1396,8 @@ rule run_gtdbtk:
         """
         printf "{input.genome}\t{params.genome_id}\n" > {output.batchfile}
         GTDBTK_DATA_PATH={params.db_dir} \
-          gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {output.outdir} {params.gtdbtk_mode} \
-            --mash_db {input.ref_msh_file} --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
+        gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {output.outdir} {params.gtdbtk_mode} \
+          --mash_db {input.ref_msh_file} --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
         head -n 1 {output.outdir}/gtdbtk.*.summary.tsv | sort -u > {output.annotation}
         tail -n +2 {output.outdir}/gtdbtk.*.summary.tsv >> {output.annotation}
         """
