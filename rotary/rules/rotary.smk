@@ -667,7 +667,6 @@ rule assembly_end_repair:
           --circlator_reassemble_end {params.reassemble_end} \
           --threads {threads} \
           --threads_mem {resources.mem} \
-          --verbose \
           --overwrite \
           {params.keep_going} \
           > {log} 2>&1
