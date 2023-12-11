@@ -244,7 +244,7 @@ rule validate_gtdb:
         """
         # Split the "progress bar" style output into multiple lines with sed
         # See: https://stackoverflow.com/a/60786606 (accessed 2022.08.02)
-        GTDBTK_DATA_PATH={params.db_dir} gtdbtk check_install | sed 's/\r/\n/g' > {log} 2>&1
+        GTDBTK_DATA_PATH={params.db_dir} gtdbtk check_install | sed 's/\\r/\\n/g' > {log} 2>&1
 
         touch {output}
         """
