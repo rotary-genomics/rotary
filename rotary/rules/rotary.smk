@@ -226,32 +226,10 @@ rule download_gtdb_db:
         touch {output.install_finished}
         """
 
-rule setup_gtdb:
-    input:
-        os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_download")
-    output:
-        os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_setup")
-    conda:
-        "../envs/gtdbtk.yaml"
-    log:
-        "logs/download/gtdb_db_setup.log"
-    benchmark:
-        "benchmarks/download/gtdb_db_setup.txt"
-    params:
-        db_dir=os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE),
-    shell:
-        """
-        # Set the database path in the conda installation
-        echo "Set: GTDBTK_DATA_PATH={params.db_dir}" > {log}
-        conda env config vars set GTDBTK_DATA_PATH={params.db_dir}
-
-        touch {output}
-        """
-
 
 rule validate_gtdb:
     input:
-        os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_setup")
+        os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_download")
     output:
         os.path.join(DB_DIR_PATH,"checkpoints","GTDB_" + VERSION_GTDB_COMPLETE + "_validate")
     conda:
@@ -261,12 +239,12 @@ rule validate_gtdb:
     benchmark:
         "benchmarks/download/gtdb_db_validate.txt"
     params:
-        db_dir=os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE),
+        db_dir=os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE)
     shell:
         """
         # Split the "progress bar" style output into multiple lines with sed
         # See: https://stackoverflow.com/a/60786606 (accessed 2022.08.02)
-        gtdbtk check_install | sed 's/\r/\n/g' > {log} 2>&1
+        GTDBTK_DATA_PATH={params.db_dir} gtdbtk check_install | sed 's/\\r/\\n/g' > {log} 2>&1
 
         touch {output}
         """
@@ -689,7 +667,6 @@ rule assembly_end_repair:
           --circlator_reassemble_end {params.reassemble_end} \
           --threads {threads} \
           --threads_mem {resources.mem} \
-          --verbose \
           --overwrite \
           {params.keep_going} \
           > {log} 2>&1
@@ -1410,7 +1387,7 @@ rule run_gtdbtk:
     benchmark:
         "{sample}/benchmarks/annotation/gtdbtk.txt"
     params:
-        db=directory(os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE)),
+        db_dir=directory(os.path.join(DB_DIR_PATH,"GTDB_" + VERSION_GTDB_COMPLETE)),
         genome_id='{sample}', # Get sample name from wildcards.
         gtdbtk_mode="--full_tree" if config.get("gtdbtk_mode") == "full_tree" else ""
     threads:
@@ -1418,8 +1395,9 @@ rule run_gtdbtk:
     shell:
         """
         printf "{input.genome}\t{params.genome_id}\n" > {output.batchfile}
+        GTDBTK_DATA_PATH={params.db_dir} \
         gtdbtk classify_wf --batchfile {output.batchfile} --out_dir {output.outdir} {params.gtdbtk_mode} \
-           --mash_db {input.ref_msh_file} --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
+          --mash_db {input.ref_msh_file} --cpus {threads} --pplacer_cpus {threads} > {log} 2>&1
         head -n 1 {output.outdir}/gtdbtk.*.summary.tsv | sort -u > {output.annotation}
         tail -n +2 {output.outdir}/gtdbtk.*.summary.tsv >> {output.annotation}
         """
