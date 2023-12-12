@@ -9,7 +9,7 @@ Assembly/annotation workflow for Nanopore-based microbial genome data containing
 
 ### Install
 ```bash
-git clone https://github.com/jmtsuji/rotary.git
+git clone https://github.com/rotary-genomics/rotary.git
 
 conda env create -n rotary --file=rotary/enviroment.yaml
 
