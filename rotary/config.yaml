@@ -1,17 +1,5 @@
 # Config file for rotary
 
-#####################
-## Sample information
-# The sample ID should ideally be short and without special characters (e.g., < 10 characters, alphanumeric and underscores only)
-sample_id: "E_coli"
-# Nanopore data
-longreads: "E_coli.fastq.gz"
-# QC'ed short reads
-# Set qc_short_r1 (and qc_short_r1) to "None" (with quotes) to skip short read polishing
-qc_short_r1: "QC_R1.fastq.gz"
-qc_short_r2: "QC_R2.fastq.gz"
-#####################
-
 ## Directory for database installation
 db_dir: "/Data/databases/rotary"
 
@@ -26,6 +14,44 @@ memory: 100
 minlength: 1000
 # Minimum average quality (PHRED) score. Q13 is ~5% expected error rate.
 minavgquality: 13
+
+## Short read QC
+
+## Adapter trimming
+# Perform adapter trimming from the right side of reads? Identifies adapters using both a built-in database.
+perform_adapter_trimming: "True"
+# K-mer length for adapter trimming (this k-mer length should be shorter than the adapters)
+adapter_trimming_kmer_length: 27
+# Minimum adapter length to be detectable on the (right-hand) end of a read. Lower number = more false positives
+minimum_detectable_adapter_length_on_read_end: 6
+# In addition to database-based trimming, trim the overhang of reads if they completely overlap
+#  (Requires at least a 40 bp insert and 14 bp read overlap)
+overlap_based_trimming: "True"
+# Minimum read length after adapter trimming (otherwise is discarded)
+minimum_read_length_adapter_trim: 10
+
+## Quality trimming
+# Whether to perform quality trimming on the right ("r") side of each read or on both the left and right ("rl") sides
+#  Otherwise, specify "f" to skip quality trimming altogether.
+quality_trim_direction: "rl"
+# Quality score cutoff for quality trimming
+quality_trim_score_cutoff: 20
+# Minimum average quality score required for a read after quality trimming (disabled if quality_trim_direction is "f")
+minimum_average_quality_score_post_trim: 20
+# Minimum read length after quality trimming (otherwise is discarded)
+minimum_read_length_quality_trim: 10
+
+## Contaminant filtration
+# K-mer length for filtering contaminants
+contamination_filter_kmer_length: 31
+# NCBI genome assembly accessions to use for filtering contaminants from short read data.
+#   Default accessions: GCF_000819615.1 (PhiX), GCF_000001405.40 (human)
+#   NOTE that contaminant filtration for the human genome takes ~60 GB RAM.
+#   If you do not want to use any NCBI genome accessions for filtering, then set this variable to []
+contamination_references_ncbi_accessions: ["GCF_000819615.1", "GCF_000001405.40"]
+# Filepaths to FastA nucleotide files to use for filtering contaminants from short read data.
+#   If you do not want to use any custom FastA files for filtering, then set this variable to []
+contamination_references_custom_filepaths: []
 
 ## Assembly
 # nano-hq (if <5% error) or nano-raw
@@ -62,6 +88,8 @@ keep_unrepaired_contigs: 'False'
 medaka_model: "r941_min_sup_g507"
 # Batch size: related to memory usage; can reduce if you get OOM (out of memory) errors
 medaka_batch_size: 100
+# Should the pipeline polish with short reads using polypolish.
+polish_with_short_reads: 'True'
 
 ## Post-polishing contig filter
 # My advice: Only filter by short reads if you have short reads.
@@ -86,3 +114,5 @@ gtdbtk_mode: "default"
 # EggNOG annotation sensitivity mode (using DIAMOND)
 #    Options: fast, mid-sensitive, sensitive, more-sensitive, very-sensitive, ultra-sensitive
 eggnog_sensmode: "sensitive"
+# The search tool that emapper.py should use (diamond or mmseqs).
+eggnog_search_tool: 'mmseqs'

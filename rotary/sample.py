@@ -5,6 +5,7 @@ Created by: Lee Bergstrand (2023)
 
 Description: Classes and methods for representing Rotary sampling files.
 """
+import csv
 import os
 import re
 
@@ -38,22 +39,32 @@ class SequencingFile(object):
             self.r_value = None
 
 
-
-
 class Sample(object):
     """
     An object representing a series of FASTQ files that all belong to the same sample.
     """
 
-    def __init__(self, long_file: SequencingFile, short_file_one: SequencingFile, short_file_two: SequencingFile):
+    def __init__(self, long_file: SequencingFile, short_file_one: SequencingFile, short_file_two: SequencingFile,
+                 integrity_check: bool = True):
+
+        if integrity_check:
+            self.assign_variables_with_integrity_check(long_file, short_file_one, short_file_two)
+        else:
+            self.identifier = long_file.identifier
+            self.long_read_path = long_file.path
+            self.short_read_left_path = short_file_one.path
+            self.short_read_right_path = short_file_two.path
+
+    def assign_variables_with_integrity_check(self, long_file, short_file_one, short_file_two):
+        """
+        Builds the sample object with integrity checks to ensure the proper files are mapping to a singel sample.
+
+        :param long_file: A SequencingFile object representing the long read file.
+        :param short_file_one: A SequencingFile object representing the first short read file.
+        :param short_file_two: A SequencingFile object representing the second short read file.
+        """
         sequencing_files = [long_file, short_file_one, short_file_two]
         identifiers = [file.identifier for file in sequencing_files]
-
-        # The identifiers should all be the same. If not raise and exception.
-        if len(set(identifiers)) == 1:
-            self.identifier = identifiers[0]
-        else:
-            raise ValueError(f'Sample identifiers of the input fastq files do not match: {identifiers}')
 
         # Check for R1 or R2 in the file names with identifier removed.
         r_matches = [file.r_value for file in sequencing_files]
@@ -62,6 +73,12 @@ class Sample(object):
         long_path = long_file.path
         short_path_one = short_file_one.path
         short_path_two = short_file_two.path
+
+        # The identifiers should all be the same. If not raise and exception.
+        if len(set(identifiers)) == 1:
+            self.identifier = identifiers[0]
+        else:
+            raise ValueError(f'Sample identifiers of the input fastq files do not match: {identifiers}')
 
         # The long read file should not have a R1 or R2.
         if not long_r_value:
@@ -93,6 +110,7 @@ class Sample(object):
         """
         return [self.identifier, self.long_read_path, self.short_read_left_path, self.short_read_right_path]
 
+
 def is_fastq_file(file_name):
     """
     Determines if file is a fastq file based in its extension.
@@ -107,3 +125,75 @@ def is_fastq_file(file_name):
         is_fastq = False
 
     return is_fastq
+
+
+def make_sample_from_sample_tsv_row(row, integrity_check=False):
+    """
+    Parses a row from a sample TSV file and returns a Sample object.
+
+    :param row: A row from a sample tsv file as parsed by the CSV module.
+    :param integrity_check: Perform checking that ensures that each sample object maps to
+                            files that are all from the same physical sample.
+    :return: A Sample object representing the row.
+    """
+    sample_identifier = row[0]
+    long = SequencingFile(file_path=(row[1]))
+    short_left = SequencingFile(file_path=(row[2]))
+    short_right = SequencingFile(file_path=(row[3]))
+
+    sample = Sample(long, short_left, short_right, integrity_check=integrity_check)
+    sample.identifier = sample_identifier
+
+    return sample
+
+
+def parse_sample_tsv(sample_tsv_path, integrity_check=False):
+    """
+    Parses a sample tsv file and returns a dictionary of sample objects representing each sample.
+
+    :param sample_tsv_path: The path to the sample TSV file.
+    :param integrity_check: Perform checking that ensures that the sample object maps
+                            files that are all from the same physical sample.
+    :return: A dictionary of all the sample identifiers mapped to sample objects.
+    """
+    sample_dict = {}
+    with open(sample_tsv_path) as sample_file:
+        tsv_reader = csv.reader(sample_file, delimiter="\t")
+        next(tsv_reader)  # Skip header row.
+        for row in tsv_reader:
+            sample = make_sample_from_sample_tsv_row(row, integrity_check=integrity_check)
+            sample_dict[sample.identifier] = sample
+
+    return sample_dict
+
+
+def create_sample_tsv(output_dir_path, samples):
+    """
+    Generates a TSV file in the output directory with a series of CLI paths for files belonging to each sample.
+
+    :param output_dir_path: The path to the output Rotary directory.
+    :param samples: A list of Sample objects.
+    """
+    sample_tsv_path = os.path.join(output_dir_path, 'samples.tsv')
+    with open(sample_tsv_path, 'w') as tsv_file:
+        tsv_writer = csv.writer(tsv_file, delimiter='\t')
+        header = ['sample_id', 'long-read', 'short-read_R1', 'short-read_R2']
+        tsv_writer.writerow(header)
+        for current_sample in samples:
+            tsv_writer.writerow(current_sample.sample_file_row)
+
+    return sample_tsv_path
+
+def file_is_gzipped(file_path):
+    """
+    Determine if a file is gzipped based in file extension.
+
+    :param file_path: The path to the file to be checked.
+    :return: True if the file is gzipped, False otherwise.
+    """
+    extension = os.path.splitext(file_path)[1]
+
+    if extension == '.gz':
+        return True
+    else:
+        return False
