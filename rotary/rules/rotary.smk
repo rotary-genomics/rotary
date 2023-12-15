@@ -800,9 +800,7 @@ rule polish_polca:
         qc_short_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz",
         polished = "{sample}/polish/polypolish/{sample}_polypolish.fasta"
     output:
-        polca_output = "{sample}/polish/polca/{sample}_polca.fasta",
-        polypolish_sam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.unSorted.sam"),
-        polypolish_bam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.alignSorted.bam")
+        polca_output = "{sample}/polish/polca/{sample}_polca.fasta"
     conda:
         "../envs/masurca.yaml"
     log:
