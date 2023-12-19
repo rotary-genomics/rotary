@@ -80,7 +80,7 @@ circlator_merge_reassemble_end: 100
 #   region is a repeat-rich region), even if the contig is really circular. Set keep_unrepaired_contigs to 'True' to keep
 #   the pipeline going even if end repair fails on a contig. If set to 'True', then the original assembled versions of
 #   any contigs that fail end repair will be used for downstream steps and will still be treated as circular.
-keep_unrepaired_contigs: 'False'
+keep_unrepaired_contigs: 'True'
 
 ## Polishing
 # Model: set this parameter to match the flow cell version / basecalling model you used to generate the long reads.
