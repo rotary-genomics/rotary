@@ -53,7 +53,7 @@ end repair, polishing, contig rotation, and genome annotation.
 
 ## Requirements
 
-- OS: Runs on Linux (tested on Ubuntu 20.04)
+- OS: Runs on Linux (tested on Ubuntu 20.04 and Ubuntu 22.04)
 - Software: requires `miniconda`
 - Resources: The majority of the pipeline is not too resource intensive. The limiting factors are:
     - bbduk requires a lot of RAM when decontaminating short reads with large host genomes as reference 
@@ -66,7 +66,6 @@ end repair, polishing, contig rotation, and genome annotation.
 ## Usage
 
 ### 1. Install
-
 ```bash
 git clone https://github.com/jmtsuji/rotary.git
 conda env create -n rotary --file=rotary/enviroment.yaml
@@ -74,6 +73,7 @@ conda activate rotary
 cd rotary
 pip install --editable .
 ```
+This install takes around 5 minutes on a 8-thread laptop.
 
 ### 2a. Run One Sample
 
@@ -147,6 +147,66 @@ In addition, please check the following in each sample folder:
   (so that the second round of polishing will actually improve things?)
 - Re-polishing (`stats/circularize/polypolish_changes.log`) - there should be few to zero changes if everything went
   smoothly. If you see more than about 20 changes, it means your genome might have some odd difficult-to-correct regions.
+
+## Demo dataset
+
+As a simple demo, a hybrid sequencing dataset for an isolate of _E. coli_ (strain WG1) can be run through the main assembly  
+portion of _rotary_ (excluding the annotation module, which requires DBs that take a long time to download) in less than 1 
+hour, on a 8-thread laptop with 16 GB RAM. (The demo will need about 10 GB of storage space.)
+
+The dataset used for the test is publicly available in NCBI BioProject 
+[PRJNA848777](https://www.ncbi.nlm.nih.gov/bioproject/PRJNA848777/) and is related to the following publication:
+> Browning DF,  Hobman, JL,  Busby SJW. Laboratory strains of _Escherichia coli_ K-12: things are seldom what they seem. 
+> _Microbial Genomics_ __9__, mgen000922 (2023). https://doi.org/10.1099%2Fmgen.0.000922
+
+This demo dataset is not related to rotary at all, but it was a convenient choice due to the relatively compact dataset  
+size and because it includes both long and short read data. (Thanks to the authors for making their data publicly available!) 
+Because the basecaller model used for the Nanopore data was not specified, the defaults for _rotary_ (SUP model) are used in 
+the test run below.
+
+### Demo code
+```bash
+# Download the read data associated with BioProject PRJNA848777
+mkdir sample_fastq_dir
+wget -O sample_fastq_dir/ecoli_R1.fastq.gz ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR211/087/SRR21124987/SRR21124987_1.fastq.gz
+wget -O sample_fastq_dir/ecoli_R2.fastq.gz ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR211/087/SRR21124987/SRR21124987_2.fastq.gz
+
+# For the long read data, to get the qualtiy scores (i.e., not SRA Lite format), you will need to use the SRA Tookit
+#   available here: https://github.com/ncbi/sra-tools/wiki (accessed 2023.12.20). You can then download the files using:
+prefetch SRR21124986 && fasterq-dump -Z SRR21124986 | gzip > sample_fastq_dir/ecoli.fastq.gz
+# Otherwise, if you are OK with quality scores stripped out (not what the test was run with), you can just using the following 
+#  command to directly output the FastQ file (this command is commented out for clarity):
+# wget -O sample_fastq_dir/ecoli.fastq.gz https://www.be-md.ncbi.nlm.nih.gov/Traces/sra-reads-be/fastq?acc=SRR21124986
+
+# Initialize the output dir
+mkdir output_dir
+mkdir rotary_db_dir
+rotary init -d rotary_db_dir -i sample_fastq_dir -o output_dir
+# Modify the config file so that the human genome is not used for decontamination - this takes a long time and high RAM
+# The final config line should be: contamination_references_ncbi_accessions: [GCF_000819615.1]
+
+# Run rotary until just before the annotation module
+cd output_dir
+rotary run -s'--until circularize'
+```
+You can run this test without the `-s'--until circularize'` flag if you also want to annotate the resulting genome, but 
+the run (particularly the install / download) will take be much longer.
+
+### Demo outputs
+
+After the demo run, a directory called `ecoli` will be generated within the output dir. This `ecoli` directory contains 
+the analysis files for the test sample.
+
+Some of the key output files that will be generated in the `ecoli` dir are:
+- **`ecoli/circularize/ecoli_circularize.fasta` is the final polished/rotated assembly (should be 2 contigs)**
+- `ecoli/assembly/flye/ecoli_assembly_info.txt` includes details about the original assembled contigs. There should be 
+  2 contigs, both circular, with one about 4.67 Mb in length and the other about 67.4 kb in length.
+- `ecoli/polish/cov_filter/ecoli_short_read_coverage.tsv` shows the short read coverage of all assembled contigs;
+  whereas `ecoli/polish/cov_filter/ecoli_filtered_contigs.list` shows which contigs were ultimately retained after
+  cleaning out poor coverage contigs. Both contigs should be retained and should have short read coverages of about 
+  48 (contig_1) and 83 (contig_2)
+- `ecoli/stats/polish/polypolish_changes.log` and `ecoli/stats/circularize/polypolish_changes.log` show the changes 
+  made after the 1st and 2nd rounds of short read polishing. There should only be a handful of changes after the 2nd round.
 
 ## Citation
 
