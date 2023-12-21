@@ -45,8 +45,9 @@ minimum_read_length_quality_trim: 10
 # K-mer length for filtering contaminants
 contamination_filter_kmer_length: 31
 # NCBI genome assembly accessions to use for filtering contaminants from short read data.
-#   Default accessions: GCF_000819615.1 (PhiX), GCF_000001405.40 (human)
-#   NOTE that contaminant filtration for the human genome takes ~60 GB RAM.
+#   Default accession: GCF_000819615.1 (PhiX)
+#   You can also add the human genome if you'd like, by adding accession GCF_000001405.40
+#   However, note that contaminant filtration for the human genome takes ~60 GB RAM.
 #   If you do not want to use any NCBI genome accessions for filtering, then set this variable to []
 contamination_references_ncbi_accessions: ["GCF_000819615.1"]
 # Filepaths to FastA nucleotide files to use for filtering contaminants from short read data.
