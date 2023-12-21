@@ -800,22 +800,21 @@ rule polish_polca:
         qc_short_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz",
         polished = "{sample}/polish/polypolish/{sample}_polypolish.fasta"
     output:
-        polca_output = "{sample}/polish/polca/{sample}_polca.fasta"
+        polca_output = temp("{sample}/polish/polca/{sample}_polca.fasta"),
+        outdir = temp(directory("{sample}/polish/polca"))
     conda:
         "../envs/masurca.yaml"
     log:
         "{sample}/logs/polish/polca.log"
     benchmark:
         "{sample}/benchmarks/polish/polca.txt"
-    params:
-        outdir="{sample}/polish/polca"
     threads:
         config.get("threads",1)
     resources:
         mem=config.get("memory")
     shell:
         """
-        cd {params.outdir}
+        cd {output.outdir}
         polca.sh -a ../../../{input.polished} -r "../../../{input.qc_short_r1} ../../../{input.qc_short_r2}" -t {threads} -m {resources.mem}G > ../../../{log} 2>&1
         ln -s "{wildcards.sample}_polypolish.fasta.PolcaCorrected.fa" "{wildcards.sample}_polca.fasta"
         cd ../../../
