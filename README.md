@@ -1,5 +1,7 @@
 # rotary
 
+![rotary-logo-full](https://github.com/rotary-genomics/rotary/assets/18713012/82296118-5964-4fc0-900c-ec3351f2c772)
+
 [![GitHub release](https://img.shields.io/badge/Version-0.2.0--beta4-lightgrey.svg)](https://github.com/jmtsuji/rotary/releases)
 [![DOI](https://zenodo.org/badge/473891963.svg)](https://zenodo.org/badge/latestdoi/473891963)
 

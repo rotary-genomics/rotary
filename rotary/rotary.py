@@ -3,7 +3,7 @@
 """
 Created by: Lee Bergstrand (2023)
 
-Description: A command-line tool for the Rotary hybrid assembly workflow.
+Description: A command-line interface for the Rotary hybrid assembly workflow.
 """
 import argparse
 import os
