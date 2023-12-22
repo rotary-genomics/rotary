@@ -3,8 +3,5 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  - python=3.9
-  - pandas=1.4
-  - snakemake=7
-  - mamba
-  - wget
+  - checkm2=1.0.1
+  - diamond=2.0.4

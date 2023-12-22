@@ -1,0 +1,37 @@
+[project]
+name = "Rotary"
+version = "0.3.0-beta1"
+description = """Rotary is a bioinformatics toolkit and scalable hybrid assembly workflow for generating refined
+assemblies of circular prokaryotic genomes. It contains modules addressing common issues with circular assemblies.
+The snakemake-based pipeline integrates these modules and implements best practices for hybrid short/long-read microbial
+genome assembly."""
+authors = [
+    {name = "Jackson M. Tsuji"},
+    {name = "Lee H. Bergstrand"}
+]
+
+license = {file = "LICENSE"}
+readme = "README.md"
+
+dependencies = [
+    "pandas ~=1.4",
+    "snakemake ~=7.32",
+    "ruamel.yaml ~=0.17",
+    "psutil ~=5.9",
+    "sh ~=2.0",
+    "biopython ~=1.81"
+]
+
+[tool.setuptools.packages]
+find = {}
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+rotary = "rotary.rotary:main"
+rotary-repair = "rotary.repair:main"
+
+[tool.setuptools]
+include-package-data = true

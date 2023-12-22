@@ -1,0 +1,119 @@
+# Config file for rotary
+
+## Directory for database installation
+db_dir: "/Data/databases/rotary"
+
+## Resources
+threads: 20
+# Memory in Gigabytes
+#   At least ~55-60 GB is needed
+memory: 100
+
+## Long read QC
+# Minimum read length
+minlength: 1000
+# Minimum average quality (PHRED) score. Q13 is ~5% expected error rate.
+minavgquality: 13
+
+## Short read QC
+
+## Adapter trimming
+# Perform adapter trimming from the right side of reads? Identifies adapters using both a built-in database.
+perform_adapter_trimming: "True"
+# K-mer length for adapter trimming (this k-mer length should be shorter than the adapters)
+adapter_trimming_kmer_length: 27
+# Minimum adapter length to be detectable on the (right-hand) end of a read. Lower number = more false positives
+minimum_detectable_adapter_length_on_read_end: 6
+# In addition to database-based trimming, trim the overhang of reads if they completely overlap
+#  (Requires at least a 40 bp insert and 14 bp read overlap)
+overlap_based_trimming: "True"
+# Minimum read length after adapter trimming (otherwise is discarded)
+minimum_read_length_adapter_trim: 10
+
+## Quality trimming
+# Whether to perform quality trimming on the right ("r") side of each read or on both the left and right ("rl") sides
+#  Otherwise, specify "f" to skip quality trimming altogether.
+quality_trim_direction: "rl"
+# Quality score cutoff for quality trimming
+quality_trim_score_cutoff: 20
+# Minimum average quality score required for a read after quality trimming (disabled if quality_trim_direction is "f")
+minimum_average_quality_score_post_trim: 20
+# Minimum read length after quality trimming (otherwise is discarded)
+minimum_read_length_quality_trim: 10
+
+## Contaminant filtration
+# K-mer length for filtering contaminants
+contamination_filter_kmer_length: 31
+# NCBI genome assembly accessions to use for filtering contaminants from short read data.
+#   Default accession: GCF_000819615.1 (PhiX)
+#   You can also add the human genome if you'd like, by adding accession GCF_000001405.40
+#   However, note that contaminant filtration for the human genome takes ~60 GB RAM.
+#   If you do not want to use any NCBI genome accessions for filtering, then set this variable to []
+contamination_references_ncbi_accessions: ["GCF_000819615.1"]
+# Filepaths to FastA nucleotide files to use for filtering contaminants from short read data.
+#   If you do not want to use any custom FastA files for filtering, then set this variable to []
+contamination_references_custom_filepaths: []
+
+## Assembly
+# nano-hq (if <5% error) or nano-raw
+flye_input_mode: "nano-hq"
+# Optional: specify the error rate of the input reads as a fraction (e.g., use 0.03 for 3% error). This is mostly useful if you are using nano-hq with reads having >95% accuracy.
+flye_read_error: "auto"
+# Run Flye in --meta mode? Set to "True", with quotation marks, to use meta mode. Anything else (e.g., "False") will not use meta mode.
+flye_meta_mode: "False"
+# By default, Flye performs one round of long read polishing after assembly
+flye_polishing_rounds: 1
+
+## End repair
+# Flye will be used to re-assemble a short region (50-100 kb) around the ends of circular contigs.
+#   The re-assembly will be stitched to the original contigs using the circlator merge module.
+#   This process repairs an added/missing bases around the contig ends.
+# Minimum % ID needed between original and stitch contigs for merging
+circlator_merge_min_id: 99
+# Minimum hit length (bp) needed between original and stitch contigs for merging
+circlator_merge_min_length: 10000
+# Minimum distance (bp) between end of original contig and nucmer hit
+circlator_merge_ref_end: 100
+# Minimum distance (bp) between end of merge contig and nucmer hit
+circlator_merge_reassemble_end: 100
+# By default, end repair fails if a circular contig can't be end-repaired (i.e., if a contig can't be built that spans
+#   the ends of the contig). Failing to build the end-spanning contig can happen for several reasons (e.g., if that
+#   region is a repeat-rich region), even if the contig is really circular. Set keep_unrepaired_contigs to 'True' to keep
+#   the pipeline going even if end repair fails on a contig. If set to 'True', then the original assembled versions of
+#   any contigs that fail end repair will be used for downstream steps and will still be treated as circular.
+keep_unrepaired_contigs: 'True'
+
+## Polishing
+# Model: set this parameter to match the flow cell version / basecalling model you used to generate the long reads.
+#        See details in the Medaka Github repo's "Models" section: https://github.com/nanoporetech/medaka#models
+medaka_model: "r941_min_sup_g507"
+# Batch size: related to memory usage; can reduce if you get OOM (out of memory) errors
+medaka_batch_size: 100
+# Should the pipeline polish with short reads using polypolish.
+polish_with_short_reads: 'True'
+
+## Post-polishing contig filter
+# My advice: Only filter by short reads if you have short reads.
+#            If you have long reads, filter by long reads (40x minimum depth recommended by Sereika et al., 2022, Nat Methods, for R10.4 flow cells)
+meandepth_cutoff_short_read: 10
+meandepth_cutoff_long_read: "None"
+# Only contigs with this or greater % of bases covered by reads will be kept (e.g., 95%)
+evenness_cutoff_short_read: 95
+evenness_cutoff_long_read: "None"
+
+## Circularization
+# Download the following HMM to use for a start gene.
+# RpoB is TIGR02013.1.
+hmm_url: "https://ftp.ncbi.nlm.nih.gov/hmm/current/hmm_PGAP.HMM/TIGR02013.1.HMM"
+hmmsearch_evalue: 1e-40
+
+## Annotation
+# GTDB-Tk phylogenetic placement mode:
+#    Set to "full_tree" to use the GTDB-Tk v1 method (needs ~320 GB RAM!)
+#    Otherwise, it will use the v2 phylogenetic placement method needing ~55 GB RAM.
+gtdbtk_mode: "default"
+# EggNOG annotation sensitivity mode (using DIAMOND)
+#    Options: fast, mid-sensitive, sensitive, more-sensitive, very-sensitive, ultra-sensitive
+eggnog_sensmode: "sensitive"
+# The search tool that emapper.py should use (diamond or mmseqs).
+eggnog_search_tool: 'mmseqs'

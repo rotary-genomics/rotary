@@ -1,0 +1,37 @@
+package:
+  name: rotary
+  version: "0.3.0-beta1"
+
+source:
+  path: .
+
+requirements:
+  host:
+    - python
+    - poetry
+  run:
+    - python=3.9.*
+    - pandas=1.4.*
+    - snakemake=7.*
+    - mamba
+    - wget
+    - ruamel.yaml=0.17.35
+    - psutil=5.9.5
+    - sh=2.0.*
+    - biopython=1.81
+    - circlator=1.5.5
+    - flye=2.9
+    - minimap2=2.23
+    - samtools=1.15
+
+build:
+  script: poetry install
+
+test:
+  commands:
+    - rotary -h
+
+about:
+  home: https://github.com/jmtsuji/rotary
+  license: BSD 3
+  license_file: LICENSE
