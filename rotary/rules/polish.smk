@@ -129,25 +129,27 @@ rule polish_polypolish:
 # TODO - the relative path workarounds in the shell here are a bit odd because polca outputs files in the present working directory
 rule polish_polca:
     input:
-        qc_short_r1="{sample}/qc/{sample}_qc_R1.fastq.gz",
-        qc_short_r2="{sample}/qc/{sample}_qc_R2.fastq.gz",
-        polished="{sample}/polish/polypolish/{sample}_polypolish.fasta"
+        qc_short_r1 = "{sample}/qc/{sample}_qc_R1.fastq.gz",
+        qc_short_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz",
+        polished = "{sample}/polish/polypolish/{sample}_polypolish.fasta"
     output:
-        polca_output=temp("{sample}/polish/polca/{sample}_polca.fasta"),
-        outdir=temp(directory("{sample}/polish/polca"))
+        polca_output = temp("{sample}/polish/polca/{sample}_polca.fasta")
     conda:
         "../envs/masurca.yaml"
     log:
         "{sample}/logs/polish/polca.log"
     benchmark:
         "{sample}/benchmarks/polish/polca.txt"
+    params:
+        outdir="{sample}/polish/polca"
     threads:
         config.get("threads",1)
     resources:
         mem=config.get("memory")
+    shadow: "shallow"
     shell:
         """
-        cd {output.outdir}
+        cd {params.outdir}
         polca.sh -a ../../../{input.polished} -r "../../../{input.qc_short_r1} ../../../{input.qc_short_r2}" -t {threads} -m {resources.mem}G > ../../../{log} 2>&1
         ln -s "{wildcards.sample}_polypolish.fasta.PolcaCorrected.fa" "{wildcards.sample}_polca.fasta"
         cd ../../../
