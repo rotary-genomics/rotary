@@ -27,7 +27,7 @@ class SequencingFile(object):
         if '_' in self.name:
             identifier, remaining = self.name.split('_', 1)  # Split on first _ if found.
         else:
-            identifier, remaining = self.name.split('.', 1)  # Split on file extension . if _ not found.
+            identifier, remaining = self.name.split('.', 1)  # Split on the file extension . if _ not found.
 
         self.identifier = identifier
 
@@ -186,7 +186,7 @@ def create_sample_tsv(output_dir_path, samples):
 
 def file_is_gzipped(file_path):
     """
-    Determine if a file is gzipped based in file extension.
+    Determine if a file is gzipped based in the file extension.
 
     :param file_path: The path to the file to be checked.
     :return: True if the file is gzipped, False otherwise.
@@ -197,3 +197,44 @@ def file_is_gzipped(file_path):
         return True
     else:
         return False
+
+
+def find_samples_in_fastq_directory(input_path):
+    fastq_files = get_fastq_files_in_directory(input_path)
+
+    samples_files = {}
+    for file in fastq_files:
+        identifier = file.identifier
+        if identifier in samples_files.keys():
+            samples_files[identifier].append(file)
+        else:
+            samples_files[identifier] = [file]
+
+    samples = []
+    for identifier, sequencing_files in samples_files.items():
+        if len(sequencing_files) != 3:
+            raise ValueError(f'Sample {identifier} should have three sequencing files')
+
+        long_file = None
+        left_short_file = None
+        right_short_file = None
+        for file in sequencing_files:
+            if file.r_value == 'R1':
+                left_short_file = file
+            elif file.r_value == 'R2':
+                right_short_file = file
+            else:
+                long_file = file
+
+        sample = Sample(long_file, left_short_file, right_short_file)
+        samples.append(sample)
+    return samples
+
+
+def get_fastq_files_in_directory(input_path):
+    fastq_files = []
+    for file_path in os.listdir(input_path):
+        filename = os.path.basename(file_path)
+        if is_fastq_file(filename):
+            fastq_files.append(SequencingFile(file_path=os.path.join(input_path, file_path)))
+    return fastq_files
