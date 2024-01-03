@@ -324,7 +324,7 @@ else:
             contigs="{sample}/polish/medaka/{sample}_consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/polish/polca/{sample}_polca.fasta",
             filter_list="{sample}/polish/cov_filter/{sample}_filtered_contigs.list"
         output:
-            temp("{sample}/polish/cov_filter/{sample}_filtered_contigs.fasta")
+            "{sample}/polish/cov_filter/{sample}_filtered_contigs.fasta"
         conda:
             "../envs/mapping.yaml"
         shell:
