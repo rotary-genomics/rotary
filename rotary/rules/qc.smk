@@ -88,7 +88,7 @@ rule nanopore_qc_filter:
     input:
         "{sample}/raw/{sample}_long.fastq.gz"
     output:
-        temp("{sample}/qc/long/{sample}_nanopore_qc.fastq.gz")
+        "{sample}/qc/long/{sample}_nanopore_qc.fastq.gz"
     conda:
         "../envs/mapping.yaml"
     log:
