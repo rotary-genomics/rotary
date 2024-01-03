@@ -25,6 +25,7 @@ rule assembly_flye:
         polishing_rounds=config.get("flye_polishing_rounds")
     threads:
         config.get("threads",1)
+    shadow: "shallow"
     shell:
         """
         flye --{params.input_mode} {input} {params.read_error} --out-dir {output.output_dir} {params.meta_mode} \
@@ -42,8 +43,8 @@ rule assembly_end_repair:
         assembly="{sample}/assembly/flye/{sample}_assembly.fasta",
         info="{sample}/assembly/flye/{sample}_assembly_info.txt"
     output:
-        assembly="{sample}/assembly/end_repair/{sample}_repaired.fasta",
-        info="{sample}/assembly/end_repair/{sample}_repaired_info.tsv",
+        assembly=temp("{sample}/assembly/end_repair/{sample}_repaired.fasta"),
+        info=temp("{sample}/assembly/end_repair/{sample}_repaired_info.tsv"),
         output_dir=directory("{sample}/assembly/end_repair"),
     log:
         "{sample}/logs/assembly/end_repair.log"
@@ -59,6 +60,7 @@ rule assembly_end_repair:
         keep_going="--keep_going_with_failed_contigs" if config.get("keep_unrepaired_contigs") == "True" else "",
     threads:
         config.get("threads",1)
+    shadow: "shallow"
     resources:
         mem=int(config.get("memory") / config.get("threads",1))
     shell:

@@ -293,7 +293,7 @@ rule combine_circular_and_linear_contigs:
     input:
         aggregate_contigs
     output:
-        "{sample}/circularize/combine/{sample}_combined.fasta"
+        temp("{sample}/circularize/combine/{sample}_combined.fasta")
     conda:
         "../envs/mapping.yaml"
     shell:

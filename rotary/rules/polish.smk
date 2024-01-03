@@ -47,7 +47,7 @@ rule polish_medaka:
         contigs="{sample}/{step}/medaka_input/{sample}_input.fasta"
     output:
         dir=directory("{sample}/{step}/medaka"),
-        contigs="{sample}/{step}/medaka/{sample}_consensus.fasta"
+        contigs=temp("{sample}/{step}/medaka/{sample}_consensus.fasta")
     conda:
         "../envs/medaka.yaml"
     log:
@@ -59,6 +59,7 @@ rule polish_medaka:
         batch_size=config.get("medaka_batch_size")
     threads:
         config.get("threads",1)
+    shadow: "shallow"
     shell:
         """
         medaka_consensus -i {input.qc_long_reads} -d {input.contigs} -o {output.dir} \
@@ -71,7 +72,7 @@ rule prepare_polypolish_polish_input:
     input:
         "{sample}/polish/medaka/{sample}_consensus.fasta"
     output:
-        "{sample}/polish/polypolish/input/{sample}_input.fasta"
+        temp("{sample}/polish/polypolish/input/{sample}_input.fasta")
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -101,6 +102,7 @@ rule polish_polypolish:
         "{sample}/benchmarks/{step}/polypolish.txt"
     threads:
         config.get("threads",1)
+    shadow: "shallow"
     shell:
         """
         printf "\n\n### Read mapping ###\n" > {log}
@@ -161,7 +163,7 @@ rule pre_coverage_filter:
     input:
         "{sample}/polish/medaka/{sample}_consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/polish/polca/{sample}_polca.fasta"
     output:
-        "{sample}/polish/cov_filter/{sample}_pre_filtered.fasta"
+        temp("{sample}/polish/cov_filter/{sample}_pre_filtered.fasta")
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
@@ -251,12 +253,21 @@ rule summarize_contigs_by_coverage:
         meandepth_long=config.get("meandepth_cutoff_long_read"),
         evenness_long=config.get("evenness_cutoff_long_read")
     run:
-        # Filter a samtools coverage file by meandepth and evenness. Returns a pandas series of the contig names.
-        def filter_coverage_data(coverage_file, meandepth, evenness):
+        #
+        def filter_coverage_data(coverage_file, mean_depth, evenness):
+            """
+            Filter a samtools coverage file by mean depth and evenness.
+            Returns a pandas series of passing contig names.
+
+            :param coverage_file: Path to the coverage file (CSV format).
+            :param mean_depth: Minimum required mean depth of coverage.
+            :param evenness: Minimum required evenness of coverage.
+            :return: Filtered coverage data containing only passing contig names.
+            """
             coverage_data = pd.read_csv(coverage_file,sep='\t')
 
             coverage_filtered = coverage_data[ \
-                (coverage_data['meandepth'] >= meandepth) & \
+                (coverage_data['meandepth'] >= mean_depth) & \
                 (coverage_data['coverage'] >= evenness)]
 
             return (coverage_filtered['#rname'])
@@ -313,7 +324,7 @@ else:
             contigs="{sample}/polish/medaka/{sample}_consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/polish/polca/{sample}_polca.fasta",
             filter_list="{sample}/polish/cov_filter/{sample}_filtered_contigs.list"
         output:
-            "{sample}/polish/cov_filter/{sample}_filtered_contigs.fasta"
+            temp("{sample}/polish/cov_filter/{sample}_filtered_contigs.fasta")
         conda:
             "../envs/mapping.yaml"
         shell:
