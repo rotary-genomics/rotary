@@ -47,7 +47,7 @@ rule polish_medaka:
         contigs="{sample}/{step}/medaka_input/{sample}_input.fasta"
     output:
         dir=directory("{sample}/{step}/medaka"),
-        contigs=temp("{sample}/{step}/medaka/{sample}_consensus.fasta")
+        contigs="{sample}/{step}/medaka/{sample}_consensus.fasta"
     conda:
         "../envs/medaka.yaml"
     log:
