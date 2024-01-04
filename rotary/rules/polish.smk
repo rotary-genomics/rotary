@@ -59,7 +59,6 @@ rule polish_medaka:
         batch_size=config.get("medaka_batch_size")
     threads:
         config.get("threads",1)
-    shadow: "shallow"
     shell:
         """
         medaka_consensus -i {input.qc_long_reads} -d {input.contigs} -o {output.dir} \
@@ -102,7 +101,6 @@ rule polish_polypolish:
         "{sample}/benchmarks/{step}/polypolish.txt"
     threads:
         config.get("threads",1)
-    shadow: "shallow"
     shell:
         """
         printf "\n\n### Read mapping ###\n" > {log}
@@ -148,7 +146,6 @@ rule polish_polca:
         config.get("threads",1)
     resources:
         mem=config.get("memory")
-    shadow: "shallow"
     shell:
         """
         cd {params.outdir}
