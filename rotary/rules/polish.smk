@@ -91,7 +91,7 @@ rule polish_polypolish:
         mapping_clean_r1=temp("{sample}/{step}/polypolish/{sample}_R1.clean.sam"),
         mapping_clean_r2=temp("{sample}/{step}/polypolish/{sample}_R2.clean.sam"),
         polished="{sample}/{step}/polypolish/{sample}_polypolish.fasta",
-        debug="{sample}/{step}/polypolish/polypolish.debug.log",
+        debug=temp("{sample}/{step}/polypolish/polypolish.debug.log"),
         debug_stats="{sample}/stats/{step}/polypolish_changes.log"
     conda:
         "../envs/mapping.yaml"
