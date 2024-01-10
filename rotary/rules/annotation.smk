@@ -281,8 +281,8 @@ if POLISH_WITH_SHORT_READS == True:
             qc_short_r2="{sample}/qc/{sample}_qc_R2.fastq.gz",
             dfast_genome="{sample}/annotation/dfast/{sample}_genome.fna"
         output:
-            mapping="{sample}/annotation/coverage/{sample}_short_read.bam",
-            index="{sample}/annotation/coverage/{sample}_short_read.bam.bai",
+            mapping=temp("{sample}/annotation/coverage/{sample}_short_read.bam"),
+            index=temp("{sample}/annotation/coverage/{sample}_short_read.bam.bai"),
             coverage="{sample}/annotation/coverage/{sample}_short_read_coverage.tsv"
         conda:
             "../envs/mapping.yaml"
@@ -311,8 +311,8 @@ rule calculate_final_long_read_coverage:
         contigs="{sample}/annotation/dfast/{sample}_genome.fna",
         qc_long_reads="{sample}/qc/{sample}_qc_long.fastq.gz"
     output:
-        mapping="{sample}/annotation/coverage/{sample}_long_read.bam",
-        index="{sample}/annotation/coverage/{sample}_long_read.bam.bai",
+        mapping=temp("{sample}/annotation/coverage/{sample}_long_read.bam"),
+        index=temp("{sample}/annotation/coverage/{sample}_long_read.bam.bai"),
         coverage="{sample}/annotation/coverage/{sample}_long_read_coverage.tsv"
     conda:
         "../envs/mapping.yaml"
