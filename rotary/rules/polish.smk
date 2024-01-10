@@ -47,7 +47,9 @@ rule polish_medaka:
         contigs="{sample}/{step}/medaka_input/{sample}_input.fasta"
     output:
         dir=directory("{sample}/{step}/medaka"),
-        contigs="{sample}/{step}/medaka/{sample}_consensus.fasta"
+        contigs="{sample}/{step}/medaka/{sample}_consensus.fasta",
+        calls_to_draft=temp(expand("{{sample}}/{{step}}/medaka/calls_to_draft.{ext}", ext=['bam', 'bam.bai'])),
+        consensus_probs=temp("{sample}/{step}/medaka/consensus_probs.hdf")
     conda:
         "../envs/medaka.yaml"
     log:
