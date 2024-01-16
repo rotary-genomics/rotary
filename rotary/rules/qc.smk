@@ -88,7 +88,7 @@ rule nanopore_qc_filter:
     input:
         "{sample}/raw/{sample}_long.fastq.gz"
     output:
-        "{sample}/qc/long/{sample}_nanopore_qc.fastq.gz"
+        temp("{sample}/qc/long/{sample}_nanopore_qc.fastq.gz")
     conda:
         "../envs/mapping.yaml"
     log:
@@ -165,10 +165,11 @@ rule finalize_qc_long:
     input:
         "{sample}/qc/long/{sample}_nanopore_qc.fastq.gz"
     output:
-        "{sample}/qc/{sample}_qc_long.fastq.gz"
-    run:
-        source_relpath = os.path.relpath(str(input), os.path.dirname(str(output)))
-        os.symlink(source_relpath, str(output))
+        temp("{sample}/qc/{sample}_qc_long.fastq.gz")
+    shell:
+        """
+        cp {input} {output}
+        """
 
 
 rule qc_long:
@@ -338,29 +339,13 @@ rule finalize_qc_short:
         short_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz" if CONTAMINANT_REFERENCE_GENOMES == True else "{sample}/qc/short/{sample}_quality_trim_R1.fastq.gz",
         short_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz" if CONTAMINANT_REFERENCE_GENOMES == True else "{sample}/qc/short/{sample}_quality_trim_R2.fastq.gz"
     output:
-        short_r1 = "{sample}/qc/short/{sample}_qc_R1.fastq.gz",
-        short_r2 = "{sample}/qc/short/{sample}_qc_R2.fastq.gz"
+        short_final_r1=temp("{sample}/qc/{sample}_qc_R1.fastq.gz"),
+        short_final_r2=temp("{sample}/qc/{sample}_qc_R2.fastq.gz")
     shell:
         """
-        cp {input.short_r1} {output.short_r1}
-        cp {input.short_r2} {output.short_r2}
+        cp {input.short_r1} {output.short_final_r1}
+        cp {input.short_r2} {output.short_final_r2}
         """
-
-
-rule symlink_qc_short:
-    input:
-        short_r1 = "{sample}/qc/short/{sample}_qc_R1.fastq.gz",
-        short_r2 = "{sample}/qc/short/{sample}_qc_R2.fastq.gz"
-    output:
-        short_final_r1 = "{sample}/qc/{sample}_qc_R1.fastq.gz",
-        short_final_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz"
-    run:
-        source_relpath = os.path.relpath(str(input.short_r1), os.path.dirname(str(output.short_final_r1)))
-        os.symlink(source_relpath, str(output.short_final_r1))
-
-        source_relpath = os.path.relpath(str(input.short_r2), os.path.dirname(str(output.short_final_r2)))
-        os.symlink(source_relpath, str(output.short_final_r2))
-
 
 rule qc_short:
     input:
