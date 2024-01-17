@@ -105,7 +105,7 @@ rule nanopore_qc_filter:
     shell:
         """
         reformat.sh in={input} out={output} minlength={params.minlength} minavgquality={params.minavgquality} \
-          interleaved=f qin=33 threads={threads} -Xmx{resources.mem}G > {log} 2>&1
+          interleaved=f qin=33 threads={threads} -Xmx{resources.mem}G pigz=t unpigz=t > {log} 2>&1
         """
 
 
@@ -126,7 +126,7 @@ rule qc_long_length_hist:
         mem=config.get("memory")
     shell:
         """
-        reformat.sh in={input} lhist={output} maxhistlen=10000000 \
+        reformat.sh in={input} lhist={output} maxhistlen=10000000 pigz=t unpigz=t \
           interleaved=f qin=33 threads={threads} -Xmx{resources.mem}G > {log} 2>&1
         """
 
