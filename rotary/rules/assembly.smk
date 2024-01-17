@@ -11,7 +11,13 @@ rule assembly_flye:
     output:
         assembly="{sample}/assembly/flye/{sample}_assembly.fasta",
         info="{sample}/assembly/flye/{sample}_assembly_info.txt",
-        output_dir=directory("{sample}/assembly/flye")
+        output_dir=directory("{sample}/assembly/flye"),
+        assembly_dir=temp(directory("{sample}/assembly/flye/00-assembly")),
+        consensus_dir=temp(directory("{sample}/assembly/flye/10-consensus")),
+        repeat_dir=temp(directory("{sample}/assembly/flye/20-repeat")),
+        contigger_dir=temp(directory("{sample}/assembly/flye/30-contigger")),
+        polishing_dir=temp(directory("{sample}/assembly/flye/40-polishing")),
+
     conda:
         "../envs/assembly_flye.yaml"
     log:
