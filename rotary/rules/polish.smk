@@ -95,7 +95,7 @@ rule polish_polypolish:
         polished="{sample}/{step}/polypolish/{sample}_polypolish.fasta",
         debug=temp("{sample}/{step}/polypolish/polypolish.debug.log"),
         debug_stats="{sample}/stats/{step}/polypolish_changes.log",
-        other_files= temp(expand("{{sample}}/polish/polypolish/input/{{sample}}_input.fasta.{ext}",
+        other_files= temp(expand("{{sample}}/{{step}}/polypolish/input/{{sample}}_input.fasta.{ext}",
             ext=['amb', 'ann', 'bwt', 'pac', 'sa']))
     conda:
         "../envs/mapping.yaml"
