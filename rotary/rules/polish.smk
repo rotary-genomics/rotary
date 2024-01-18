@@ -73,12 +73,10 @@ rule prepare_polypolish_polish_input:
     input:
         "{sample}/polish/medaka/{sample}_consensus.fasta"
     output:
-        fasta = temp("{sample}/polish/polypolish/input/{sample}_input.fasta"),
-        other_files = temp(expand("{{sample}}/polish/polypolish/input/{{sample}}_input.fasta.{ext}",
-            ext=['amb', 'ann', 'bwt', 'pac', 'sa']))
+        temp("{sample}/polish/polypolish/input/{sample}_input.fasta"),
     run:
-        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output.fasta)))
-        os.symlink(source_relpath,str(output.fasta))
+        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
+        os.symlink(source_relpath,str(output))
 
 
 rule polish_polypolish:
@@ -96,7 +94,9 @@ rule polish_polypolish:
         mapping_clean_r2=temp("{sample}/{step}/polypolish/{sample}_R2.clean.sam"),
         polished="{sample}/{step}/polypolish/{sample}_polypolish.fasta",
         debug=temp("{sample}/{step}/polypolish/polypolish.debug.log"),
-        debug_stats="{sample}/stats/{step}/polypolish_changes.log"
+        debug_stats="{sample}/stats/{step}/polypolish_changes.log",
+        other_files= temp(expand("{{sample}}/polish/polypolish/input/{{sample}}_input.fasta.{ext}",
+            ext=['amb', 'ann', 'bwt', 'pac', 'sa']))
     conda:
         "../envs/mapping.yaml"
     log:
