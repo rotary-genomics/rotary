@@ -79,6 +79,8 @@ rule prepare_polypolish_polish_input:
         os.symlink(source_relpath,str(output))
 
 
+read_mapping_file_extensions = ['amb', 'ann', 'bwt', 'pac', 'sa']
+
 rule polish_polypolish:
     input:
         qc_short_r1="{sample}/qc/{sample}_qc_R1.fastq.gz",
@@ -95,8 +97,8 @@ rule polish_polypolish:
         polished="{sample}/{step}/polypolish/{sample}_polypolish.fasta",
         debug=temp("{sample}/{step}/polypolish/polypolish.debug.log"),
         debug_stats="{sample}/stats/{step}/polypolish_changes.log",
-        other_files= temp(expand("{{sample}}/{{step}}/polypolish/input/{{sample}}_input.fasta.{ext}",
-            ext=['amb', 'ann', 'bwt', 'pac', 'sa']))
+        read_mapping_files= temp(expand("{{sample}}/{{step}}/polypolish/input/{{sample}}_input.fasta.{ext}",
+            ext=read_mapping_file_extensions))
     conda:
         "../envs/mapping.yaml"
     log:
@@ -139,7 +141,9 @@ rule polish_polca:
     output:
         polca_output = temp("{sample}/polish/polca/{sample}_polca.fasta"),
         polypolish_sam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.unSorted.sam"),
-        polypolish_bam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.alignSorted.bam")
+        polypolish_bam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.alignSorted.bam"),
+        read_mapping_files= temp(expand("{{sample}}/polish/polca/{{sample}}_polypolish.fasta.bwa.{ext}",
+            ext=read_mapping_file_extensions))
     conda:
         "../envs/masurca.yaml"
     log:
@@ -188,7 +192,9 @@ if (POLISH_WITH_SHORT_READS == True) & \
         output:
             mapping=temp("{sample}/polish/cov_filter/{sample}_short_read.bam"),
             mapping_index=temp("{sample}/polish/cov_filter/{sample}_short_read.bam.bai"),
-            coverage="{sample}/polish/cov_filter/{sample}_short_read_coverage.tsv"
+            coverage="{sample}/polish/cov_filter/{sample}_short_read_coverage.tsv",
+            read_mapping_files= temp(expand("{{sample}}/polish/cov_filter/{{sample}}_pre_filtered.fasta.{ext}", 
+                ext=read_mapping_file_extensions))
         conda:
             "../envs/mapping.yaml"
         log:
@@ -221,7 +227,9 @@ if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_
         output:
             mapping=temp("{sample}/polish/cov_filter/{sample}_long_read.bam"),
             mapping_index=temp("{sample}/polish/cov_filter/{sample}_long_read.bam.bai"),
-            coverage="{sample}/polish/cov_filter/{sample}_long_read_coverage.tsv"
+            coverage="{sample}/polish/cov_filter/{sample}_long_read_coverage.tsv",
+            read_mapping_files= temp(expand("{{sample}}/polish/cov_filter/{{sample}}_pre_filtered.fasta.{ext}",
+                ext=read_mapping_file_extensions))
         conda:
             "../envs/mapping.yaml"
         log:
