@@ -154,9 +154,7 @@ rule run_dfast:
     output:
         dfast_genome="{sample}/annotation/dfast/{sample}_genome.fna",
         dfast_proteins="{sample}/annotation/dfast/{sample}_protein.faa",
-        outdir=directory("{sample}/annotation/dfast"),
-        read_mapping_files= temp(expand("{{sample}}/annotation/dfast/{{sample}}_genome.fna.{ext}",
-            ext=read_mapping_file_extensions)) # Variable declared in polish.smk
+        outdir=directory("{sample}/annotation/dfast")
     conda:
         "../envs/annotation_dfast.yaml"
     log:
@@ -285,7 +283,9 @@ if POLISH_WITH_SHORT_READS == True:
         output:
             mapping=temp("{sample}/annotation/coverage/{sample}_short_read.bam"),
             index=temp("{sample}/annotation/coverage/{sample}_short_read.bam.bai"),
-            coverage="{sample}/annotation/coverage/{sample}_short_read_coverage.tsv"
+            coverage="{sample}/annotation/coverage/{sample}_short_read_coverage.tsv",
+            read_mapping_files= temp(expand("{{sample}}/annotation/dfast/{{sample}}_genome.fna.{ext}",
+                ext=read_mapping_file_extensions)) # Variable declared in polish.smk
         conda:
             "../envs/mapping.yaml"
         log:

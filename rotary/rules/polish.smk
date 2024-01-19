@@ -73,10 +73,11 @@ rule prepare_polypolish_polish_input:
     input:
         "{sample}/polish/medaka/{sample}_consensus.fasta"
     output:
-        temp("{sample}/polish/polypolish/input/{sample}_input.fasta"),
+        output_fasta=temp("{sample}/polish/polypolish/input/{sample}_input.fasta"),
+        long_read_map=temp("{sample}/assembly/end_repair/{sample}_repaired.fasta.map-ont.mmi")
     run:
-        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
-        os.symlink(source_relpath,str(output))
+        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output.output_fasta)))
+        os.symlink(source_relpath,str(output.output_fasta))
 
 
 read_mapping_file_extensions = ['amb', 'ann', 'bwt', 'pac', 'sa']
