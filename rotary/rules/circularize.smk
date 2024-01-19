@@ -62,7 +62,7 @@ rule get_polished_contigs:
         contigs="{sample}/polish/{sample}_polish.fasta",
         list="{sample}/circularize/filter/lists/{status}.list"
     output:
-        "{sample}/circularize/filter/{sample}_{status}.fasta"
+        temp("{sample}/circularize/filter/{sample}_{status}.fasta")
     conda:
         "../envs/mapping.yaml"
     shell:
@@ -197,7 +197,8 @@ rule run_circlator:
         start_gene="{sample}/circularize/identify/{sample}_start_gene.ffn"
     output:
         rotated="{sample}/circularize/circlator/{sample}_rotated.fasta",
-        circlator_dir=directory('{sample}/circularize/circlator')
+        circlator_dir=directory('{sample}/circularize/circlator'),
+        contigs_with_ends=temp('{sample}/circularize/circlator/rotated.promer.contigs_with_ends.fa')
     conda:
         "../envs/circlator.yaml"
     log:

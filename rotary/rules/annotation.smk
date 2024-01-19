@@ -154,7 +154,9 @@ rule run_dfast:
     output:
         dfast_genome="{sample}/annotation/dfast/{sample}_genome.fna",
         dfast_proteins="{sample}/annotation/dfast/{sample}_protein.faa",
-        outdir=directory("{sample}/annotation/dfast")
+        outdir=directory("{sample}/annotation/dfast"),
+        read_mapping_files= temp(expand("{{sample}}/annotation/dfast/{{sample}}_genome.fna.{ext}",
+            ext=read_mapping_file_extensions)) # Variable declared in polish.smk
     conda:
         "../envs/annotation_dfast.yaml"
     log:

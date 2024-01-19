@@ -51,6 +51,7 @@ rule assembly_end_repair:
         assembly="{sample}/assembly/end_repair/{sample}_repaired.fasta",
         info="{sample}/assembly/end_repair/{sample}_repaired_info.tsv",
         output_dir=directory("{sample}/assembly/end_repair"),
+        long_read_map=temp("{sample}/assembly/end_repair/{sample}_repaired.fasta.map-ont.mmi")
     log:
         "{sample}/logs/assembly/end_repair.log"
     benchmark:
