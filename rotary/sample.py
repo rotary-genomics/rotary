@@ -200,6 +200,13 @@ def file_is_gzipped(file_path):
 
 
 def find_samples_in_fastq_directory(input_path):
+    """
+    Find samples in a directory containing fastq files.
+
+    :param input_path: Path to the directory containing fastq files.
+    :return: A list of sample objects representing the samples found in the directory.
+    :raises ValueError: If a sample does not have exactly three sequencing files.
+    """
     fastq_files = get_fastq_files_in_directory(input_path)
 
     samples_files = {}
@@ -232,6 +239,12 @@ def find_samples_in_fastq_directory(input_path):
 
 
 def get_fastq_files_in_directory(input_path):
+    """
+    Get a list of fastq files in a given directory.
+
+    :param input_path: The path to the directory containing the fastq files.
+    :return: A list of SequencingFile objects representing the fastq files.
+    """
     fastq_files = []
     for file_path in os.listdir(input_path):
         filename = os.path.basename(file_path)
