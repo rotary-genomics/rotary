@@ -8,13 +8,14 @@ Description: A command-line interface for the Rotary hybrid assembly workflow.
 import argparse
 import os
 
-from rotary.run import setup_run_directory, run_rotary_workflow, load_yaml_config, get_snakemake_args
+from rotary.run import setup_run_directory, run_snakemake_workflow, load_yaml_config, get_snakemake_args
 from rotary.sample import SequencingFile, Sample, create_sample_tsv, find_samples_in_fastq_directory
 from rotary.utils import get_cli_arg_path, get_cli_arg, check_for_files
 
 rotary_config_name = 'config.yaml'
 run_files = [rotary_config_name, 'samples.tsv']
 
+snake_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rules', 'rotary.smk')
 
 def main():
     """
@@ -65,8 +66,8 @@ def run(args):
     conda_env_directory = os.path.join(config['db_dir'], 'rotary_conda_env')
     os.makedirs(conda_env_directory, exist_ok=True)
 
-    run_rotary_workflow(config_path=config_path, output_dir_path=output_dir_path, jobs=jobs,
-                        conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
+    run_snakemake_workflow(config_path=config_path, snake_file_path=snake_file_path, output_dir_path=output_dir_path, jobs=jobs,
+                           conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
 
 
 def run_one(args):
@@ -94,8 +95,8 @@ def run_one(args):
 
     create_sample_tsv(output_dir_path, [sample])
 
-    run_rotary_workflow(config_path=config_path, output_dir_path=output_dir_path, jobs=jobs,
-                        conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
+    run_snakemake_workflow(config_path=config_path, snake_file_path=snake_file_path, output_dir_path=output_dir_path, jobs=jobs,
+                           conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
 
 
 def init(args):

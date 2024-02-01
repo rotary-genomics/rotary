@@ -18,12 +18,24 @@ yaml = YAML()
 
 
 def load_yaml_config(config_path):
+    """
+    Load YAML configuration file.
+
+    :param config_path: The path to the YAML configuration file.
+    :return: A ruamel.yaml object with the configuration data.
+    """
     with open(config_path) as config_file:
         config = yaml.load(config_file)
     return config
 
 
 def dump_yaml_config(config, output_config_path):
+    """
+    Dumps the given configuration dictionary into a YAML file.
+
+    :param config: A ruamel.yaml object containing the configuration data to be dumped into YAML format.
+    :param output_config_path: The path of the output YAML file.
+    """
     with open(output_config_path, 'w') as file:
         yaml.dump(config, file)
 
@@ -82,17 +94,18 @@ def modify_config_with_available_computational_resources(config):
     return config
 
 
-def run_rotary_workflow(config_path, output_dir_path, conda_env_directory, jobs=None, snakemake_custom_args=None):
+def run_snakemake_workflow(config_path, snake_file_path, output_dir_path, conda_env_directory, jobs=None,
+                           snakemake_custom_args=None):
     """
-    Run the rotary snakemake workflow.
+    Run a workflow using Snakemake.
 
-    :param conda_env_directory: Path to the conda environment directory.
+    :param config_path: Path to the configuration file.
+    :param snake_file_path: Path to the Snakefile.
     :param output_dir_path: Path to the output directory.
-    :param config_path: The path to the config file.
-    :param jobs: The number of system CPU cores to use.
-    :param snakemake_custom_args: Custom CLI args to be passed to snakemake.
+    :param conda_env_directory: Path to the Conda environment directory.
+    :param jobs: Number of parallel jobs to run (default is the number of CPU cores).
+    :param snakemake_custom_args: Additional Snakemake command-line arguments.
     """
-    snake_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rules', 'rotary.smk')
 
     snakemake_args = ['snakemake', '--snakefile', snake_file_path, '--configfile', config_path, '--directory',
                       output_dir_path, '--conda-prefix', conda_env_directory, '--conda-frontend',
