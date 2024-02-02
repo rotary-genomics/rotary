@@ -14,7 +14,7 @@ short_read_r_regex = re.compile("[Rr][12]")
 
 class SequencingFile(object):
     """
-    An object representing a FASTQ file.
+    An object representing a single FASTQ sequencing file.
     """
 
     def __init__(self, file_path):
@@ -27,7 +27,7 @@ class SequencingFile(object):
         if '_' in self.name:
             identifier, remaining = self.name.split('_', 1)  # Split on first _ if found.
         else:
-            identifier, remaining = self.name.split('.', 1)  # Split on the file extension . if _ not found.
+            identifier, remaining = self.name.split('.', 1)  # Split on the file extension. if _ not found.
 
         self.identifier = identifier
 
@@ -35,83 +35,177 @@ class SequencingFile(object):
         r_value = short_read_r_regex.findall(remaining)
         if r_value:
             self.r_value = r_value[0].upper()
-            self.short = True
+            self.paired = True
+            if self.r_value == 'R1':
+                self.contains_left_reads = True
+                self.contains_right_reads = False
+            else:
+                self.contains_left_reads = False
+                self.contains_right_reads = True
         else:
             self.r_value = None
-            self.short = False
+            self.paired = False
+
+
+class SequencingFilePair(object):
+    """
+    An object representing a set of paired end FASTQ sequencing files.
+    """
+    def __init__(self, file_one: SequencingFile, file_two: SequencingFile):
+        if file_one.contains_left_reads:
+            self.short_read_file_left = file_one
+            self.short_read_file_right = file_two
+        else:
+            self.short_read_file_left = file_two
+            self.short_read_file_right = file_one
+
+    def check_integrity(self):
+        """
+        Check the integrity of the short read files.
+
+        :raises ValueError: if the short read files have different R designators.
+        """
+
+        short_file_left = self.short_read_file_left
+        short_file_right = self.short_read_file_right
+        if not short_file_left.paired or not short_file_right.paired:
+            raise ValueError(
+                f"Short-read file '{short_file_left.path}' or '{short_file_right.path}' is missing its R designator.")
+
+        # The short read files should not have the same R1 or R2.
+        if short_file_left.r_value == short_file_right.r_value:
+            raise ValueError(
+                f'Left ({short_file_left.path}) and right ({short_file_right.path}) short-read files must have different R designators.')
 
 
 class Sample(object):
     """
-    An object representing a series of FASTQ files that all belong to the same sample.
+    An object representing a series of sequencing files representing a single sample.
     """
-
-    def __init__(self, long_file: SequencingFile, short_file_one: SequencingFile, short_file_two: SequencingFile,
-                 integrity_check: bool = True):
-
-        if integrity_check:
-            self.assign_variables_with_integrity_check(long_file, short_file_one, short_file_two)
-        else:
-            self.identifier = long_file.identifier
-            self.long_read_path = long_file.path
-            self.short_read_left_path = short_file_one.path
-            self.short_read_right_path = short_file_two.path
-
-    def assign_variables_with_integrity_check(self, long_file, short_file_one, short_file_two):
-        """
-        Builds the sample object with integrity checks to ensure the proper files are mapping to a singel sample.
-
-        :param long_file: A SequencingFile object representing the long read file.
-        :param short_file_one: A SequencingFile object representing the first short read file.
-        :param short_file_two: A SequencingFile object representing the second short read file.
-        """
-        sequencing_files = [long_file, short_file_one, short_file_two]
-        identifiers = [file.identifier for file in sequencing_files]
-
-        # Check for R1 or R2 in the file names with identifier removed.
-        r_matches = [file.r_value for file in sequencing_files]
-        long_r_value, short_one_r_value, short_two_r_value = r_matches
-
-        long_path = long_file.path
-        short_path_one = short_file_one.path
-        short_path_two = short_file_two.path
-
-        # The identifiers should all be the same. If not raise and exception.
-        if len(set(identifiers)) == 1:
-            self.identifier = identifiers[0]
-        else:
-            raise ValueError(f'Sample identifiers of the input fastq files do not match: {identifiers}')
-
-        # The long read file should not have a R1 or R2.
-        if not long_r_value:
-            self.long_read_path = long_path
-        else:
-            raise ValueError(f"The long-read file ({long_path}) should not have an R designator.")
-
-        # The short read files should both have R1s or R2s.
-        if not short_one_r_value or not short_two_r_value:
-            raise ValueError(f"Short-read file '{short_path_one}' or '{short_path_two}' is missing its R designator.")
-
-        # The short read files should not have the same R1 or R2.
-        if short_one_r_value == short_two_r_value:
-            raise ValueError(
-                f'Left ({short_path_one}) and right ({short_path_two}) short-read files must have different R designators.')
-
-        # Assign the file with R1 to the left file path and the file with R2 to the right filepath.
-        if short_one_r_value == 'R1':
-            self.short_read_left_path = short_path_one
-            self.short_read_right_path = short_path_two
-        else:
-            self.short_read_left_path = short_path_two
-            self.short_read_right_path = short_path_one
+    def __init__(self, *files):
+        self.files = files
 
     @property
-    def sample_file_row(self):
+    def sample_file_paths(self):
         """
-        :return: Returns a list containing the sample identifier and the paths to sample's the input files.
-        """
-        return [self.identifier, self.long_read_path, self.short_read_left_path, self.short_read_right_path]
+        Returns a list containing the paths of the files.
 
+        :return: A list of strings representing the paths of the files.
+        """
+        return [file.path for file in self.files]
+
+    @property
+    def identifier(self):
+        """
+        Checks the first file to get the sample's identifier.
+
+        :return: The sample's identifier.
+        """
+        return self.files[0].identifier
+
+    def check_file_identifiers_match(self):
+        """
+        Check if the sample identifiers of the input FASTQ files match.
+
+        :raises ValueError: If the sample identifiers do not match.
+        """
+        identifiers = [file.identifier for file in self.files]
+        if not len(set(identifiers)) == 1:
+            raise ValueError(f'Sample identifiers of the input fastq files do not match: {identifiers}')
+
+class ShortReadSample(Sample):
+    """
+    An object representing a pair of short read sequencing files representing a single sample.
+    """
+    def __init__(self, short_file_one: SequencingFile, short_file_two: SequencingFile, identifier_check: bool = True,
+                 integrity_check: bool = True):
+
+        self.short_read_pair = SequencingFilePair(short_file_one, short_file_two)
+
+        if identifier_check:
+            self.check_file_identifiers_match()
+
+        if integrity_check:
+            self.check_short_integrity()
+
+        self.short_read_file_left = self.short_read_pair.short_read_file_left
+        self.short_read_file_right = self.short_read_pair.short_read_file_right
+
+        super().__init__(self.short_read_file_left, self.short_read_file_right)
+
+    def check_short_integrity(self):
+        """
+        Check the integrity of the short read pair.
+        """
+        self.short_read_pair.check_integrity()
+
+    @property
+    def short_read_left_path(self):
+        """
+        Returns the path of the left short read file.
+
+        :return: The path of the left short read file.
+        """
+        return self.short_read_file_left.path
+
+    @property
+    def short_read_right_path(self):
+        """
+        Returns the path of the short read file on the right side.
+
+        :return: The path of the short read file on the right side.
+        """
+        return self.short_read_file_right.path
+
+class LongReadSample(Sample):
+    def __init__(self, long_read_file: SequencingFile, integrity_check: bool = True):
+        self.long_read_file = long_read_file
+
+        if integrity_check:
+            self.check_long_integrity()
+
+        super().__init__(self.long_read_file)
+
+    @property
+    def long_read_path(self):
+        """
+        Return the path of the long read file.
+
+        :return: The path of the long read file.
+        """
+        return self.long_read_file.path
+
+    def check_long_integrity(self):
+        """
+        Check the integrity of the long-read file.
+
+        :raises ValueError: If the long-read file has an R designator (R1 or R2) in its name.
+        """
+        if self.long_read_file.r_value:
+            raise ValueError(f"The long-read file ({self.long_read_file.path}) should not have an R designator.")
+
+
+class LongReadSampleWithPairedPolishingShortReads(Sample, LongReadSample, ShortReadSample):
+    """
+    An object representing a long read sequence with paired short reads for polishing.
+    """
+    def __init__(self, long_file: SequencingFile, short_file_left: SequencingFile, short_file_right: SequencingFile,
+                 identifier_check: bool = True, integrity_check: bool = True):
+
+        self.long_read_file = long_file
+        self.short_read_pair = SequencingFilePair(short_file_left, short_file_right)
+        self.short_read_file_left = self.short_read_pair.short_read_file_left
+        self.short_read_file_right = self.short_read_pair.short_read_file_right
+
+        if identifier_check:
+            self.check_sample_file_identifiers_match()
+
+        if integrity_check:
+            self.check_long_integrity() # Checks the long read file is not paired.
+            self.check_short_integrity() # Checks the integrity of the short read files (they are paired and opposites)
+
+        super().__init__(self.long_read_file, self.short_read_file_left,
+                         self.short_read_file_right)
 
 def is_fastq_file(file_name):
     """
@@ -129,30 +223,47 @@ def is_fastq_file(file_name):
     return is_fastq
 
 
-def make_sample_from_sample_tsv_row(row, integrity_check=False):
+def make_sample_from_sample_tsv_row(row, identifier_check=False, integrity_check=False, first_meta_column_position=None):
     """
     Parses a row from a sample TSV file and returns a Sample object.
 
+    :param identifier_check: Check if the sample identifiers of the input FASTQ files match.
+    :param first_meta_column_position: The column number where metadata starts.
     :param row: A row from a sample tsv file as parsed by the CSV module.
     :param integrity_check: Perform checking that ensures that each sample object maps to
                             files that are all from the same physical sample.
     :return: A Sample object representing the row.
     """
     sample_identifier = row[0]
-    long = SequencingFile(file_path=(row[1]))
-    short_left = SequencingFile(file_path=(row[2]))
-    short_right = SequencingFile(file_path=(row[3]))
+    if first_meta_column_position:
+        sample_paths = row[1:first_meta_column_position]
+    else:
+        sample_paths = row[1:]
 
-    sample = Sample(long, short_left, short_right, integrity_check=integrity_check)
+    sequencing_files = [SequencingFile(file_path=path) for path in sample_paths if path]
+
+    if len(sequencing_files) == 1:
+        sample = LongReadSample(sequencing_files[0], integrity_check=integrity_check)
+    elif len(sample_paths) == 2:
+        sample = ShortReadSample(sequencing_files[0], sequencing_files[1], identifier_check=identifier_check,
+                                 integrity_check=integrity_check)
+    elif len(sample_paths) == 3:
+        sample = LongReadSampleWithPairedPolishingShortReads(sequencing_files[0], sequencing_files[1],
+                                                             sequencing_files[2], identifier_check=identifier_check,
+                                                             integrity_check=integrity_check)
+    else:
+        raise ValueError("Invalid number of sequencing files for the sample.")
+
     sample.identifier = sample_identifier
 
     return sample
 
 
-def parse_sample_tsv(sample_tsv_path, integrity_check=False):
+def parse_sample_tsv(sample_tsv_path, identifier_check=False, integrity_check=False):
     """
     Parses a sample tsv file and returns a dictionary of sample objects representing each sample.
 
+    :param identifier_check: Check if the sample identifiers of the input FASTQ files match.
     :param sample_tsv_path: The path to the sample TSV file.
     :param integrity_check: Perform checking that ensures that the sample object maps
                             files that are all from the same physical sample.
@@ -163,27 +274,31 @@ def parse_sample_tsv(sample_tsv_path, integrity_check=False):
         tsv_reader = csv.reader(sample_file, delimiter="\t")
         next(tsv_reader)  # Skip header row.
         for row in tsv_reader:
-            sample = make_sample_from_sample_tsv_row(row, integrity_check=integrity_check)
+            sample = make_sample_from_sample_tsv_row(row, identifier_check=identifier_check,
+                                                     integrity_check=integrity_check)
             sample_dict[sample.identifier] = sample
 
     return sample_dict
 
 
-def create_sample_tsv(output_dir_path, samples):
+def create_sample_tsv(output_dir_path, samples, header):
     """
     Generates a TSV file in the output directory with a series of CLI paths for files belonging to each sample.
-
+    :param header: The header to use in the sample TSV
     :param output_dir_path: The path to the output Rotary directory.
     :param samples: A list of Sample objects.
     """
     sample_tsv_path = os.path.join(output_dir_path, 'samples.tsv')
     with open(sample_tsv_path, 'w') as tsv_file:
         tsv_writer = csv.writer(tsv_file, delimiter='\t')
-        header = ['sample_id', 'long-read', 'short-read_R1', 'short-read_R2']
         tsv_writer.writerow(header)
         for current_sample in samples:
-            tsv_writer.writerow(current_sample.sample_file_row)
-
+            # Ensure that each row has the same number of fields as the header
+            row = current_sample.sample_file_paths
+            if len(row) < len(header):
+                # Add empty fields to match the length of the header
+                row += [''] * (len(header) - len(row))
+            tsv_writer.writerow(row)
     return sample_tsv_path
 
 

@@ -93,7 +93,7 @@ def run_one(args):
                     short_file_two=sequencing_files[2],
                     integrity_check=False)  # Don't do integrity check on user-specified files.
 
-    create_sample_tsv(output_dir_path, [sample])
+    create_sample_tsv(output_dir_path, [sample], ['sample_id', 'long-read', 'short-read_R1', 'short-read_R2'])
 
     run_snakemake_workflow(config_path=config_path, snake_file_path=snake_file_path, output_dir_path=output_dir_path, jobs=jobs,
                            conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
@@ -111,7 +111,8 @@ def init(args):
     setup_run_directory(args, output_dir_path, run_files)
 
     input_path = get_cli_arg_path(args, 'input_dir')
-    create_sample_tsv(output_dir_path, find_samples_in_fastq_directory(input_path))
+    create_sample_tsv(output_dir_path, find_samples_in_fastq_directory(input_path),
+                      ['sample_id', 'long-read', 'short-read_R1', 'short-read_R2'])
 
 
 def parse_cli():
