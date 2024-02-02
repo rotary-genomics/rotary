@@ -43,6 +43,8 @@ class SequencingFile(object):
                 self.contains_left_reads = False
                 self.contains_right_reads = True
         else:
+            self.contains_left_reads = False
+            self.contains_right_reads = False
             self.r_value = None
             self.paired = False
 
@@ -51,6 +53,7 @@ class SequencingFilePair(object):
     """
     An object representing a set of paired end FASTQ sequencing files.
     """
+
     def __init__(self, file_one: SequencingFile, file_two: SequencingFile):
         if file_one.contains_left_reads:
             self.short_read_file_left = file_one
@@ -77,11 +80,14 @@ class SequencingFilePair(object):
             raise ValueError(
                 f'Left ({short_file_left.path}) and right ({short_file_right.path}) short-read files must have different R designators.')
 
+        return True
+
 
 class Sample(object):
     """
     An object representing a series of sequencing files representing a single sample.
     """
+
     def __init__(self, *files):
         self.files = files
 
@@ -112,26 +118,30 @@ class Sample(object):
         identifiers = [file.identifier for file in self.files]
         if not len(set(identifiers)) == 1:
             raise ValueError(f'Sample identifiers of the input fastq files do not match: {identifiers}')
+        else:
+            return True
+
 
 class ShortReadSample(Sample):
     """
     An object representing a pair of short read sequencing files representing a single sample.
     """
+
     def __init__(self, short_file_one: SequencingFile, short_file_two: SequencingFile, identifier_check: bool = True,
                  integrity_check: bool = True):
 
         self.short_read_pair = SequencingFilePair(short_file_one, short_file_two)
+
+        self.short_read_file_left = self.short_read_pair.short_read_file_left
+        self.short_read_file_right = self.short_read_pair.short_read_file_right
+
+        super().__init__(self.short_read_file_left, self.short_read_file_right)
 
         if identifier_check:
             self.check_file_identifiers_match()
 
         if integrity_check:
             self.check_short_integrity()
-
-        self.short_read_file_left = self.short_read_pair.short_read_file_left
-        self.short_read_file_right = self.short_read_pair.short_read_file_right
-
-        super().__init__(self.short_read_file_left, self.short_read_file_right)
 
     def check_short_integrity(self):
         """
@@ -157,14 +167,15 @@ class ShortReadSample(Sample):
         """
         return self.short_read_file_right.path
 
+
 class LongReadSample(Sample):
     def __init__(self, long_read_file: SequencingFile, integrity_check: bool = True):
         self.long_read_file = long_read_file
 
+        super().__init__(self.long_read_file)
+
         if integrity_check:
             self.check_long_integrity()
-
-        super().__init__(self.long_read_file)
 
     @property
     def long_read_path(self):
@@ -183,12 +194,17 @@ class LongReadSample(Sample):
         """
         if self.long_read_file.r_value:
             raise ValueError(f"The long-read file ({self.long_read_file.path}) should not have an R designator.")
+        else:
+            return True
 
 
-class LongReadSampleWithPairedPolishingShortReads(Sample, LongReadSample, ShortReadSample):
+class LongReadSampleWithPairedPolishingShortReads(LongReadSample, ShortReadSample):
     """
     An object representing a long read sequence with paired short reads for polishing.
+
+    We use multiple inheritance here to combine the attributes and methods of both LongReadSample and ShortReadSample.
     """
+
     def __init__(self, long_file: SequencingFile, short_file_left: SequencingFile, short_file_right: SequencingFile,
                  identifier_check: bool = True, integrity_check: bool = True):
 
@@ -197,15 +213,15 @@ class LongReadSampleWithPairedPolishingShortReads(Sample, LongReadSample, ShortR
         self.short_read_file_left = self.short_read_pair.short_read_file_left
         self.short_read_file_right = self.short_read_pair.short_read_file_right
 
+        self.files = [self.long_read_file, self.short_read_file_left, self.short_read_file_right]
+
         if identifier_check:
-            self.check_sample_file_identifiers_match()
+            self.check_file_identifiers_match() # Checks that all the file identifiers match.
 
         if integrity_check:
-            self.check_long_integrity() # Checks the long read file is not paired.
-            self.check_short_integrity() # Checks the integrity of the short read files (they are paired and opposites)
+            self.check_long_integrity()  # Checks the long read file is not paired.
+            self.check_short_integrity()  # Checks the integrity of the short read files (they are paired and opposites)
 
-        super().__init__(self.long_read_file, self.short_read_file_left,
-                         self.short_read_file_right)
 
 def is_fastq_file(file_name):
     """
@@ -223,7 +239,8 @@ def is_fastq_file(file_name):
     return is_fastq
 
 
-def make_sample_from_sample_tsv_row(row, identifier_check=False, integrity_check=False, first_meta_column_position=None):
+def make_sample_from_sample_tsv_row(row, identifier_check=False, integrity_check=False,
+                                    first_meta_column_position=None):
     """
     Parses a row from a sample TSV file and returns a Sample object.
 
