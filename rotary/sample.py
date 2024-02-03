@@ -5,9 +5,10 @@ Created by: Lee Bergstrand (2023)
 
 Description: Classes and methods for representing Rotary sampling files.
 """
-import csv
 import os
 import re
+
+from rotary.utils import is_fastq_file
 
 short_read_r_regex = re.compile("[Rr][12]")
 
@@ -48,6 +49,16 @@ class SequencingFile(object):
             self.r_value = None
             self.paired = False
 
+    def __repr__(self):
+        """
+        Give a useful string representation of this object
+        """
+        return (f'SequencingFile(path={self.path!r}, name={self.name!r}, '
+                f'identifier={self.identifier!r}, paired={self.paired!r}, '
+                f'contains_left_reads={self.contains_left_reads!r}, '
+                f'contains_right_reads={self.contains_right_reads!r}, '
+                f'r_value={self.r_value!r})')
+
 
 class SequencingFilePair(object):
     """
@@ -61,6 +72,13 @@ class SequencingFilePair(object):
         else:
             self.short_read_file_left = file_two
             self.short_read_file_right = file_one
+
+    def __repr__(self):
+        """
+        Give a useful string representation of this object
+        """
+        return (f'SequencingFilePair(short_read_file_left={self.short_read_file_left!r}, '
+                f'short_read_file_right={self.short_read_file_right!r})')
 
     def check_integrity(self):
         """
@@ -78,7 +96,8 @@ class SequencingFilePair(object):
         # The short read files should not have the same R1 or R2.
         if short_file_left.r_value == short_file_right.r_value:
             raise ValueError(
-                f'Left ({short_file_left.path}) and right ({short_file_right.path}) short-read files must have different R designators.')
+                f'Left ({short_file_left.path}) and right ({short_file_right.path}) '
+                f'short-read files must have different R designators.')
 
         return True
 
@@ -90,6 +109,9 @@ class Sample(object):
 
     def __init__(self, *files):
         self.files = files
+
+    def __repr__(self):
+        return f"Sample(identifier={self.identifier}, file_paths={self.sample_file_paths})"
 
     @property
     def sample_file_paths(self):
@@ -108,6 +130,15 @@ class Sample(object):
         :return: The sample's identifier.
         """
         return self.files[0].identifier
+
+    @identifier.setter
+    def identifier(self, new_identifier):
+        """
+        Sets a new identifier for all the files.
+        This should be used with care as it modifies the original SequencingFile objects.
+        """
+        for file in self.files:
+            file.identifier = new_identifier
 
     def check_file_identifiers_match(self):
         """
@@ -143,6 +174,10 @@ class ShortReadSample(Sample):
         if integrity_check:
             self.check_short_integrity()
 
+    def __repr__(self):
+        return (f"ShortReadSample(identifier={self.identifier}, short_read_left_path={self.short_read_left_path}, "
+                f"short_read_right_path={self.short_read_right_path})")
+
     def check_short_integrity(self):
         """
         Check the integrity of the short read pair.
@@ -176,6 +211,9 @@ class LongReadSample(Sample):
 
         if integrity_check:
             self.check_long_integrity()
+
+    def __repr__(self):
+        return f"LongReadSample(identifier={self.identifier}, long_read_path={self.long_read_path})"
 
     @property
     def long_read_path(self):
@@ -216,158 +254,47 @@ class LongReadSampleWithPairedPolishingShortReads(LongReadSample, ShortReadSampl
         self.files = [self.long_read_file, self.short_read_file_left, self.short_read_file_right]
 
         if identifier_check:
-            self.check_file_identifiers_match() # Checks that all the file identifiers match.
+            self.check_file_identifiers_match()  # Checks that all the file identifiers match.
 
         if integrity_check:
             self.check_long_integrity()  # Checks the long read file is not paired.
             self.check_short_integrity()  # Checks the integrity of the short read files (they are paired and opposites)
 
+    def __repr__(self):
+        return (f"LongReadSampleWithPairedPolishingShortReads(identifier={self.identifier}, "
+                f"long_read_path={self.long_read_path}, short_read_left_path={self.short_read_left_path}, "
+                f"short_read_right_path={self.short_read_right_path})")
 
-def is_fastq_file(file_name):
+
+def auto_create_sample_from_files(*sequencing_files, identifier_check=False, integrity_check=False):
     """
-    Determines if file is a fastq file based in its extension.
-    :param file_name: The name of the file.
-    :return: True if the file contains 'fastq' or 'fq'.
+    This method automatically creates a sample object based on the provided sequencing files.
+    The number of sequencing files determines the type of sample object created.
+
+    :param sequencing_files: List of sequencing files.
+    :param identifier_check: Boolean value indicating whether to perform an identifier check.
+    :param integrity_check: Boolean value indicating whether to perform an integrity check.
+    :return: A sample object created from the sequencing files.
+
+    - If there is only one sequencing file, a LongReadSample object is created.
+    - If there are two sequencing files, a ShortReadSample object is created.
+    - If there are three sequencing files, a LongReadSampleWithPairedPolishingShortReads object is created.
+
+    If the number of sequencing files is not 1, 2, or 3, a ValueError is raised.
+
+    Example usage:
+
+    auto_create_sample_from_files(file1, file2, identifier_check=True, integrity_check=False)
     """
-    file_extension = file_name.split(os.path.extsep, 1)[1]
-
-    if 'fastq' in file_extension or 'fq' in file_extension:
-        is_fastq = True
-    else:
-        is_fastq = False
-
-    return is_fastq
-
-
-def make_sample_from_sample_tsv_row(row, identifier_check=False, integrity_check=False,
-                                    first_meta_column_position=None):
-    """
-    Parses a row from a sample TSV file and returns a Sample object.
-
-    :param identifier_check: Check if the sample identifiers of the input FASTQ files match.
-    :param first_meta_column_position: The column number where metadata starts.
-    :param row: A row from a sample tsv file as parsed by the CSV module.
-    :param integrity_check: Perform checking that ensures that each sample object maps to
-                            files that are all from the same physical sample.
-    :return: A Sample object representing the row.
-    """
-    sample_identifier = row[0]
-    if first_meta_column_position:
-        sample_paths = row[1:first_meta_column_position]
-    else:
-        sample_paths = row[1:]
-
-    sequencing_files = [SequencingFile(file_path=path) for path in sample_paths if path]
-
     if len(sequencing_files) == 1:
         sample = LongReadSample(sequencing_files[0], integrity_check=integrity_check)
-    elif len(sample_paths) == 2:
+    elif len(sequencing_files) == 2:
         sample = ShortReadSample(sequencing_files[0], sequencing_files[1], identifier_check=identifier_check,
                                  integrity_check=integrity_check)
-    elif len(sample_paths) == 3:
+    elif len(sequencing_files) == 3:
         sample = LongReadSampleWithPairedPolishingShortReads(sequencing_files[0], sequencing_files[1],
                                                              sequencing_files[2], identifier_check=identifier_check,
                                                              integrity_check=integrity_check)
     else:
         raise ValueError("Invalid number of sequencing files for the sample.")
-
-    sample.identifier = sample_identifier
-
     return sample
-
-
-def parse_sample_tsv(sample_tsv_path, identifier_check=False, integrity_check=False):
-    """
-    Parses a sample tsv file and returns a dictionary of sample objects representing each sample.
-
-    :param identifier_check: Check if the sample identifiers of the input FASTQ files match.
-    :param sample_tsv_path: The path to the sample TSV file.
-    :param integrity_check: Perform checking that ensures that the sample object maps
-                            files that are all from the same physical sample.
-    :return: A dictionary of all the sample identifiers mapped to sample objects.
-    """
-    sample_dict = {}
-    with open(sample_tsv_path) as sample_file:
-        tsv_reader = csv.reader(sample_file, delimiter="\t")
-        next(tsv_reader)  # Skip header row.
-        for row in tsv_reader:
-            sample = make_sample_from_sample_tsv_row(row, identifier_check=identifier_check,
-                                                     integrity_check=integrity_check)
-            sample_dict[sample.identifier] = sample
-
-    return sample_dict
-
-
-def create_sample_tsv(output_dir_path, samples, header):
-    """
-    Generates a TSV file in the output directory with a series of CLI paths for files belonging to each sample.
-    :param header: The header to use in the sample TSV
-    :param output_dir_path: The path to the output Rotary directory.
-    :param samples: A list of Sample objects.
-    """
-    sample_tsv_path = os.path.join(output_dir_path, 'samples.tsv')
-    with open(sample_tsv_path, 'w') as tsv_file:
-        tsv_writer = csv.writer(tsv_file, delimiter='\t')
-        tsv_writer.writerow(header)
-        for current_sample in samples:
-            # Ensure that each row has the same number of fields as the header
-            row = current_sample.sample_file_paths
-            if len(row) < len(header):
-                # Add empty fields to match the length of the header
-                row += [''] * (len(header) - len(row))
-            tsv_writer.writerow(row)
-    return sample_tsv_path
-
-
-def find_samples_in_fastq_directory(input_path):
-    """
-    Find samples in a directory containing fastq files.
-
-    :param input_path: Path to the directory containing fastq files.
-    :return: A list of sample objects representing the samples found in the directory.
-    :raises ValueError: If a sample does not have exactly three sequencing files.
-    """
-    fastq_files = get_fastq_files_in_directory(input_path)
-
-    samples_files = {}
-    for file in fastq_files:
-        identifier = file.identifier
-        if identifier in samples_files.keys():
-            samples_files[identifier].append(file)
-        else:
-            samples_files[identifier] = [file]
-
-    samples = []
-    for identifier, sequencing_files in samples_files.items():
-        if len(sequencing_files) != 3:
-            raise ValueError(f'Sample {identifier} should have three sequencing files')
-
-        long_file = None
-        left_short_file = None
-        right_short_file = None
-        for file in sequencing_files:
-            if file.r_value == 'R1':
-                left_short_file = file
-            elif file.r_value == 'R2':
-                right_short_file = file
-            else:
-                long_file = file
-
-        sample = Sample(long_file, left_short_file, right_short_file)
-        samples.append(sample)
-    return samples
-
-
-def get_fastq_files_in_directory(input_path):
-    """
-    Get a list of fastq files in a given directory.
-
-    :param input_path: The path to the directory containing the fastq files.
-    :return: A list of SequencingFile objects representing the fastq files.
-    """
-    fastq_files = []
-    for file_path in os.listdir(input_path):
-        filename = os.path.basename(file_path)
-        if is_fastq_file(filename):
-            fastq_files.append(SequencingFile(file_path=os.path.join(input_path, file_path)))
-    return fastq_files
