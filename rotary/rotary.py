@@ -8,14 +8,17 @@ Description: A command-line interface for the Rotary hybrid assembly workflow.
 import argparse
 import os
 
+from rotary.dataset import generate_dataset_from_fastq_directory, Dataset
 from rotary.run import setup_run_directory, run_snakemake_workflow, load_yaml_config, get_snakemake_args
-from rotary.sample import SequencingFile, Sample, create_sample_tsv, find_samples_in_fastq_directory
+from rotary.sample import SequencingFile, LongReadSampleWithPairedPolishingShortReads
 from rotary.utils import get_cli_arg_path, get_cli_arg, check_for_files
 
 rotary_config_name = 'config.yaml'
 run_files = [rotary_config_name, 'samples.tsv']
 
 snake_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rules', 'rotary.smk')
+
+sample_tsv_header_fields = ['sample_id', 'long-read', 'short-read_R1', 'short-read_R2']
 
 def main():
     """
@@ -66,8 +69,8 @@ def run(args):
     conda_env_directory = os.path.join(config['db_dir'], 'rotary_conda_env')
     os.makedirs(conda_env_directory, exist_ok=True)
 
-    run_snakemake_workflow(config_path=config_path, snake_file_path=snake_file_path, output_dir_path=output_dir_path, jobs=jobs,
-                           conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
+    run_snakemake_workflow(config_path=config_path, snake_file_path=snake_file_path, output_dir_path=output_dir_path,
+                           jobs=jobs, conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
 
 
 def run_one(args):
@@ -88,14 +91,17 @@ def run_one(args):
                                                           (get_cli_arg_path(args, 'left')),
                                                           (get_cli_arg_path(args, 'right'))]]
 
-    sample = Sample(long_file=sequencing_files[0],
-                    short_file_one=sequencing_files[1],
-                    short_file_two=sequencing_files[2],
-                    integrity_check=False)  # Don't do integrity check on user-specified files.
+    sample = LongReadSampleWithPairedPolishingShortReads(long_file=sequencing_files[0],
+                                                         short_file_left=sequencing_files[1],
+                                                         short_file_right=sequencing_files[2],
+                                                         integrity_check=False)  # Don't do integrity check on user-specified files.
 
-    create_sample_tsv(output_dir_path, [sample])
+    dataset = Dataset(sample)
 
-    run_snakemake_workflow(config_path=config_path, snake_file_path=snake_file_path, output_dir_path=output_dir_path, jobs=jobs,
+    dataset.create_sample_tsv(output_dir_path, header=sample_tsv_header_fields)
+
+    run_snakemake_workflow(config_path=config_path, snake_file_path=snake_file_path, output_dir_path=output_dir_path,
+                           jobs=jobs,
                            conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
 
 
@@ -111,7 +117,10 @@ def init(args):
     setup_run_directory(args, output_dir_path, run_files)
 
     input_path = get_cli_arg_path(args, 'input_dir')
-    create_sample_tsv(output_dir_path, find_samples_in_fastq_directory(input_path))
+
+    dataset = generate_dataset_from_fastq_directory(input_path)
+
+    dataset.create_sample_tsv(output_dir_path, header = sample_tsv_header_fields)
 
 
 def parse_cli():

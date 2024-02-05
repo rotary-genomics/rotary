@@ -3,13 +3,13 @@
 
 from snakemake.utils import min_version
 
-from rotary.sample import parse_sample_tsv
+from rotary.dataset import generate_dataset_from_sample_tsv
 from rotary.utils import symlink_or_compress
 
 SAMPLE_TSV_PATH = 'samples.tsv'
-SAMPLES = parse_sample_tsv(SAMPLE_TSV_PATH)
+SAMPLES = generate_dataset_from_sample_tsv(SAMPLE_TSV_PATH)
 
-SAMPLE_NAMES = list(SAMPLES.keys())
+SAMPLE_NAMES = list(SAMPLES.identifiers)
 
 # Specify the minimum snakemake version allowable
 min_version("7.0")
@@ -36,9 +36,9 @@ rule set_up_sample_directories:
     output:
         long_reads = expand("{sample}/raw/{sample}_long.fastq.gz", sample=SAMPLE_NAMES),
         short_R1_reads = expand("{sample}/raw/{sample}_R1.fastq.gz", sample=SAMPLE_NAMES),
-        short_R2_reads = expand("{sample}/raw/{sample}_R2.fastq.gz", sample=SAMPLE_NAMES),
+        short_R2_reads = expand("{sample}/raw/{sample}_R2.fastq.gz", sample=SAMPLE_NAMES)
     run:
-        for sample in SAMPLES.values():
+        for sample in SAMPLES:
             identifier = sample.identifier
             symlink_or_compress(sample.long_read_path,f'{identifier}/raw/{identifier}_long.fastq.gz')
             symlink_or_compress(sample.short_read_left_path,f'{identifier}/raw/{identifier}_R1.fastq.gz')

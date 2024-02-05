@@ -113,3 +113,19 @@ def file_is_gzipped(file_path):
         return True
     else:
         return False
+
+
+def is_fastq_file(file_name):
+    """
+    Determines if file is a fastq file based in its extension.
+    :param file_name: The name of the file.
+    :return: True if the file contains 'fastq' or 'fq'.
+    """
+    file_extension = file_name.split(os.path.extsep, 1)[1]
+
+    if 'fastq' in file_extension or 'fq' in file_extension:
+        is_fastq = True
+    else:
+        is_fastq = False
+
+    return is_fastq
