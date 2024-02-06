@@ -3,7 +3,7 @@
 """
 Created by: Lee Bergstrand (2023)
 
-Description: Code for working with snakemake CLI programs.
+Description: Code for building CLI programs that call Snakemake.
 """
 import os
 import subprocess

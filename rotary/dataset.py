@@ -1,7 +1,7 @@
 """
 Created by: Lee Bergstrand (2023)
 
-Description: Classes and methods for representing a set of sampling files.
+Description: Classes and methods for representing a set of sample files that are part of a dataset.
 """
 import csv
 import os

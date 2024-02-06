@@ -3,7 +3,7 @@
 """
 Created by: Lee Bergstrand (2023)
 
-Description: Classes and methods for representing Rotary sampling files.
+Description: Classes and methods for representing a set of sequencing files that represent a sample.
 """
 import os
 import re
