@@ -94,7 +94,8 @@ def run_one(args):
     sample = LongReadSampleWithPairedPolishingShortReads(long_file=sequencing_files[0],
                                                          short_file_left=sequencing_files[1],
                                                          short_file_right=sequencing_files[2],
-                                                         integrity_check=False)  # Don't do integrity check on user-specified files.
+                                                         identifier_check=False, # Don't do integrity check on user-specified files.
+                                                         integrity_check=False)  # Don't do an identifier check on user-specified files.
 
     dataset = Dataset(sample)
 
