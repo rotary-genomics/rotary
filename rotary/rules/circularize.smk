@@ -62,7 +62,7 @@ rule get_polished_contigs:
         contigs="{sample}/polish/{sample}_polish.fasta",
         list="{sample}/circularize/filter/lists/{status}.list"
     output:
-        temp("{sample}/circularize/filter/{sample}_{status}.fasta")
+        "{sample}/circularize/filter/{sample}_{status}.fasta"
     conda:
         "../envs/mapping.yaml"
     shell:
