@@ -153,7 +153,13 @@ rule run_dfast:
         install_finished=os.path.join(DB_DIR_PATH,"checkpoints","dfast_" + VERSION_DFAST)
     output:
         dfast_genome="{sample}/annotation/dfast/{sample}_genome.fna",
+        dfast_cds="{sample}/annotation/dfast/{sample}_cds.fna",
         dfast_proteins="{sample}/annotation/dfast/{sample}_protein.faa",
+        dfast_embl="{sample}/annotation/dfast/{sample}_genome.embl",
+        dfast_genbank="{sample}/annotation/dfast/{sample}_genome.gbk",
+        dfast_gff="{sample}/annotation/dfast/{sample}_genome.gff",
+        dfast_rna="{sample}/annotation/dfast/{sample}_rna.fna",
+        dfast_pseudogene="{sample}/annotation/dfast/{sample}_pseudogene_summary.tsv",
         outdir=directory("{sample}/annotation/dfast")
     conda:
         "../envs/annotation_dfast.yaml"
@@ -181,7 +187,14 @@ rule run_dfast:
          # --seq_topologies "circular,circular" 
 
          mv {output.outdir}/genome.fna {output.dfast_genome}
+         mv {output.outdir}/cds.fna {output.dfast_cds}
          mv {output.outdir}/protein.faa {output.dfast_proteins}
+         mv {output.outdir}/genome.embl {output.dfast_embl}
+         mv {output.outdir}/genome.gbk {output.dfast_genbank}
+         mv {output.outdir}/genome.gff {output.dfast_gff}
+         mv {output.outdir}/rna.fna {output.dfast_rna}
+         mv {output.outdir}/rna.fna {output.dfast_rna}
+         mv {output.outdir}/pseudogene_summary.tsv {output.dfast_pseudogene}
          """
 
 
