@@ -367,9 +367,6 @@ rule symlink_logs:
         os.symlink(source_relpath,str(output.stats))
 
 
-# TODO - can I remove the use of cd?
-# TODO - I currently avoid writing to the log directory during zip because the folder is being zipped,
-#        but the resulting code seems a bit unnatural
 rule summarize_annotation:
     input:
         "{sample}/annotation/dfast/{sample}_genome.fna",
