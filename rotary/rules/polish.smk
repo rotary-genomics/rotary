@@ -10,6 +10,9 @@ VERSION_POLYPOLISH="0.5.0"
 
 DB_DIR_PATH = config.get('db_dir')
 
+READ_MAPPING_FILE_EXTENSIONS = ['amb', 'ann', 'bwt', 'pac', 'sa']
+
+
 # SAMPLE_NAMES and POLISH_WITH_SHORT_READS are instantiated in rotary.smk
 
 rule install_polypolish:
@@ -79,7 +82,7 @@ rule prepare_polypolish_polish_input:
         os.symlink(source_relpath,str(output))
 
 
-read_mapping_file_extensions = ['amb', 'ann', 'bwt', 'pac', 'sa']
+
 
 rule polish_polypolish:
     input:
@@ -98,7 +101,7 @@ rule polish_polypolish:
         debug=temp("{sample}/{step}/polypolish/polypolish.debug.log"),
         debug_stats="{sample}/stats/{step}/polypolish_changes.log",
         read_mapping_files= temp(expand("{{sample}}/{{step}}/polypolish/input/{{sample}}_input.fasta.{ext}",
-            ext=read_mapping_file_extensions))
+            ext=READ_MAPPING_FILE_EXTENSIONS))
     conda:
         "../envs/mapping.yaml"
     log:
@@ -143,7 +146,7 @@ rule polish_polca:
         polypolish_sam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.unSorted.sam"),
         polypolish_bam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.alignSorted.bam"),
         read_mapping_files= temp(expand("{{sample}}/polish/polca/{{sample}}_polypolish.fasta.bwa.{ext}",
-            ext=read_mapping_file_extensions))
+            ext=READ_MAPPING_FILE_EXTENSIONS))
     conda:
         "../envs/masurca.yaml"
     log:
@@ -194,7 +197,7 @@ if (POLISH_WITH_SHORT_READS == True) & \
             mapping_index=temp("{sample}/polish/cov_filter/{sample}_short_read.bam.bai"),
             coverage="{sample}/polish/cov_filter/{sample}_short_read_coverage.tsv",
             read_mapping_files= temp(expand("{{sample}}/polish/cov_filter/{{sample}}_pre_filtered.fasta.{ext}", 
-                ext=read_mapping_file_extensions))
+                ext=READ_MAPPING_FILE_EXTENSIONS))
         conda:
             "../envs/mapping.yaml"
         log:
