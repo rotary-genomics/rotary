@@ -254,7 +254,8 @@ if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_
             """
 
 
-if (config.get("meandepth_cutoff_short_read") == "None") & (config.get("evenness_cutoff_short_read") == "None") & \
+if ((POLISH_WITH_SHORT_READS == False) |
+        (config.get("meandepth_cutoff_short_read") == "None") & (config.get("evenness_cutoff_short_read") == "None")) & \
         (config.get("meandepth_cutoff_long_read") == "None") & (config.get("evenness_cutoff_long_read") == "None"):
 
     rule bypass_coverage_filter:
