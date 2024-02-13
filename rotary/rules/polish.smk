@@ -9,7 +9,7 @@ import pandas as pd
 
 DB_DIR_PATH = config.get('db_dir')
 
-READ_MAPPING_FILE_EXTENSIONS = ['.amb', '.ann', '.bwt', '.pac', '.sa']
+READ_MAPPING_FILE_EXTENSIONS = ['.0123', '.amb', '.ann', '.bwt.2bit.64', '.pac']
 
 # SAMPLE_NAMES and POLISH_WITH_SHORT_READS are instantiated in rotary.smk
 
