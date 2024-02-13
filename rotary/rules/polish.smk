@@ -6,33 +6,12 @@ import sys
 
 import pandas as pd
 
-VERSION_POLYPOLISH="0.5.0"
 
 DB_DIR_PATH = config.get('db_dir')
 
 READ_MAPPING_FILE_EXTENSIONS = ['amb', 'ann', 'bwt', 'pac', 'sa']
 
-
 # SAMPLE_NAMES and POLISH_WITH_SHORT_READS are instantiated in rotary.smk
-
-rule install_polypolish:
-    output:
-        polypolish_filter=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish_insert_filter.py"),
-        polypolish=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish"),
-        install_finished=os.path.join(DB_DIR_PATH,"checkpoints","polypolish_" + VERSION_POLYPOLISH)
-    log:
-        "logs/download/install_polypolish.log"
-    benchmark:
-        "benchmarks/download/install_polypolish.txt"
-    params:
-        db_dir=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH),
-        url="https://github.com/rrwick/Polypolish/releases/download/v" + VERSION_POLYPOLISH + "/polypolish-linux-x86_64-musl-v" + VERSION_POLYPOLISH + ".tar.gz"
-    shell:
-        """
-        mkdir -p {params.db_dir}
-        wget -O - {params.url} 2> {log} | tar -C {params.db_dir} -xzf - >> {log} 2>&1
-        touch {output.install_finished}
-        """
 
 rule prepare_medaka_polish_input:
     input:
@@ -82,16 +61,11 @@ rule prepare_polypolish_polish_input:
         os.symlink(source_relpath,str(output))
 
 
-
-
 rule polish_polypolish:
     input:
         qc_short_r1="{sample}/qc/{sample}_qc_R1.fastq.gz",
         qc_short_r2="{sample}/qc/{sample}_qc_R2.fastq.gz",
         contigs="{sample}/{step}/polypolish/input/{sample}_input.fasta",
-        polypolish_filter=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish_insert_filter.py"),
-        polypolish=os.path.join(DB_DIR_PATH,"polypolish_" + VERSION_POLYPOLISH,"polypolish"),
-        install_finished=os.path.join(DB_DIR_PATH,"checkpoints","polypolish_" + VERSION_POLYPOLISH)
     output:
         mapping_r1=temp("{sample}/{step}/polypolish/{sample}_R1.sam"),
         mapping_r2=temp("{sample}/{step}/polypolish/{sample}_R2.sam"),
@@ -103,7 +77,7 @@ rule polish_polypolish:
         read_mapping_files= temp(expand("{{sample}}/{{step}}/polypolish/input/{{sample}}_input.fasta.{ext}",
             ext=READ_MAPPING_FILE_EXTENSIONS))
     conda:
-        "../envs/mapping.yaml"
+        "../envs/polypolish.yaml"
     log:
         "{sample}/logs/{step}/polypolish.log"
     benchmark:
@@ -118,11 +92,11 @@ rule polish_polypolish:
         bwa mem -t {threads} -a {input.contigs} {input.qc_short_r2} > {output.mapping_r2} 2>> {log}
 
         printf "\n\n### Polypolish insert filter ###\n" >> {log}
-        {input.polypolish_filter} --in1 {output.mapping_r1} --in2 {output.mapping_r2} \
+        polypolish filter --in1 {output.mapping_r1} --in2 {output.mapping_r2} \
           --out1 {output.mapping_clean_r1} --out2 {output.mapping_clean_r2} 2>> {log}
 
         printf "\n\n### Polypolish ###\n" >> {log}
-        {input.polypolish} {input.contigs} --debug {output.debug} \
+        polypolish polish --debug {output.debug} {input.contigs}  \
           {output.mapping_clean_r1} {output.mapping_clean_r2} 2>> {log} | 
           seqtk seq -A -l 0 | 
           awk \'{{ if ($0 ~ /^>/) {{ gsub("_polypolish", ""); print }} else {{ print }} }}\' | 
