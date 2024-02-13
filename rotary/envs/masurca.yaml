@@ -4,4 +4,4 @@ channels:
   - defaults
 dependencies:
   - masurca=4.0.8
-  - bwa=0.7.17
+  - bwa-mem2=2.2.1

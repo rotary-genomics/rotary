@@ -150,10 +150,18 @@ rule polish_polca:
         mem=config.get("memory")
     shell:
         """
+        printf "\n\n### Replace BWA with bwa-mem2 ###\n" >> {log}
+        bwa_mem2_path=$(which bwa-mem2)
+        bwa_mem2_dir=$(dirname $bwa_mem2_path)
+        ln -s $bwa_mem2_path $bwa_mem2_dir/bwa
+        
+        printf "\n\n### Run POLCA ###\n" >> {log}
         cd {params.outdir}
         polca.sh -a ../../../{input.polished} -r "../../../{input.qc_short_r1} ../../../{input.qc_short_r2}" -t {threads} -m {resources.mem}G > ../../../{log} 2>&1
         ln -s "{wildcards.sample}_polypolish.fasta.PolcaCorrected.fa" "{wildcards.sample}_polca.fasta"
         cd ../../../
+        
+        printf "\n\n### Done. ###\n"
         """
 
 
