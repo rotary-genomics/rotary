@@ -81,9 +81,9 @@ rule map_short_reads_for_polishing:
     shell:
         """
         printf "\n\n### Read mapping ###\n" > {log}
-        bwa index {input.contigs} 2>> {log}
-        bwa mem -t {threads} -a {input.contigs} {input.qc_short_r1} > {output.mapping_r1} 2>> {log}
-        bwa mem -t {threads} -a {input.contigs} {input.qc_short_r2} > {output.mapping_r2} 2>> {log}
+        bwa-mem2 index {input.contigs} 2>> {log}
+        bwa-mem2 mem -t {threads} -a {input.contigs} {input.qc_short_r1} > {output.mapping_r1} 2>> {log}
+        bwa-mem2 mem -t {threads} -a {input.contigs} {input.qc_short_r2} > {output.mapping_r2} 2>> {log}
         printf "\n\n### Done. ###\n"
         """
 
@@ -200,8 +200,8 @@ if (POLISH_WITH_SHORT_READS == True) & \
         shell:
             """
             # Note that -F 4 removes unmapped reads
-            bwa index {input.contigs} 2> {log}
-            bwa mem -t {threads} {input.contigs} {input.qc_short_r1} {input.qc_short_r2} 2>> {log} | \
+            bwa-mem2 index {input.contigs} 2> {log}
+            bwa-mem2 mem -t {threads} {input.contigs} {input.qc_short_r1} {input.qc_short_r2} 2>> {log} | \
               samtools view -b -F 4 -@ {threads} 2>> {log} | \
               samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
               > {output.mapping}
