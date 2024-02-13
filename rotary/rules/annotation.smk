@@ -11,6 +11,11 @@ VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
 
 DB_DIR_PATH = config.get('db_dir')
 
+if str(config.get('keep_final_coverage_bam_files')).lower() == 'true':
+    KEEP_BAM_FILES = True
+else:
+    KEEP_BAM_FILES = False
+
 # SAMPLE_NAMES, and POLISH_WITH_SHORT_READS are instantiated in rotary.smk
 
 rule download_dfast_db:
@@ -294,7 +299,7 @@ if POLISH_WITH_SHORT_READS == True:
             qc_short_r2="{sample}/qc/{sample}_qc_R2.fastq.gz",
             dfast_genome="{sample}/annotation/dfast/{sample}_genome.fna"
         output:
-            mapping=temp("{sample}/annotation/coverage/{sample}_short_read.bam"),
+            mapping="{sample}/annotation/coverage/{sample}_short_read.bam" if KEEP_BAM_FILES else temp("{sample}/annotation/coverage/{sample}_short_read.bam"),
             index=temp("{sample}/annotation/coverage/{sample}_short_read.bam.bai"),
             coverage="{sample}/annotation/coverage/{sample}_short_read_coverage.tsv",
             read_mapping_files= temp(multiext("{sample}/annotation/dfast/{sample}_genome.fna",
@@ -326,7 +331,7 @@ rule calculate_final_long_read_coverage:
         contigs="{sample}/annotation/dfast/{sample}_genome.fna",
         qc_long_reads="{sample}/qc/{sample}_qc_long.fastq.gz"
     output:
-        mapping=temp("{sample}/annotation/coverage/{sample}_long_read.bam"),
+        mapping="{sample}/annotation/coverage/{sample}_long_read.bam" if KEEP_BAM_FILES else temp("{sample}/annotation/coverage/{sample}_long_read.bam"),
         index=temp("{sample}/annotation/coverage/{sample}_long_read.bam.bai"),
         coverage="{sample}/annotation/coverage/{sample}_long_read_coverage.tsv"
     conda:

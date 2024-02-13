@@ -117,3 +117,5 @@ gtdbtk_mode: "default"
 eggnog_sensmode: "sensitive"
 # The search tool that emapper.py should use (diamond or mmseqs).
 eggnog_search_tool: 'mmseqs'
+# Keep final coverage read mapping BAM files for further analysis.
+keep_final_coverage_bam_files: 'False'
