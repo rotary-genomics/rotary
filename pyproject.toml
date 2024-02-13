@@ -1,10 +1,13 @@
 [project]
 name = "Rotary"
-version = "0.3.0"
-description = "Rotary is a snakemake-based scalable pipeline for hybrid assembly of microbial genomes using Nanopore and Illumina data."
+version = "0.3.0-beta1"
+description = """Rotary is a bioinformatics toolkit and scalable hybrid assembly workflow for generating refined
+assemblies of circular prokaryotic genomes. It contains modules addressing common issues with circular assemblies.
+The snakemake-based pipeline integrates these modules and implements best practices for hybrid short/long-read microbial
+genome assembly."""
 authors = [
-    {name = "Jackson Tsuji"},
-    {name = "Lee Bergstrand"}
+    {name = "Jackson M. Tsuji"},
+    {name = "Lee H. Bergstrand"}
 ]
 
 license = {file = "LICENSE"}
