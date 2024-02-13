@@ -254,71 +254,6 @@ if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_
             """
 
 
-rule summarize_contigs_by_coverage:
-    input:
-        expand("{{sample}}/polish/cov_filter/{{sample}}_{type}_coverage.tsv",
-            type=filtration_method)
-    output:
-        "{sample}/polish/cov_filter/{sample}_filtered_contigs.list"
-    params:
-        meandepth_short=config.get("meandepth_cutoff_short_read"),
-        evenness_short=config.get("evenness_cutoff_short_read"),
-        meandepth_long=config.get("meandepth_cutoff_long_read"),
-        evenness_long=config.get("evenness_cutoff_long_read")
-    run:
-        #
-        def filter_coverage_data(coverage_file, mean_depth, evenness):
-            """
-            Filter a samtools coverage file by mean depth and evenness.
-            Returns a pandas series of passing contig names.
-
-            :param coverage_file: Path to the coverage file (CSV format).
-            :param mean_depth: Minimum required mean depth of coverage.
-            :param evenness: Minimum required evenness of coverage.
-            :return: Filtered coverage data containing only passing contig names.
-            """
-            coverage_data = pd.read_csv(coverage_file,sep='\t')
-
-            coverage_filtered = coverage_data[ \
-                (coverage_data['meandepth'] >= mean_depth) & \
-                (coverage_data['coverage'] >= evenness)]
-
-            return (coverage_filtered['#rname'])
-
-
-        input_list = list(input)
-
-        short_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/{wildcards.sample}_short_read_coverage.tsv"
-        long_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/{wildcards.sample}_long_read_coverage.tsv"
-
-        if len(input_list) == 1:
-            if input_list[0] == short_read_coverage_tsv_path:
-                contigs = filter_coverage_data(input_list[0],params.meandepth_short,params.evenness_short)
-
-            elif input_list[0] == long_read_coverage_tsv_path:
-                contigs = filter_coverage_data(input_list[0],params.meandepth_long,params.evenness_long)
-
-            else:
-                sys.exit("One unexpected coverage file detected in 'polish/cov_filter'.")
-
-        elif len(input_list) == 2:
-            input_list.sort()
-
-            if (input_list[0] != long_read_coverage_tsv_path) | \
-                    (input_list[1] != short_read_coverage_tsv_path):
-                sys.exit("At least one unexpected coverage file detected in 'polish/cov_filter'.")
-
-            set1 = set(filter_coverage_data(input_list[0],params.meandepth_long,params.evenness_long))
-            set2 = set(filter_coverage_data(input_list[1],params.meandepth_short,params.evenness_short))
-
-            contigs = pd.Series(set1.union(set2))
-
-        else:
-            sys.exit("More than 2 coverage files detected in 'polish/cov_filter'.")
-
-        contigs.to_csv(output[0],header=None,index=False)
-
-
 if (config.get("meandepth_cutoff_short_read") == "None") & (config.get("evenness_cutoff_short_read") == "None") & \
         (config.get("meandepth_cutoff_long_read") == "None") & (config.get("evenness_cutoff_long_read") == "None"):
 
@@ -332,6 +267,74 @@ if (config.get("meandepth_cutoff_short_read") == "None") & (config.get("evenness
             os.symlink(source_relpath,str(output))
 
 else:
+    rule summarize_contigs_by_coverage:
+        input:
+            expand("{{sample}}/polish/cov_filter/{{sample}}_{type}_coverage.tsv",
+                type=filtration_method)
+        output:
+            "{sample}/polish/cov_filter/{sample}_filtered_contigs.list"
+        params:
+            meandepth_short=config.get("meandepth_cutoff_short_read"),
+            evenness_short=config.get("evenness_cutoff_short_read"),
+            meandepth_long=config.get("meandepth_cutoff_long_read"),
+            evenness_long=config.get("evenness_cutoff_long_read")
+        run:
+            #
+            def filter_coverage_data(coverage_file, mean_depth, evenness):
+                """
+                Filter a samtools coverage file by mean depth and evenness.
+                Returns a pandas series of passing contig names.
+
+                :param coverage_file: Path to the coverage file (CSV format).
+                :param mean_depth: Minimum required mean depth of coverage.
+                :param evenness: Minimum required evenness of coverage.
+                :return: Filtered coverage data containing only passing contig names.
+                """
+                coverage_data = pd.read_csv(coverage_file,sep='\t')
+
+                coverage_filtered = coverage_data[ \
+                    (coverage_data['meandepth'] >= mean_depth) & \
+                    (coverage_data['coverage'] >= evenness)]
+
+                return (coverage_filtered['#rname'])
+
+
+            input_list = list(input)
+
+            short_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/{wildcards.sample}_short_read_coverage.tsv"
+            long_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/{wildcards.sample}_long_read_coverage.tsv"
+
+            if len(input_list) == 1:
+                if input_list[0] == short_read_coverage_tsv_path:
+                    contigs = filter_coverage_data(input_list[0],params.meandepth_short,params.evenness_short)
+
+                elif input_list[0] == long_read_coverage_tsv_path:
+                    contigs = filter_coverage_data(input_list[0],params.meandepth_long,params.evenness_long)
+
+                else:
+                    sys.exit("One unexpected coverage file detected in 'polish/cov_filter'.")
+
+            elif len(input_list) == 2:
+                input_list.sort()
+
+                if (input_list[0] != long_read_coverage_tsv_path) | \
+                        (input_list[1] != short_read_coverage_tsv_path):
+                    sys.exit("At least one unexpected coverage file detected in 'polish/cov_filter'.")
+
+                set1 = set(filter_coverage_data(input_list[0],params.meandepth_long,params.evenness_long))
+                set2 = set(filter_coverage_data(input_list[1],params.meandepth_short,params.evenness_short))
+
+                contigs = pd.Series(set1.union(set2))
+
+            elif len(input_list) == 0:
+                sys.exit("No coverage files detected in 'polish/cov_filter'")
+
+            else:
+                sys.exit("More than 2 coverage files detected in 'polish/cov_filter'.")
+
+            contigs.to_csv(output[0], header=None, index=False)
+
+
     rule filter_contigs_by_coverage:
         input:
             contigs="{sample}/polish/medaka/{sample}_consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/polish/polca/{sample}_polca.fasta",
