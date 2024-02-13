@@ -98,9 +98,7 @@ rule polish_polypolish:
         printf "\n\n### Polypolish ###\n" >> {log}
         polypolish polish --debug {output.debug} {input.contigs}  \
           {output.mapping_clean_r1} {output.mapping_clean_r2} 2>> {log} | 
-          seqtk seq -A -l 0 | 
-          awk \'{{ if ($0 ~ /^>/) {{ gsub("_polypolish", ""); print }} else {{ print }} }}\' | 
-          seqtk seq -l 60 > {output.polished} 2>> {log}
+          seqtk seq -A -C -l 60 > {output.polished} 2>> {log}
 
         head -n 1 {output.debug} > {output.debug_stats}
         grep changed {output.debug} >> {output.debug_stats}
