@@ -60,22 +60,44 @@ rule prepare_polypolish_polish_input:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
 
+rule map_short_reads_for_polishing:
+    input:
+        qc_short_r1 = "{sample}/qc/{sample}_qc_R1.fastq.gz",
+        qc_short_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz",
+        contigs = "{sample}/{step}/polypolish/input/{sample}_input.fasta",
+    output:
+        mapping_r1 = temp("{sample}/{step}/polypolish/{sample}_R1.sam"),
+        mapping_r2 = temp("{sample}/{step}/polypolish/{sample}_R2.sam"),
+        read_mapping_files= temp(expand("{{sample}}/{{step}}/polypolish/input/{{sample}}_input.fasta.{ext}",
+            ext=READ_MAPPING_FILE_EXTENSIONS))
+    conda:
+        "../envs/mapping.yaml"
+    log:
+        "{sample}/logs/{step}/bwa_mem.log"
+    benchmark:
+        "{sample}/benchmarks/{step}/bwa_mem.txt"
+    threads:
+        config.get("threads", 1)
+    shell:
+        """
+        printf "\n\n### Read mapping ###\n" > {log}
+        bwa index {input.contigs} 2>> {log}
+        bwa mem -t {threads} -a {input.contigs} {input.qc_short_r1} > {output.mapping_r1} 2>> {log}
+        bwa mem -t {threads} -a {input.contigs} {input.qc_short_r2} > {output.mapping_r2} 2>> {log}
+        printf "\n\n### Done. ###\n"
+        """
 
 rule polish_polypolish:
     input:
-        qc_short_r1="{sample}/qc/{sample}_qc_R1.fastq.gz",
-        qc_short_r2="{sample}/qc/{sample}_qc_R2.fastq.gz",
         contigs="{sample}/{step}/polypolish/input/{sample}_input.fasta",
+        mapping_r1 = "{sample}/{step}/polypolish/{sample}_R1.sam",
+        mapping_r2 = "{sample}/{step}/polypolish/{sample}_R2.sam"
     output:
-        mapping_r1=temp("{sample}/{step}/polypolish/{sample}_R1.sam"),
-        mapping_r2=temp("{sample}/{step}/polypolish/{sample}_R2.sam"),
-        mapping_clean_r1=temp("{sample}/{step}/polypolish/{sample}_R1.clean.sam"),
-        mapping_clean_r2=temp("{sample}/{step}/polypolish/{sample}_R2.clean.sam"),
-        polished="{sample}/{step}/polypolish/{sample}_polypolish.fasta",
-        debug=temp("{sample}/{step}/polypolish/polypolish.debug.log"),
-        debug_stats="{sample}/stats/{step}/polypolish_changes.log",
-        read_mapping_files= temp(expand("{{sample}}/{{step}}/polypolish/input/{{sample}}_input.fasta.{ext}",
-            ext=READ_MAPPING_FILE_EXTENSIONS))
+        mapping_clean_r1 = temp("{sample}/{step}/polypolish/{sample}_R1.clean.sam"),
+        mapping_clean_r2 = temp("{sample}/{step}/polypolish/{sample}_R2.clean.sam"),
+        polished = "{sample}/{step}/polypolish/{sample}_polypolish.fasta",
+        debug = temp("{sample}/{step}/polypolish/polypolish.debug.log"),
+        debug_stats = "{sample}/stats/{step}/polypolish_changes.log"
     conda:
         "../envs/polypolish.yaml"
     log:
@@ -83,26 +105,21 @@ rule polish_polypolish:
     benchmark:
         "{sample}/benchmarks/{step}/polypolish.txt"
     threads:
-        config.get("threads",1)
+        config.get("threads", 1)
     shell:
         """
-        printf "\n\n### Read mapping ###\n" > {log}
-        bwa index {input.contigs} 2>> {log}
-        bwa mem -t {threads} -a {input.contigs} {input.qc_short_r1} > {output.mapping_r1} 2>> {log}
-        bwa mem -t {threads} -a {input.contigs} {input.qc_short_r2} > {output.mapping_r2} 2>> {log}
-
         printf "\n\n### Polypolish insert filter ###\n" >> {log}
-        polypolish filter --in1 {output.mapping_r1} --in2 {output.mapping_r2} \
+        polypolish filter --in1 {input.mapping_r1} --in2 {input.mapping_r2} \
           --out1 {output.mapping_clean_r1} --out2 {output.mapping_clean_r2} 2>> {log}
-
+          
         printf "\n\n### Polypolish ###\n" >> {log}
         polypolish polish --debug {output.debug} {input.contigs}  \
-          {output.mapping_clean_r1} {output.mapping_clean_r2} 2>> {log} | 
+          {output.mapping_clean_r1} {output.mapping_clean_r2} 2>> {log} |
           seqtk seq -A -C -l 60 > {output.polished} 2>> {log}
-
+          
         head -n 1 {output.debug} > {output.debug_stats}
         grep changed {output.debug} >> {output.debug_stats}
-
+        
         printf "\n\n### Done. ###\n"
         """
 
