@@ -150,7 +150,7 @@ rule polish_polca:
         mem=config.get("memory")
     shell:
         """
-        printf "\n\n### Replace BWA with bwa-mem2 ###\n" >> {log}
+        printf "\n\n### Replace bwa with bwa-mem2 ###\n" >> {log}
         bwa_mem2_path=$(which bwa-mem2)
         bwa_mem2_dir=$(dirname $bwa_mem2_path)
         ln -s $bwa_mem2_path $bwa_mem2_dir/bwa
