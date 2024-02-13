@@ -814,8 +814,11 @@ def run_end_repair(long_read_filepath: str, assembly_fasta_filepath: str, assemb
 
     # No need to run the pipeline if there are no circular contigs
     if len(circular_contig_names) == 0:
-        logger.info('No circular contigs. Will copy the input file and finish early.')
+        logger.info('No circular contigs. Will copy the input file, repaired_info.tsv, and finish early.')
         shutil.copyfile(assembly_fasta_filepath, end_repaired_contigs_filepath)
+        linear_contig_names = parse_assembly_info_file(assembly_info_filepath, assembly_info_type, return_type='linear')
+        repair_info = pd.DataFrame({'contig': linear_contig_names, 'circular': 'N', 'repaired': 'N'})
+        repair_info.to_csv(end_repair_status_filepath, sep='\t', index=False)
         logger.info('Pipeline finished.')
         sys.exit(0)
 
