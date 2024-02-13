@@ -146,7 +146,9 @@ rule polish_polca:
         polypolish_sam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.unSorted.sam"),
         polypolish_bam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.alignSorted.bam"),
         read_mapping_files= temp(expand("{{sample}}/polish/polca/{{sample}}_polypolish.fasta.bwa.{ext}",
-            ext=READ_MAPPING_FILE_EXTENSIONS))
+            ext=READ_MAPPING_FILE_EXTENSIONS)),
+        # Add polca directory to output, so it is deleted on rerun. It was causing an error otherwise.
+        polca_directory = directory("{sample}/polish/polca/")
     conda:
         "../envs/masurca.yaml"
     log:
