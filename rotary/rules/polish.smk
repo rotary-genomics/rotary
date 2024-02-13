@@ -104,8 +104,7 @@ rule polish_polypolish:
         "{sample}/logs/{step}/polypolish.log"
     benchmark:
         "{sample}/benchmarks/{step}/polypolish.txt"
-    threads:
-        config.get("threads", 1)
+    threads: 1
     shell:
         """
         printf "\n\n### Polypolish insert filter ###\n" >> {log}
