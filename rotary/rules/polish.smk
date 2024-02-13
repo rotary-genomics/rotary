@@ -9,7 +9,7 @@ import pandas as pd
 
 DB_DIR_PATH = config.get('db_dir')
 
-READ_MAPPING_FILE_EXTENSIONS = ['amb', 'ann', 'bwt', 'pac', 'sa']
+READ_MAPPING_FILE_EXTENSIONS = ['.amb', '.ann', '.bwt', '.pac', '.sa']
 
 # SAMPLE_NAMES and POLISH_WITH_SHORT_READS are instantiated in rotary.smk
 
@@ -30,7 +30,7 @@ rule polish_medaka:
     output:
         dir=directory("{sample}/{step}/medaka"),
         contigs="{sample}/{step}/medaka/{sample}_consensus.fasta",
-        calls_to_draft=temp(expand("{{sample}}/{{step}}/medaka/calls_to_draft.{ext}", ext=['bam', 'bam.bai'])),
+        calls_to_draft=temp(multiext("{sample}/{step}/medaka/calls_to_draft", '.bam', '.bam.bai')),
         consensus_probs=temp("{sample}/{step}/medaka/consensus_probs.hdf")
     conda:
         "../envs/medaka.yaml"
@@ -68,8 +68,8 @@ rule map_short_reads_for_polishing:
     output:
         mapping_r1 = temp("{sample}/{step}/polypolish/{sample}_R1.sam"),
         mapping_r2 = temp("{sample}/{step}/polypolish/{sample}_R2.sam"),
-        read_mapping_files= temp(expand("{{sample}}/{{step}}/polypolish/input/{{sample}}_input.fasta.{ext}",
-            ext=READ_MAPPING_FILE_EXTENSIONS))
+        read_mapping_files= temp(multiext("{sample}/{step}/polypolish/input/{sample}_input.fasta",
+            *READ_MAPPING_FILE_EXTENSIONS))
     conda:
         "../envs/mapping.yaml"
     log:
@@ -132,8 +132,8 @@ rule polish_polca:
         polca_output = temp("{sample}/polish/polca/{sample}_polca.fasta"),
         polypolish_sam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.unSorted.sam"),
         polypolish_bam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.alignSorted.bam"),
-        read_mapping_files= temp(expand("{{sample}}/polish/polca/{{sample}}_polypolish.fasta.bwa.{ext}",
-            ext=READ_MAPPING_FILE_EXTENSIONS)),
+        read_mapping_files= temp(multiext("{sample}/polish/polca/{sample}_polypolish.fasta.bwa",
+            *READ_MAPPING_FILE_EXTENSIONS)),
         # Add polca directory to output, so it is deleted on rerun. It was causing an error otherwise.
         polca_directory = directory("{sample}/polish/polca/")
     conda:
@@ -185,8 +185,8 @@ if (POLISH_WITH_SHORT_READS == True) & \
             mapping=temp("{sample}/polish/cov_filter/{sample}_short_read.bam"),
             mapping_index=temp("{sample}/polish/cov_filter/{sample}_short_read.bam.bai"),
             coverage="{sample}/polish/cov_filter/{sample}_short_read_coverage.tsv",
-            read_mapping_files= temp(expand("{{sample}}/polish/cov_filter/{{sample}}_pre_filtered.fasta.{ext}", 
-                ext=READ_MAPPING_FILE_EXTENSIONS))
+            read_mapping_files= temp(multiext("{sample}/polish/cov_filter/{sample}_pre_filtered.fasta",
+                *READ_MAPPING_FILE_EXTENSIONS))
         conda:
             "../envs/mapping.yaml"
         log:

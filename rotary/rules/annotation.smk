@@ -297,8 +297,8 @@ if POLISH_WITH_SHORT_READS == True:
             mapping=temp("{sample}/annotation/coverage/{sample}_short_read.bam"),
             index=temp("{sample}/annotation/coverage/{sample}_short_read.bam.bai"),
             coverage="{sample}/annotation/coverage/{sample}_short_read_coverage.tsv",
-            read_mapping_files= temp(expand("{{sample}}/annotation/dfast/{{sample}}_genome.fna.{ext}",
-                ext=READ_MAPPING_FILE_EXTENSIONS)) # Variable declared in polish.smk
+            read_mapping_files= temp(multiext("{sample}/annotation/dfast/{sample}_genome.fna",
+                *READ_MAPPING_FILE_EXTENSIONS)) # Variable declared in polish.smk
         conda:
             "../envs/mapping.yaml"
         log:
