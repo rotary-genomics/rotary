@@ -266,17 +266,17 @@ if ((POLISH_WITH_SHORT_READS == False) |
             contigs="{sample}/polish/cov_filter/{sample}_filtered_contigs.fasta",
             contig_info="{sample}/polish/cov_filter/{sample}_filtration_summary.tsv"
         run:
+            import shutil
             import pandas as pd
 
-            # Symlink the pre-filtered contig file rather than perform filtration
-            source_relpath = os.path.relpath(str(input.contigs),os.path.dirname(str(output.contigs)))
-            os.symlink(source_relpath,str(output.contigs))
+            # Copy the pre-filtered contig file rather than perform filtration
+            shutil.copyfile(str(input.contigs), str(output.contigs), follow_symlinks=True)
 
             # Write output summary file based on the assembly guide file
             contig_info = pd.read_csv(input.contig_info, sep='\t')
-            contig_info['pass_coverage_filter'] = True
+            contig_info['pass_coverage_filter'] = 'Y'
 
-            contig_info.to_csv(output.contig_info)
+            contig_info.to_csv(output.contig_info, sep='\t', index=False)
 
 
 else:
@@ -359,13 +359,13 @@ else:
             passed_coverage_filter = []
             for contig_id in contig_info['contig']:
                 if contig_id in contigs:
-                    passed_coverage_filter.append(True)
+                    passed_coverage_filter.append('Y')
                 else:
-                    passed_coverage_filter.append(False)
+                    passed_coverage_filter.append('N')
 
             contig_info['pass_coverage_filter'] = passed_coverage_filter
 
-            contig_info.to_csv(output.contig_info_with_coverage, index=False)
+            contig_info.to_csv(output.contig_info_with_coverage, sep='\t', index=False)
             contigs.to_csv(output.filtered_contig_list, header=None, index=False)
 
 

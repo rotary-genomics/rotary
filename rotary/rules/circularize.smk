@@ -37,8 +37,8 @@ checkpoint split_circular_and_linear_contigs:
     output:
         directory("{sample}/circularize/filter/lists")
     run:
-        contig_info = pd.read_csv(input,sep='\t')
-        contig_info_filtered = contig_info[contig_info['pass_coverage_filter'] == True]
+        contig_info = pd.read_csv(input, sep='\t')
+        contig_info_filtered = contig_info[contig_info['pass_coverage_filter'] == 'Y']
 
         circular_contigs = contig_info_filtered[contig_info_filtered['circular'] == 'Y']
         linear_contigs = contig_info_filtered[contig_info_filtered['circular'] == 'N']
