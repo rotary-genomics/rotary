@@ -5,7 +5,7 @@
 [![GitHub release](https://img.shields.io/badge/Version-0.2.0--beta4-lightgrey.svg)](https://github.com/jmtsuji/rotary/releases)
 [![DOI](https://zenodo.org/badge/473891963.svg)](https://zenodo.org/badge/latestdoi/473891963)
 
-Assembly/annotation workflow for Nanopore-based microbial genome data containing circular DNA elements
+Utilities and workflow for long-read DNA assemblies including circular elements
 
 ## Quick start
 
@@ -35,15 +35,19 @@ rotary run_one -l s1_long.fastq.gz -r1 s1_R1.fastq.gz -r2 s1_R2.fastq.gz -d ../r
 
 ## Description
 
-_rotary_ is a snakemake pipeline that can be used to assemble single microbial genomes using
-standalone Nanopore data<sup>[1](#Footnotes)</sup> or hybrid Nanopore + short read data.
-The pipeline performs short read qc, short read decontamination, long read QC, assembly, 
-end repair, polishing, contig rotation, and genome annotation.
+_rotary_ is a collection of utilities (currently in development!) for accurate assembly of circular DNA elements,
+combined with a scalable snakemake workflow that assembles single microbial genomes, using those utilities, with "best
+practices". The utilities (once finished) are meant to be a modern replacement of the
+[circlator](https://github.com/sanger-pathogens/circlator) tool, which is now in a frozen development state.
+_rotary_ can accommodate standalone Nanopore data<sup>[1](#Footnotes)</sup> or hybrid Nanopore + short read
+data. The pipeline performs short read qc, short read decontamination, long read QC, assembly, end repair,
+polishing, contig rotation, and genome annotation.
 
-### Some advantages of using _rotary_:
+### Some advantages of using the _rotary_ assembly workflow:
 
 - All databases auto-install, so you can start analyzing genomes reproducibly with limited effort!
 - Snakemake checkpointing allows you to restart a failed run from where you left off
+- Multiple genomes can be analyzed in parallel in high throughput
 - Circularization is handled fairly carefully. Unlike the defaults in most pipelines, _rotary_ fixes the
   [short gap region](https://github.com/fenderglass/Flye/issues/315#issuecomment-720679812) that can occur at the ends
   of circular contigs produced by Flye. It also polishes the circular contigs in two
@@ -61,7 +65,7 @@ end repair, polishing, contig rotation, and genome annotation.
        in most use cases.
     - Flye requires moderate RAM (e.g., < 64 GB for typical bacterial genome runs)
     - GTDB-Tk v2 (with GTDB r214) needs ~55 GB RAM
-    - EggNOG-mapper is a bit slow (e.g., ~40 minutes on 40 CPU threads)
+    - EggNOG-mapper is a bit slow (e.g., ~40 minutes on 40 CPU threads) and uses ~60-80 GB RAM paired in MMSeqs mode
 
 ## Usage
 
@@ -138,8 +142,7 @@ In addition, please check the following in each sample folder:
 - Assembly quality (`assembly/flye/[SAMPLE_ID]_assembly_info.txt`) -- see how many contigs you got and circular vs linear status
 - End repair results (`assembly/[SAMPLE_ID]_circular_info.tsv`) -- you can see if any circular contigs could not be 
   repaired successfully at their ends
-- Filtering of contigs by coverage (`polish/cov_filter/[SAMPLE_ID]_filtered_contigs.list`) -- did anything get removed that you
-  wanted?
+- Filtering of contigs by coverage (`polish/[SAMPLE_ID]_contig_info.tsv`) -- did anything get removed that you wanted?
 - Identification of the start marker gene (e.g., _dnaA_) - see `circularize/identify/[SAMPLE_ID]_hmmsearch_hits.txt`
   and `[SAMPLE_ID]_start_genes.ffn` in the same folder. Did you get the hits you expected? Were they appropriately filtered into 
   the `.ffn` file?
@@ -182,8 +185,6 @@ prefetch SRR21124986 && fasterq-dump -Z SRR21124986 | gzip > sample_fastq_dir/ec
 mkdir output_dir
 mkdir rotary_db_dir
 rotary init -d rotary_db_dir -i sample_fastq_dir -o output_dir
-# Modify the config file so that the human genome is not used for decontamination - this takes a long time and high RAM
-# The final config line should be: contamination_references_ncbi_accessions: [GCF_000819615.1]
 
 # Run rotary until just before the annotation module
 cd output_dir
