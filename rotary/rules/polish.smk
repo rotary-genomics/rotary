@@ -308,11 +308,15 @@ else:
                 """
                 coverage_data = pd.read_csv(coverage_file,sep='\t')
 
+                # Set to zero if the user did not specify a filtration threshold
+                mean_depth = 0 if mean_depth == "None" else mean_depth
+                evenness = 0 if evenness == "None" else evenness
+
                 coverage_filtered = coverage_data[ \
                     (coverage_data['meandepth'] >= mean_depth) & \
                     (coverage_data['coverage'] >= evenness)]
 
-                return (coverage_filtered['#rname'])
+                return coverage_filtered['#rname']
 
 
             coverage_info_filepaths = list(input.coverage_info)
@@ -345,20 +349,20 @@ else:
                 set1 = set(filter_coverage_data(coverage_info_filepaths[0],params.meandepth_long,params.evenness_long))
                 set2 = set(filter_coverage_data(coverage_info_filepaths[1],params.meandepth_short,params.evenness_short))
 
-                contigs = pd.Series(set1.union(set2))
+                contigs = pd.Series(list(set1.intersection(set2)))
 
             elif len(coverage_info_filepaths) == 0:
                 sys.exit("No coverage files detected in 'polish/cov_filter'")
 
             else:
-                sys.exit("More than 2 coverage files detected in 'polish/cov_filter'.")
+                sys.exit(f"More than 2 coverage files detected in 'polish/cov_filter': {coverage_info_filepaths}.")
 
             # Add the filtered contig information onto a contig info file
-            contig_info = pd.read_csv(input.coverage_info, sep='\t')
+            contig_info = pd.read_csv(input.contig_info, sep='\t')
 
             passed_coverage_filter = []
             for contig_id in contig_info['contig']:
-                if contig_id in contigs:
+                if contig_id in contigs.values:
                     passed_coverage_filter.append('Y')
                 else:
                     passed_coverage_filter.append('N')
