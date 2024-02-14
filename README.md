@@ -43,20 +43,36 @@ _rotary_ can accommodate standalone Nanopore data<sup>[1](#Footnotes)</sup> or h
 data. The pipeline performs short read qc, short read decontamination, long read QC, assembly, end repair,
 polishing, contig rotation, and genome annotation.
 
+### Use cases for rotary
+We envision two possible ways that the rotary package could be used:
+- Use the genome assembly workflow to directly analyze your microbial genome data with best practices for circularization
+- Integrate the rotary utilities into your own custom genome assembly workflow to make sure your circular DNA/RNA elements
+  are being assembled accurately. This is similar to how `circlator` was used.
+
 ### Some advantages of using the _rotary_ assembly workflow:
 
+**Ease and reproducibility**
 - All databases auto-install, so you can start analyzing genomes reproducibly with limited effort!
-- Snakemake checkpointing allows you to restart a failed run from where you left off
 - Multiple genomes can be analyzed in parallel in high throughput
+- Snakemake checkpointing allows you to restart a failed run from where you left off
+
+**Best practices for genome circularization**
 - Circularization is handled fairly carefully. Unlike the defaults in most pipelines, _rotary_ fixes the
   [short gap region](https://github.com/fenderglass/Flye/issues/315#issuecomment-720679812) that can occur at the ends
-  of circular contigs produced by Flye. It also polishes the circular contigs in two
-  different rotation states to try to correct errors near contig ends.
-- A robust annotation pipeline that covers gene annotation, GTDB taxonomy prediction, and completeness and 
-  contamination estimation.
+  of circular contigs produced by Flye.
+- The workflow also polishes circular contigs in two different rotation states to try to correct errors near contig ends.
+
+**Robustness**
+- Annotation pipeline includes gene annotation, GTDB taxonomy prediction, and completeness and contamination estimation.
 
 ## Requirements
 
+### Utilities
+- OS: Runs on Linux (tested on Ubuntu 20.04 and Ubuntu 22.04) - we hope to support MacOS in future
+- Software: requires `miniconda` or manual installation using the dependencies shown in `rotary/enviroment.yaml`
+- Resources: should run on a modern laptop with >=8 GB RAM and >=4 CPU threads in most cases
+
+### Workflow
 - OS: Runs on Linux (tested on Ubuntu 20.04 and Ubuntu 22.04)
 - Software: requires `miniconda`
 - Resources: The majority of the pipeline is not too resource intensive. The limiting factors are:
@@ -69,7 +85,7 @@ polishing, contig rotation, and genome annotation.
 
 ## Usage
 
-### 1. Install
+### Install rotary
 ```bash
 git clone https://github.com/jmtsuji/rotary.git
 conda env create -n rotary --file=rotary/enviroment.yaml
@@ -79,7 +95,8 @@ pip install --editable .
 ```
 This install takes around 5 minutes on a 8-thread laptop.
 
-### 2a. Run One Sample
+### Use case 1: run the genome assembly workflow
+#### Method 1: run one sample
 
 ```bash
 mkdir output_dir
@@ -92,7 +109,7 @@ rotary run_one -l s1_long.fastq.gz -r1 s1_R1.fastq.gz -r2 s1_R2.fastq.gz -d ../r
 **Note**: If you are using older nanopore flow cells you should stop the run, modify the config file 
 (see **Advanced Usage** below) and restart the run using the `rotary run` command.
 
-### 2b. Run Multiple Samples
+#### Method 2: run multiple samples
 
 Rotary can target a directory containing numerous FASTQ files derived from various samples.
 It automatically organizes these files into sets corresponding to each sample and constructs a project 
@@ -109,8 +126,14 @@ cd output_dir
 
 rotary run
 ```
+See "Advanced usage of the assembly workflow" below for how to edit run settings and for other info.
 
-## Advanced Usage
+### Use case 2: use individual rotary utilities
+Currently available utilities:
+- `rotary-repair`: run on the outputs of Flye to repair any possible gaps/overlaps on the ends of circular contigs.
+  After installation, run `rotary-repair -h` to see a full list of commands for this utility.
+
+## Advanced usage of the assembly workflow
 
 ### Modifying the config (YAML) file (`config.yaml`).
 
@@ -151,7 +174,7 @@ In addition, please check the following in each sample folder:
 - Re-polishing (`stats/circularize/polypolish_changes.log`) - there should be few to zero changes if everything went
   smoothly. If you see more than about 20 changes, it means your genome might have some odd difficult-to-correct regions.
 
-## Demo dataset
+## Demo dataset for the assembly workflow
 
 As a simple demo, a hybrid sequencing dataset for an isolate of _E. coli_ (strain WG1) can be run through the main assembly  
 portion of _rotary_ (excluding the annotation module, which requires DBs that take a long time to download) in less than 1 
