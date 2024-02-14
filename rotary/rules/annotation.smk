@@ -193,7 +193,6 @@ rule run_dfast:
          mv {output.outdir}/genome.gbk {output.dfast_genbank}
          mv {output.outdir}/genome.gff {output.dfast_gff}
          mv {output.outdir}/rna.fna {output.dfast_rna}
-         mv {output.outdir}/rna.fna {output.dfast_rna}
          mv {output.outdir}/pseudogene_summary.tsv {output.dfast_pseudogene}
          """
 
