@@ -16,8 +16,7 @@ rule assembly_flye:
         consensus_dir=temp(directory("{sample}/assembly/flye/10-consensus")),
         repeat_dir=temp(directory("{sample}/assembly/flye/20-repeat")),
         contigger_dir=temp(directory("{sample}/assembly/flye/30-contigger")),
-        polishing_dir=temp(directory("{sample}/assembly/flye/40-polishing")),
-
+        polishing_dir=temp(directory("{sample}/assembly/flye/40-polishing")) if config.get("flye_polishing_rounds") > 0 else []
     conda:
         "../envs/assembly_flye.yaml"
     log:
@@ -34,7 +33,7 @@ rule assembly_flye:
     shell:
         """
         flye --{params.input_mode} {input} {params.read_error} --out-dir {output.output_dir} {params.meta_mode} \
-          --iterations {params.polishing_rounds} -t {threads} > {log} 2>&1 
+          --iterations {params.polishing_rounds} -t {threads} > {log} 2>&1
         mv {output.output_dir}/assembly.fasta {output.assembly} 
         mv {output.output_dir}/assembly_info.txt {output.info} 
         """

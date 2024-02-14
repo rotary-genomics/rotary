@@ -228,84 +228,125 @@ if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_
             """
 
 
-rule summarize_contigs_by_coverage:
-    input:
-        expand("{{sample}}/polish/cov_filter/{{sample}}_{type}_coverage.tsv",
-            type=filtration_method)
-    output:
-        "{sample}/polish/cov_filter/{sample}_filtered_contigs.list"
-    params:
-        meandepth_short=config.get("meandepth_cutoff_short_read"),
-        evenness_short=config.get("evenness_cutoff_short_read"),
-        meandepth_long=config.get("meandepth_cutoff_long_read"),
-        evenness_long=config.get("evenness_cutoff_long_read")
-    run:
-        #
-        def filter_coverage_data(coverage_file, mean_depth, evenness):
-            """
-            Filter a samtools coverage file by mean depth and evenness.
-            Returns a pandas series of passing contig names.
-
-            :param coverage_file: Path to the coverage file (CSV format).
-            :param mean_depth: Minimum required mean depth of coverage.
-            :param evenness: Minimum required evenness of coverage.
-            :return: Filtered coverage data containing only passing contig names.
-            """
-            coverage_data = pd.read_csv(coverage_file,sep='\t')
-
-            coverage_filtered = coverage_data[ \
-                (coverage_data['meandepth'] >= mean_depth) & \
-                (coverage_data['coverage'] >= evenness)]
-
-            return (coverage_filtered['#rname'])
-
-
-        input_list = list(input)
-
-        short_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/{wildcards.sample}_short_read_coverage.tsv"
-        long_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/{wildcards.sample}_long_read_coverage.tsv"
-
-        if len(input_list) == 1:
-            if input_list[0] == short_read_coverage_tsv_path:
-                contigs = filter_coverage_data(input_list[0],params.meandepth_short,params.evenness_short)
-
-            elif input_list[0] == long_read_coverage_tsv_path:
-                contigs = filter_coverage_data(input_list[0],params.meandepth_long,params.evenness_long)
-
-            else:
-                sys.exit("One unexpected coverage file detected in 'polish/cov_filter'.")
-
-        elif len(input_list) == 2:
-            input_list.sort()
-
-            if (input_list[0] != long_read_coverage_tsv_path) | \
-                    (input_list[1] != short_read_coverage_tsv_path):
-                sys.exit("At least one unexpected coverage file detected in 'polish/cov_filter'.")
-
-            set1 = set(filter_coverage_data(input_list[0],params.meandepth_long,params.evenness_long))
-            set2 = set(filter_coverage_data(input_list[1],params.meandepth_short,params.evenness_short))
-
-            contigs = pd.Series(set1.union(set2))
-
-        else:
-            sys.exit("More than 2 coverage files detected in 'polish/cov_filter'.")
-
-        contigs.to_csv(output[0],header=None,index=False)
-
-
-if (config.get("meandepth_cutoff_short_read") == "None") & (config.get("evenness_cutoff_short_read") == "None") & \
+if ((POLISH_WITH_SHORT_READS == False) |
+        (config.get("meandepth_cutoff_short_read") == "None") & (config.get("evenness_cutoff_short_read") == "None")) & \
         (config.get("meandepth_cutoff_long_read") == "None") & (config.get("evenness_cutoff_long_read") == "None"):
 
     rule bypass_coverage_filter:
         input:
-            "{sample}/polish/cov_filter/{sample}_pre_filtered.fasta"
+            contigs="{sample}/polish/cov_filter/{sample}_pre_filtered.fasta",
+            contig_info="{sample}/assembly/{sample}_circular_info.tsv"
         output:
-            "{sample}/polish/cov_filter/{sample}_filtered_contigs.fasta"
+            contigs="{sample}/polish/cov_filter/{sample}_filtered_contigs.fasta",
+            contig_info="{sample}/polish/cov_filter/{sample}_filtration_summary.tsv"
         run:
-            source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
-            os.symlink(source_relpath,str(output))
+            import shutil
+            import pandas as pd
+
+            # Copy the pre-filtered contig file rather than perform filtration
+            shutil.copyfile(str(input.contigs), str(output.contigs), follow_symlinks=True)
+
+            # Write output summary file based on the assembly guide file
+            contig_info = pd.read_csv(input.contig_info, sep='\t')
+            contig_info['pass_coverage_filter'] = 'Y'
+
+            contig_info.to_csv(output.contig_info, sep='\t', index=False)
+
 
 else:
+    rule summarize_contigs_by_coverage:
+        input:
+            coverage_info=expand("{{sample}}/polish/cov_filter/{{sample}}_{type}_coverage.tsv",
+                type=filtration_method),
+            contig_info="{sample}/assembly/{sample}_circular_info.tsv"
+        output:
+            contig_info_with_coverage = "{sample}/polish/cov_filter/{sample}_filtration_summary.tsv",
+            filtered_contig_list="{sample}/polish/cov_filter/{sample}_filtered_contigs.list"
+        params:
+            meandepth_short=config.get("meandepth_cutoff_short_read"),
+            evenness_short=config.get("evenness_cutoff_short_read"),
+            meandepth_long=config.get("meandepth_cutoff_long_read"),
+            evenness_long=config.get("evenness_cutoff_long_read")
+        run:
+            import pandas as pd
+
+            def filter_coverage_data(coverage_file, mean_depth, evenness):
+                """
+                Filter a samtools coverage file by mean depth and evenness.
+                Returns a pandas series of passing contig names.
+
+                :param coverage_file: Path to the coverage file (CSV format).
+                :param mean_depth: Minimum required mean depth of coverage.
+                :param evenness: Minimum required evenness of coverage.
+                :return: Filtered coverage data containing only passing contig names.
+                """
+                coverage_data = pd.read_csv(coverage_file,sep='\t')
+
+                # Set to zero if the user did not specify a filtration threshold
+                mean_depth = 0 if mean_depth == "None" else mean_depth
+                evenness = 0 if evenness == "None" else evenness
+
+                coverage_filtered = coverage_data[ \
+                    (coverage_data['meandepth'] >= mean_depth) & \
+                    (coverage_data['coverage'] >= evenness)]
+
+                return coverage_filtered['#rname']
+
+
+            coverage_info_filepaths = list(input.coverage_info)
+
+            # These are the expected filepaths of the coverage files that could be generated if short vs. long read
+            #  coverage filtration is requested
+            short_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/{wildcards.sample}_short_read_coverage.tsv"
+            long_read_coverage_tsv_path = f"{wildcards.sample}/polish/cov_filter/{wildcards.sample}_long_read_coverage.tsv"
+
+            if len(coverage_info_filepaths) == 1:
+                # Perform coverage filtration just based on short reads or just based on long reads if only one
+                #  coverage file is provided
+                if coverage_info_filepaths[0] == short_read_coverage_tsv_path:
+                    contigs = filter_coverage_data(coverage_info_filepaths[0],params.meandepth_short,params.evenness_short)
+
+                elif coverage_info_filepaths[0] == long_read_coverage_tsv_path:
+                    contigs = filter_coverage_data(coverage_info_filepaths[0],params.meandepth_long,params.evenness_long)
+
+                else:
+                    sys.exit(f"Unexpected coverage file detected in 'polish/cov_filter': {coverage_info_filepaths[0]}")
+
+            elif len(coverage_info_filepaths) == 2:
+                # Sort using information from both short and long read coverage if both coverage files are provided
+                coverage_info_filepaths.sort()
+
+                if (coverage_info_filepaths[0] != long_read_coverage_tsv_path) | \
+                        (coverage_info_filepaths[1] != short_read_coverage_tsv_path):
+                    sys.exit("At least one unexpected coverage file detected in 'polish/cov_filter'.")
+
+                set1 = set(filter_coverage_data(coverage_info_filepaths[0],params.meandepth_long,params.evenness_long))
+                set2 = set(filter_coverage_data(coverage_info_filepaths[1],params.meandepth_short,params.evenness_short))
+
+                contigs = pd.Series(list(set1.intersection(set2)))
+
+            elif len(coverage_info_filepaths) == 0:
+                sys.exit("No coverage files detected in 'polish/cov_filter'")
+
+            else:
+                sys.exit(f"More than 2 coverage files detected in 'polish/cov_filter': {coverage_info_filepaths}.")
+
+            # Add the filtered contig information onto a contig info file
+            contig_info = pd.read_csv(input.contig_info, sep='\t')
+
+            passed_coverage_filter = []
+            for contig_id in contig_info['contig']:
+                if contig_id in contigs.values:
+                    passed_coverage_filter.append('Y')
+                else:
+                    passed_coverage_filter.append('N')
+
+            contig_info['pass_coverage_filter'] = passed_coverage_filter
+
+            contig_info.to_csv(output.contig_info_with_coverage, sep='\t', index=False)
+            contigs.to_csv(output.filtered_contig_list, header=None, index=False)
+
+
     rule filter_contigs_by_coverage:
         input:
             contigs="{sample}/polish/medaka/{sample}_consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/polish/polca/{sample}_polca.fasta",
@@ -322,16 +363,22 @@ else:
 
 rule symlink_polish:
     input:
-        "{sample}/polish/cov_filter/{sample}_filtered_contigs.fasta"
+        contigs="{sample}/polish/cov_filter/{sample}_filtered_contigs.fasta",
+        contig_info="{sample}/polish/cov_filter/{sample}_filtration_summary.tsv"
     output:
-        "{sample}/polish/{sample}_polish.fasta"
+        contigs="{sample}/polish/{sample}_polish.fasta",
+        contig_info="{sample}/polish/{sample}_contig_info.tsv"
     run:
-        source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
-        os.symlink(source_relpath,str(output))
+        source_relpath_contigs = os.path.relpath(str(input.contigs),os.path.dirname(str(output.contigs)))
+        os.symlink(source_relpath_contigs,str(output.contigs))
+
+        source_relpath_contig_info = os.path.relpath(str(input.contig_info),os.path.dirname(str(output.contig_info)))
+        os.symlink(source_relpath_contig_info,str(output.contig_info))
 
 
 rule polish:
     input:
-        expand("{sample}/polish/{sample}_polish.fasta",sample=SAMPLE_NAMES)
+        expand("{sample}/polish/{sample}_polish.fasta",sample=SAMPLE_NAMES),
+        expand("{sample}/polish/{sample}_contig_info.tsv",sample=SAMPLE_NAMES)
     output:
         temp(touch("checkpoints/polish"))
