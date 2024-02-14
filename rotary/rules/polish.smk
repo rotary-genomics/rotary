@@ -151,10 +151,13 @@ rule polish_polca:
     shell:
         """
         printf "\n\n### Replace bwa with bwa-mem2 ###\n" >> {log}
+        bwa_mem2_path=$(which bwa-mem2)
+        bwa_mem2_dir=$(dirname $bwa_mem2_path)
+        ln -s $bwa_mem2_path $bwa_mem2_dir/bwa
+        
         for variant in avx avx2 avx512bw sse41 sse42; do
-            bwa_mem2_path=$(which bwa-mem2.$variant)
-            bwa_mem2_dir=$(dirname $bwa_mem2_path)
-            ln -s $bwa_mem2_path $bwa_mem2_dir/bwa.$variant
+            bwa_mem2_variant_path=$(which bwa-mem2.$variant)
+            ln -s bwa_mem2_variant_path $bwa_mem2_dir/bwa.$variant
         done
         
         printf "\n\n### Run POLCA ###\n" >> {log}
