@@ -35,7 +35,7 @@ rotary run_one -l s1_long.fastq.gz -r1 s1_R1.fastq.gz -r2 s1_R2.fastq.gz -d ../r
 
 ## Description
 
-_rotary_, currently under development, comprises a suite of utilities tailored to accurately assemble circular DNA 
+_rotary_, currently under development, comprises a suite of utilities for accurately assembling circular DNA 
 elements, such as prokaryotic chromosomes and plasmids. It features a scalable Snakemake workflow designed to assemble 
 single microbial genomes according to "best practices". Each rotary utility executes subsections of the 
 overarching _rotary_ workflow, acting as standalone tools that can be incorporated into other software. Once completed,
@@ -60,13 +60,16 @@ We envision two possible ways that _rotary_ can be used:
 - Snakemake checkpointing allows you to restart a failed run from where you left off
 
 **Best practices for genome circularization**
-- Circularization is handled fairly carefully. Unlike the defaults in most pipelines, _rotary_ fixes the
+- Circularization is handled fairly carefully: unlike the defaults in most pipelines, _rotary_ fixes the
   [short gap region](https://github.com/fenderglass/Flye/issues/315#issuecomment-720679812) that can occur at the ends
-  of circular contigs produced by Flye.
-- The workflow also polishes circular contigs in two different rotation states to try to correct errors near contig ends.
+  of circular contigs produced by Flye
+- The workflow polishes circular contigs in two different rotation states to try to correct errors near contig ends
+- After assembly, contigs are rotated to begin at relevant start genes (currently _dnaA_ by default) - rotary searches
+  for the start genes using profile Hidden Markov Models and so can detect these genes robustly, including in genomes of
+  poorly characterized/novel microorganisms
 
 **Robustness**
-- Annotation pipeline includes gene annotation, GTDB taxonomy prediction, and completeness and contamination estimation.
+- Annotation pipeline includes gene annotation, GTDB taxonomy prediction, and completeness and contamination estimation
 
 ## Requirements
 
