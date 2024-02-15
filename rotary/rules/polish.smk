@@ -155,7 +155,7 @@ rule polish_polca:
         if [ -z "${{bwa_path}}" ]; then
             bwa_mem2_path="$(which bwa-mem2)"
             bwa_mem2_dir="$(dirname "${{bwa_mem2_path}}")"
-            ln -s "${{bwa_mem2_path}}" "${{bwa_mem2_dir/bwa}}"
+            ln -s "${{bwa_mem2_path}}" "${{bwa_mem2_dir}}/bwa"
         
             for variant in avx avx2 avx512bw sse41 sse42; do
                 bwa_mem2_variant_path="$(which bwa-mem2.${{variant}})"
