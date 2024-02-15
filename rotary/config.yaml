@@ -89,8 +89,12 @@ keep_unrepaired_contigs: 'True'
 medaka_model: "r941_min_sup_g507"
 # Batch size: related to memory usage; can reduce if you get OOM (out of memory) errors
 medaka_batch_size: 100
-# Should the pipeline polish with short reads using polypolish.
+# Should the pipeline polish with short reads using Polypolish and pypolca?
 polish_with_short_reads: 'True'
+# Set Polypolish and pypolca to --careful mode, for short read datasets with mean coverage of about 20-25x or less?
+#  This will make polishing more convervative; Polypolish will not necessarily correct errors in repeat regions, and
+#  pypolca will use a more conservative threshold for determining when to change a DNA base pair
+careful_short_read_polishing: 'False'
 
 ## Post-polishing contig filter
 # My advice: Only filter by short reads if you have short reads.

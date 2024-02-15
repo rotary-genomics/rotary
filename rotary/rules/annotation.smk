@@ -309,16 +309,18 @@ if POLISH_WITH_SHORT_READS == True:
             "{sample}/logs/annotation/calculate_final_short_read_coverage.log"
         benchmark:
             "{sample}/benchmarks/annotation/calculate_final_short_read_coverage.txt"
+        params:
+            mem_per_thread = int(config.get("memory") / config.get("threads",1))
         threads:
             config.get("threads",1)
         resources:
-            mem=int(config.get("memory") / config.get("threads",1))
+            mem=config.get("memory")
         shell:
             """
             bwa-mem2 index {input.dfast_genome} 2> {log}
             bwa-mem2 mem -t {threads} {input.dfast_genome} {input.qc_short_r1} {input.qc_short_r2} 2>> {log} | \
               samtools view -b -@ {threads} 2>> {log} | \
-              samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
+              samtools sort -@ {threads} -m {params.mem_per_thread}G 2>> {log} \
               > {output.mapping}
             samtools index -@ {threads} {output.mapping}
             samtools coverage {output.mapping} > {output.coverage}
@@ -339,15 +341,17 @@ rule calculate_final_long_read_coverage:
         "{sample}/logs/annotation/calculate_final_long_read_coverage.log"
     benchmark:
         "{sample}/benchmarks/annotation/calculate_final_long_read_coverage.txt"
+    params:
+        mem_per_thread = int(config.get("memory") / config.get("threads",1))
     threads:
         config.get("threads",1)
     resources:
-        mem=int(config.get("memory") / config.get("threads",1))
+        mem=config.get("memory")
     shell:
         """
         minimap2 -t {threads} -ax map-ont {input.contigs} {input.qc_long_reads} 2> {log} | \
           samtools view -b -@ {threads} 2>> {log} | \
-          samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
+          samtools sort -@ {threads} -m {params.mem_per_thread}G 2>> {log} \
           > {output.mapping}
         samtools index -@ {threads} {output.mapping}
         samtools coverage {output.mapping} > {output.coverage}

@@ -3,8 +3,7 @@
 
 import os
 import sys
-
-import pandas as pd
+import glob
 
 
 DB_DIR_PATH = config.get('db_dir')
@@ -104,6 +103,8 @@ rule polish_polypolish:
         "{sample}/logs/{step}/polypolish.log"
     benchmark:
         "{sample}/benchmarks/{step}/polypolish.txt"
+    params:
+        careful = "--careful" if str(config.get("careful_short_read_polishing")).lower() == "true" else ""
     shell:
         """
         printf "\n\n### Polypolish insert filter ###\n" >> {log}
@@ -111,7 +112,7 @@ rule polish_polypolish:
           --out1 {output.mapping_clean_r1} --out2 {output.mapping_clean_r2} 2>> {log}
           
         printf "\n\n### Polypolish ###\n" >> {log}
-        polypolish polish --debug {output.debug} {input.contigs}  \
+        polypolish polish --debug {output.debug} {params.careful} {input.contigs}  \
           {output.mapping_clean_r1} {output.mapping_clean_r2} 2>> {log} |
           seqtk seq -A -C -l 60 > {output.polished} 2>> {log}
           
@@ -122,61 +123,41 @@ rule polish_polypolish:
         """
 
 
-# TODO - the relative path workarounds in the shell here are a bit odd because polca outputs files in the present working directory
-rule polish_polca:
+rule polish_pypolca:
     input:
         qc_short_r1 = "{sample}/qc/{sample}_qc_R1.fastq.gz",
         qc_short_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz",
         polished = "{sample}/polish/polypolish/{sample}_polypolish.fasta"
     output:
-        polca_output = temp("{sample}/polish/polca/{sample}_polca.fasta"),
-        polypolish_sam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.unSorted.sam"),
-        polypolish_bam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.alignSorted.bam"),
-        read_mapping_files= temp(multiext("{sample}/polish/polca/{sample}_polypolish.fasta.bwa",
-            *READ_MAPPING_FILE_EXTENSIONS)),
-        # Add polca directory to output, so it is deleted on rerun. It was causing an error otherwise.
-        polca_directory = directory("{sample}/polish/polca/")
+        polished = temp("{sample}/polish/pypolca/{sample}_corrected.fasta"),
+        report = temp("{sample}/polish/pypolca/{sample}.report"),
+        variant_calling = temp("{sample}/polish/pypolca/{sample}.vcf"),
+        default_log = temp(glob.glob("{sample}/polish/pypolca/pypolca_*.log"))
     conda:
-        "../envs/masurca.yaml"
+        "../envs/pypolca.yaml"
     log:
-        "{sample}/logs/polish/polca.log"
+        "{sample}/logs/polish/pypolca.log"
     benchmark:
-        "{sample}/benchmarks/polish/polca.txt"
+        "{sample}/benchmarks/polish/pypolca.txt"
     params:
-        outdir="{sample}/polish/polca"
+        outdir = "{sample}/polish/pypolca",
+        careful = "--careful" if str(config.get("careful_short_read_polishing")).lower() == "true" else "",
+        mem_per_thread = int(config.get("memory") / config.get("threads",1))
     threads:
         config.get("threads",1)
     resources:
         mem=config.get("memory")
     shell:
         """
-        printf "### Replace bwa with bwa-mem2 ###\n" >> {log}
-        bwa_path="$(which bwa)"
-        if [ -z "${{bwa_path}}" ]; then
-            bwa_mem2_path="$(which bwa-mem2)"
-            bwa_mem2_dir="$(dirname "${{bwa_mem2_path}}")"
-            ln -s "${{bwa_mem2_path}}" "${{bwa_mem2_dir}}/bwa"
-        
-            for variant in avx avx2 avx512bw sse41 sse42; do
-                bwa_mem2_variant_path="$(which bwa-mem2.${{variant}})"
-                ln -s "${{bwa_mem2_variant_path}}" "${{bwa_mem2_dir}}/bwa.${{variant}}"
-            done
-        fi
-        
-        printf "\n\n### Run POLCA ###\n" >> {log}
-        cd {params.outdir}
-        polca.sh -a ../../../{input.polished} -r "../../../{input.qc_short_r1} ../../../{input.qc_short_r2}" -t {threads} -m {resources.mem}G > ../../../{log} 2>&1
-        ln -s "{wildcards.sample}_polypolish.fasta.PolcaCorrected.fa" "{wildcards.sample}_polca.fasta"
-        cd ../../../
-        
-        printf "\n\n### Done. ###\n"
+        pypolca run -a {input.polished} -1 {input.qc_short_r1} -2 {input.qc_short_r2} -o {params.outdir} \
+            -p {wildcards.sample} {params.careful} -f -t {threads} -m {params.mem_per_thread}G > {log} 2>&1
         """
 
 
 # Conditional based on whether short read polishing was performed
 rule pre_coverage_filter:
     input:
-        "{sample}/polish/medaka/{sample}_consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/polish/polca/{sample}_polca.fasta"
+        "{sample}/polish/medaka/{sample}_consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/polish/pypolca/{sample}_corrected.fasta"
     output:
         temp("{sample}/polish/cov_filter/{sample}_pre_filtered.fasta")
     run:
@@ -209,17 +190,19 @@ if (POLISH_WITH_SHORT_READS == True) & \
             "{sample}/logs/polish/calculate_short_read_coverage.log"
         benchmark:
             "{sample}/benchmarks/polish/calculate_short_read_coverage.txt"
+        params:
+            mem_per_thread = int(config.get("memory") / config.get("threads",1))
         threads:
             config.get("threads",1)
         resources:
-            mem=int(config.get("memory") / config.get("threads",1))
+            mem=config.get("memory")
         shell:
             """
             # Note that -F 4 removes unmapped reads
             bwa-mem2 index {input.contigs} 2> {log}
             bwa-mem2 mem -t {threads} {input.contigs} {input.qc_short_r1} {input.qc_short_r2} 2>> {log} | \
               samtools view -b -F 4 -@ {threads} 2>> {log} | \
-              samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
+              samtools sort -@ {threads} -m {params.mem_per_thread}G 2>> {log} \
               > {output.mapping}
             samtools index -@ {threads} {output.mapping}
             samtools coverage {output.mapping} > {output.coverage}
@@ -243,16 +226,18 @@ if (config.get("meandepth_cutoff_long_read") != "None") | (config.get("evenness_
             "{sample}/logs/polish/calculate_long_read_coverage.log"
         benchmark:
             "{sample}/benchmarks/polish/calculate_long_read_coverage.txt"
+        params:
+            mem_per_thread = int(config.get("memory") / config.get("threads",1))
         threads:
             config.get("threads",1)
         resources:
-            mem=int(config.get("memory") / config.get("threads",1))
+            mem=config.get("memory")
         shell:
             """
             # Note that -F 4 removes unmapped reads
             minimap2 -t {threads} -ax map-ont {input.contigs} {input.qc_long_reads} 2> {log} | \
               samtools view -b -F 4 -@ {threads} 2>> {log} | \
-              samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
+              samtools sort -@ {threads} -m {params.mem_per_thread}G 2>> {log} \
               > {output.mapping}
             samtools index -@ {threads} {output.mapping}
             samtools coverage {output.mapping} > {output.coverage}
@@ -380,7 +365,7 @@ else:
 
     rule filter_contigs_by_coverage:
         input:
-            contigs="{sample}/polish/medaka/{sample}_consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/polish/polca/{sample}_polca.fasta",
+            contigs="{sample}/polish/medaka/{sample}_consensus.fasta" if POLISH_WITH_SHORT_READS == False else "{sample}/polish/pypolca/{sample}_corrected.fasta",
             filter_list="{sample}/polish/cov_filter/{sample}_filtered_contigs.list"
         output:
             "{sample}/polish/cov_filter/{sample}_filtered_contigs.fasta"
