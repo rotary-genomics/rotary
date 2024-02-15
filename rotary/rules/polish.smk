@@ -9,7 +9,7 @@ import pandas as pd
 
 DB_DIR_PATH = config.get('db_dir')
 
-READ_MAPPING_FILE_EXTENSIONS = ['amb', 'ann', 'bwt', 'pac', 'sa']
+READ_MAPPING_FILE_EXTENSIONS = ['.0123', '.amb', '.ann', '.bwt.2bit.64', '.pac']
 
 # SAMPLE_NAMES and POLISH_WITH_SHORT_READS are instantiated in rotary.smk
 
@@ -30,7 +30,7 @@ rule polish_medaka:
     output:
         dir=directory("{sample}/{step}/medaka"),
         contigs="{sample}/{step}/medaka/{sample}_consensus.fasta",
-        calls_to_draft=temp(expand("{{sample}}/{{step}}/medaka/calls_to_draft.{ext}", ext=['bam', 'bam.bai'])),
+        calls_to_draft=temp(multiext("{sample}/{step}/medaka/calls_to_draft", '.bam', '.bam.bai')),
         consensus_probs=temp("{sample}/{step}/medaka/consensus_probs.hdf")
     conda:
         "../envs/medaka.yaml"
@@ -60,49 +60,64 @@ rule prepare_polypolish_polish_input:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
 
+rule map_short_reads_for_polishing:
+    input:
+        qc_short_r1 = "{sample}/qc/{sample}_qc_R1.fastq.gz",
+        qc_short_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz",
+        contigs = "{sample}/{step}/polypolish/input/{sample}_input.fasta",
+    output:
+        mapping_r1 = temp("{sample}/{step}/polypolish/{sample}_R1.sam"),
+        mapping_r2 = temp("{sample}/{step}/polypolish/{sample}_R2.sam"),
+        read_mapping_files= temp(multiext("{sample}/{step}/polypolish/input/{sample}_input.fasta",
+            *READ_MAPPING_FILE_EXTENSIONS))
+    conda:
+        "../envs/mapping.yaml"
+    log:
+        "{sample}/logs/{step}/bwa_mem.log"
+    benchmark:
+        "{sample}/benchmarks/{step}/bwa_mem.txt"
+    threads:
+        config.get("threads", 1)
+    shell:
+        """
+        printf "\n\n### Read mapping ###\n" > {log}
+        bwa-mem2 index {input.contigs} 2>> {log}
+        bwa-mem2 mem -t {threads} -a {input.contigs} {input.qc_short_r1} > {output.mapping_r1} 2>> {log}
+        bwa-mem2 mem -t {threads} -a {input.contigs} {input.qc_short_r2} > {output.mapping_r2} 2>> {log}
+        printf "\n\n### Done. ###\n"
+        """
 
 rule polish_polypolish:
     input:
-        qc_short_r1="{sample}/qc/{sample}_qc_R1.fastq.gz",
-        qc_short_r2="{sample}/qc/{sample}_qc_R2.fastq.gz",
         contigs="{sample}/{step}/polypolish/input/{sample}_input.fasta",
+        mapping_r1 = "{sample}/{step}/polypolish/{sample}_R1.sam",
+        mapping_r2 = "{sample}/{step}/polypolish/{sample}_R2.sam"
     output:
-        mapping_r1=temp("{sample}/{step}/polypolish/{sample}_R1.sam"),
-        mapping_r2=temp("{sample}/{step}/polypolish/{sample}_R2.sam"),
-        mapping_clean_r1=temp("{sample}/{step}/polypolish/{sample}_R1.clean.sam"),
-        mapping_clean_r2=temp("{sample}/{step}/polypolish/{sample}_R2.clean.sam"),
-        polished="{sample}/{step}/polypolish/{sample}_polypolish.fasta",
-        debug=temp("{sample}/{step}/polypolish/polypolish.debug.log"),
-        debug_stats="{sample}/stats/{step}/polypolish_changes.log",
-        read_mapping_files= temp(expand("{{sample}}/{{step}}/polypolish/input/{{sample}}_input.fasta.{ext}",
-            ext=READ_MAPPING_FILE_EXTENSIONS))
+        mapping_clean_r1 = temp("{sample}/{step}/polypolish/{sample}_R1.clean.sam"),
+        mapping_clean_r2 = temp("{sample}/{step}/polypolish/{sample}_R2.clean.sam"),
+        polished = "{sample}/{step}/polypolish/{sample}_polypolish.fasta",
+        debug = temp("{sample}/{step}/polypolish/polypolish.debug.log"),
+        debug_stats = "{sample}/stats/{step}/polypolish_changes.log"
     conda:
         "../envs/polypolish.yaml"
     log:
         "{sample}/logs/{step}/polypolish.log"
     benchmark:
         "{sample}/benchmarks/{step}/polypolish.txt"
-    threads:
-        config.get("threads",1)
     shell:
         """
-        printf "\n\n### Read mapping ###\n" > {log}
-        bwa index {input.contigs} 2>> {log}
-        bwa mem -t {threads} -a {input.contigs} {input.qc_short_r1} > {output.mapping_r1} 2>> {log}
-        bwa mem -t {threads} -a {input.contigs} {input.qc_short_r2} > {output.mapping_r2} 2>> {log}
-
         printf "\n\n### Polypolish insert filter ###\n" >> {log}
-        polypolish filter --in1 {output.mapping_r1} --in2 {output.mapping_r2} \
+        polypolish filter --in1 {input.mapping_r1} --in2 {input.mapping_r2} \
           --out1 {output.mapping_clean_r1} --out2 {output.mapping_clean_r2} 2>> {log}
-
+          
         printf "\n\n### Polypolish ###\n" >> {log}
         polypolish polish --debug {output.debug} {input.contigs}  \
-          {output.mapping_clean_r1} {output.mapping_clean_r2} 2>> {log} | 
+          {output.mapping_clean_r1} {output.mapping_clean_r2} 2>> {log} |
           seqtk seq -A -C -l 60 > {output.polished} 2>> {log}
-
+          
         head -n 1 {output.debug} > {output.debug_stats}
         grep changed {output.debug} >> {output.debug_stats}
-
+        
         printf "\n\n### Done. ###\n"
         """
 
@@ -117,8 +132,8 @@ rule polish_polca:
         polca_output = temp("{sample}/polish/polca/{sample}_polca.fasta"),
         polypolish_sam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.unSorted.sam"),
         polypolish_bam = temp("{sample}/polish/polca/{sample}_polypolish.fasta.alignSorted.bam"),
-        read_mapping_files= temp(expand("{{sample}}/polish/polca/{{sample}}_polypolish.fasta.bwa.{ext}",
-            ext=READ_MAPPING_FILE_EXTENSIONS)),
+        read_mapping_files= temp(multiext("{sample}/polish/polca/{sample}_polypolish.fasta.bwa",
+            *READ_MAPPING_FILE_EXTENSIONS)),
         # Add polca directory to output, so it is deleted on rerun. It was causing an error otherwise.
         polca_directory = directory("{sample}/polish/polca/")
     conda:
@@ -135,10 +150,26 @@ rule polish_polca:
         mem=config.get("memory")
     shell:
         """
+        printf "### Replace bwa with bwa-mem2 ###\n" >> {log}
+        bwa_path="$(which bwa)"
+        if [ -z "${{bwa_path}}" ]; then
+            bwa_mem2_path="$(which bwa-mem2)"
+            bwa_mem2_dir="$(dirname "${{bwa_mem2_path}}")"
+            ln -s "${{bwa_mem2_path}}" "${{bwa_mem2_dir}}/bwa"
+        
+            for variant in avx avx2 avx512bw sse41 sse42; do
+                bwa_mem2_variant_path="$(which bwa-mem2.${{variant}})"
+                ln -s "${{bwa_mem2_variant_path}}" "${{bwa_mem2_dir}}/bwa.${{variant}}"
+            done
+        fi
+        
+        printf "\n\n### Run POLCA ###\n" >> {log}
         cd {params.outdir}
         polca.sh -a ../../../{input.polished} -r "../../../{input.qc_short_r1} ../../../{input.qc_short_r2}" -t {threads} -m {resources.mem}G > ../../../{log} 2>&1
         ln -s "{wildcards.sample}_polypolish.fasta.PolcaCorrected.fa" "{wildcards.sample}_polca.fasta"
         cd ../../../
+        
+        printf "\n\n### Done. ###\n"
         """
 
 
@@ -170,8 +201,8 @@ if (POLISH_WITH_SHORT_READS == True) & \
             mapping=temp("{sample}/polish/cov_filter/{sample}_short_read.bam"),
             mapping_index=temp("{sample}/polish/cov_filter/{sample}_short_read.bam.bai"),
             coverage="{sample}/polish/cov_filter/{sample}_short_read_coverage.tsv",
-            read_mapping_files= temp(expand("{{sample}}/polish/cov_filter/{{sample}}_pre_filtered.fasta.{ext}", 
-                ext=READ_MAPPING_FILE_EXTENSIONS))
+            read_mapping_files= temp(multiext("{sample}/polish/cov_filter/{sample}_pre_filtered.fasta",
+                *READ_MAPPING_FILE_EXTENSIONS))
         conda:
             "../envs/mapping.yaml"
         log:
@@ -185,8 +216,8 @@ if (POLISH_WITH_SHORT_READS == True) & \
         shell:
             """
             # Note that -F 4 removes unmapped reads
-            bwa index {input.contigs} 2> {log}
-            bwa mem -t {threads} {input.contigs} {input.qc_short_r1} {input.qc_short_r2} 2>> {log} | \
+            bwa-mem2 index {input.contigs} 2> {log}
+            bwa-mem2 mem -t {threads} {input.contigs} {input.qc_short_r1} {input.qc_short_r2} 2>> {log} | \
               samtools view -b -F 4 -@ {threads} 2>> {log} | \
               samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
               > {output.mapping}
