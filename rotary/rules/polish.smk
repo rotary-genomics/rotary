@@ -53,7 +53,7 @@ rule prepare_polypolish_polish_input:
     input:
         "{sample}/polish/medaka/{sample}_consensus.fasta"
     output:
-        temp("{sample}/polish/polypolish/input/{sample}_input.fasta")
+        "{sample}/polish/polypolish/input/{sample}_input.fasta"
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))
