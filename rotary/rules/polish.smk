@@ -3,7 +3,6 @@
 
 import os
 import sys
-import glob
 
 
 DB_DIR_PATH = config.get('db_dir')
@@ -130,7 +129,6 @@ rule polish_pypolca:
         polished = temp("{sample}/polish/pypolca/{sample}_corrected.fasta"),
         report = "{sample}/stats/polish/pypolca_changes.report",
         variant_calling = temp("{sample}/polish/pypolca/{sample}.vcf"),
-        default_main_log = temp("{sample}/polish/pypolca/pypolca_*.log"),
         intermediate_logs = temp(directory("{sample}/polish/pypolca/logs"))
     conda:
         "../envs/pypolca.yaml"
