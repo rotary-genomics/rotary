@@ -35,40 +35,46 @@ rotary run_one -l s1_long.fastq.gz -r1 s1_R1.fastq.gz -r2 s1_R2.fastq.gz -d ../r
 
 ## Description
 
-_rotary_ is a collection of utilities (currently in development!) for accurate assembly of circular DNA elements,
-combined with a scalable snakemake workflow that assembles single microbial genomes, using those utilities, with "best
-practices". The utilities (once finished) are meant to be a modern replacement of the
-[circlator](https://github.com/sanger-pathogens/circlator) tool, which is now in a frozen development state.
-_rotary_ can accommodate standalone Nanopore data<sup>[1](#Footnotes)</sup> or hybrid Nanopore + short read
-data. The pipeline performs short read qc, short read decontamination, long read QC, assembly, end repair,
-polishing, contig rotation, and genome annotation.
+_rotary_, currently under development, comprises a suite of utilities for accurately assembling circular DNA 
+elements, such as prokaryotic chromosomes and plasmids. It features a scalable Snakemake workflow designed to assemble 
+single microbial genomes according to "best practices". Each rotary utility executes subsections of the 
+overarching _rotary_ workflow, acting as standalone tools that can be incorporated into other software. Once completed,
+these utilities are intended to serve as a modern replacement for [circlator](https://github.com/sanger-pathogens/circlator), 
+which is now in a frozen development state. The _rotary_ genome assembly pipeline and utilities can accommodate 
+standalone Nanopore data<sup>[1](#Footnotes)</sup> or hybrid Nanopore + short-read data. The pipeline uses a 
+long-read assembly first approach with optional contig polishing using short-reads. It performs short-read QC, 
+short-read decontamination, long-read QC, assembly, end repair, polishing, contig rotation, and genome annotation.
 
-### Use cases for rotary
-We envision two possible ways that the rotary package could be used:
-- Use the genome assembly workflow to directly analyze your microbial genome data with best practices for circularization
-- Integrate the rotary utilities into your own custom genome assembly workflow to make sure your circular DNA/RNA elements
-  are being assembled accurately. This is similar to how `circlator` was used.
+### Use cases for _rotary_
+We envision two possible ways that _rotary_ can be used:
+- As a stand-alone genome assembly workflow for analyzing long-read microbial genome data with best practices regarding 
+  DNA element circularization.
+- As a suite of utilities that can be integrated into custom genome assembly workflows to ensure circular DNA/RNA elements 
+  are assembled accurately, similar to how circlator is currently used.
 
 ### Some advantages of using the _rotary_ assembly workflow:
 
 **Ease and reproducibility**
 - All databases auto-install, so you can start analyzing genomes reproducibly with limited effort!
-- Multiple genomes can be analyzed in parallel in high throughput
+- Multiple genomes can be analyzed in parallel with high throughput
 - Snakemake checkpointing allows you to restart a failed run from where you left off
 
 **Best practices for genome circularization**
-- Circularization is handled fairly carefully. Unlike the defaults in most pipelines, _rotary_ fixes the
+- Circularization is handled fairly carefully: unlike the defaults in most pipelines, _rotary_ fixes the
   [short gap region](https://github.com/fenderglass/Flye/issues/315#issuecomment-720679812) that can occur at the ends
-  of circular contigs produced by Flye.
-- The workflow also polishes circular contigs in two different rotation states to try to correct errors near contig ends.
+  of circular contigs produced by Flye
+- The workflow polishes circular contigs in two different rotation states to try to correct errors near contig ends
+- After assembly, contigs are rotated to begin at relevant start genes (currently _dnaA_ by default) - rotary searches
+  for the start genes using profile Hidden Markov Models and so can detect these genes robustly, including in genomes of
+  poorly characterized/novel microorganisms
 
 **Robustness**
-- Annotation pipeline includes gene annotation, GTDB taxonomy prediction, and completeness and contamination estimation.
+- Annotation pipeline includes gene annotation, GTDB taxonomy prediction, and completeness and contamination estimation
 
 ## Requirements
 
 ### Utilities
-- OS: Runs on Linux (tested on Ubuntu 20.04 and Ubuntu 22.04) - we hope to support MacOS in future
+- OS: Runs on Linux (tested on Ubuntu 20.04 and Ubuntu 22.04) - we hope to support macOS in the future
 - Software: requires `miniconda` or manual installation using the dependencies shown in `rotary/enviroment.yaml`
 - Resources: should run on a modern laptop with >=8 GB RAM and >=4 CPU threads in most cases
 
@@ -259,7 +265,7 @@ please feel free to use this basic working version.
    and [POLCA](https://github.com/alekseyzimin/masurca)
 8. Filters resulting contigs by a user-provided coverage threshold
 9. Rotates any circular contigs to start at a marker gene of your choice (_dnaA_ by default), with help from
-   [circlator](https://github.com/sanger-pathogens/circlator)
+   [circlator](https://github.com/sanger-pathogens/circlator) (will be replaced by custom utilities in future releases)
 10. Performs one more round of polishing on circular contigs, either using
     Polypolish (if short reads were provided) or medaka (if only long reads were provided)
 11. Gene prediction via [DFAST](https://github.com/nigyta/dfast_core)
