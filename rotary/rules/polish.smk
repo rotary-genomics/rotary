@@ -91,7 +91,7 @@ rule polish_polypolish:
     output:
         mapping_clean_r1 = temp("{sample}/{step}/polypolish/{sample}_R1.clean.sam"),
         mapping_clean_r2 = temp("{sample}/{step}/polypolish/{sample}_R2.clean.sam"),
-        polished = temp("{sample}/{step}/polypolish/{sample}_polypolish.fasta"),
+        polished = "{sample}/{step}/polypolish/{sample}_polypolish.fasta",
         debug = temp("{sample}/{step}/polypolish/polypolish.debug.log"),
         debug_stats = "{sample}/stats/{step}/polypolish_changes.log"
     conda:
@@ -126,7 +126,7 @@ rule polish_pypolca:
         qc_short_r2 = "{sample}/qc/{sample}_qc_R2.fastq.gz",
         polished = "{sample}/polish/polypolish/{sample}_polypolish.fasta"
     output:
-        polished = temp("{sample}/polish/pypolca/{sample}_corrected.fasta"),
+        polished = "{sample}/polish/pypolca/{sample}_corrected.fasta",
         report = "{sample}/stats/polish/pypolca_changes.report",
         variant_calling = temp("{sample}/polish/pypolca/{sample}.vcf"),
         intermediate_logs = temp(directory("{sample}/polish/pypolca/logs"))
