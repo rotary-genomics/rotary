@@ -54,6 +54,10 @@ contamination_references_ncbi_accessions: ["GCF_000819615.1"]
 #   If you do not want to use any custom FastA files for filtering, then set this variable to []
 contamination_references_custom_filepaths: []
 
+## QC - general
+# Keep final QC'ed FASTQ files for further analysis - otherwise, they will be treated as temp files
+keep_final_qc_read_files: 'False'
+
 ## Assembly
 # nano-hq (if <5% error) or nano-raw
 flye_input_mode: "nano-hq"
