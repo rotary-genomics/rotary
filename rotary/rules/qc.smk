@@ -4,7 +4,7 @@
 import os
 import itertools
 import pandas as pd
-from rotary.utils import symlink_or_compress
+from pungi.utils import symlink_or_compress
 
 CONTAMINATION_NCBI_ACCESSIONS = config.get("contamination_references_ncbi_accessions")
 CUSTOM_CONTAMINATION_FILEPATHS = config.get("contamination_references_custom_filepaths")
