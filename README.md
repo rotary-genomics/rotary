@@ -12,12 +12,17 @@ Utilities and workflow for long-read DNA assemblies including circular elements
 ### Install
 ```bash
 git clone https://github.com/rotary-genomics/rotary.git
+git clone https://github.com/rotary-genomics/pungi.git
 
 conda env create -n rotary --file=rotary/enviroment.yaml
 
 conda activate rotary
 
-cd rotary
+cd pungi
+
+pip install --editable .
+
+cd ../rotary
 
 pip install --editable .
 ```
