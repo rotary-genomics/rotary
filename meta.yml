@@ -15,9 +15,8 @@ requirements:
     - snakemake=7.*
     - mamba
     - wget
-    - ruamel.yaml=0.17.35
+    - pungi=0.1.*
     - psutil=5.9.5
-    - sh=2.0.*
     - biopython=1.81
     - circlator=1.5.5
     - flye=2.9
