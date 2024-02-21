@@ -56,7 +56,7 @@ contamination_references_custom_filepaths: []
 
 ## QC - general
 # Keep final QC'ed FASTQ files for further analysis - otherwise, they will be treated as temp files
-keep_final_qc_read_files: 'False'
+keep_final_qc_read_files: 'True'
 
 ## Assembly
 # nano-hq (if <5% error) or nano-raw
