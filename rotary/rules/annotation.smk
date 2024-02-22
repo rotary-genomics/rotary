@@ -11,6 +11,11 @@ VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
 
 DB_DIR_PATH = config.get('db_dir')
 
+if str(config.get('keep_final_coverage_bam_files')).lower() == 'true':
+    KEEP_BAM_FILES = True
+else:
+    KEEP_BAM_FILES = False
+
 # SAMPLE_NAMES, and POLISH_WITH_SHORT_READS are instantiated in rotary.smk
 
 rule download_dfast_db:
@@ -193,7 +198,6 @@ rule run_dfast:
          mv {output.outdir}/genome.gbk {output.dfast_genbank}
          mv {output.outdir}/genome.gff {output.dfast_gff}
          mv {output.outdir}/rna.fna {output.dfast_rna}
-         mv {output.outdir}/rna.fna {output.dfast_rna}
          mv {output.outdir}/pseudogene_summary.tsv {output.dfast_pseudogene}
          """
 
@@ -294,11 +298,11 @@ if POLISH_WITH_SHORT_READS == True:
             qc_short_r2="{sample}/qc/{sample}_qc_R2.fastq.gz",
             dfast_genome="{sample}/annotation/dfast/{sample}_genome.fna"
         output:
-            mapping=temp("{sample}/annotation/coverage/{sample}_short_read.bam"),
+            mapping="{sample}/annotation/coverage/{sample}_short_read.bam" if KEEP_BAM_FILES else temp("{sample}/annotation/coverage/{sample}_short_read.bam"),
             index=temp("{sample}/annotation/coverage/{sample}_short_read.bam.bai"),
             coverage="{sample}/annotation/coverage/{sample}_short_read_coverage.tsv",
-            read_mapping_files= temp(expand("{{sample}}/annotation/dfast/{{sample}}_genome.fna.{ext}",
-                ext=READ_MAPPING_FILE_EXTENSIONS)) # Variable declared in polish.smk
+            read_mapping_files= temp(multiext("{sample}/annotation/dfast/{sample}_genome.fna",
+                *READ_MAPPING_FILE_EXTENSIONS)) # Variable declared in polish.smk
         conda:
             "../envs/mapping.yaml"
         log:
@@ -311,8 +315,8 @@ if POLISH_WITH_SHORT_READS == True:
             mem=int(config.get("memory") / config.get("threads",1))
         shell:
             """
-            bwa index {input.dfast_genome} 2> {log}
-            bwa mem -t {threads} {input.dfast_genome} {input.qc_short_r1} {input.qc_short_r2} 2>> {log} | \
+            bwa-mem2 index {input.dfast_genome} 2> {log}
+            bwa-mem2 mem -t {threads} {input.dfast_genome} {input.qc_short_r1} {input.qc_short_r2} 2>> {log} | \
               samtools view -b -@ {threads} 2>> {log} | \
               samtools sort -@ {threads} -m {resources.mem}G 2>> {log} \
               > {output.mapping}
@@ -326,7 +330,7 @@ rule calculate_final_long_read_coverage:
         contigs="{sample}/annotation/dfast/{sample}_genome.fna",
         qc_long_reads="{sample}/qc/{sample}_qc_long.fastq.gz"
     output:
-        mapping=temp("{sample}/annotation/coverage/{sample}_long_read.bam"),
+        mapping="{sample}/annotation/coverage/{sample}_long_read.bam" if KEEP_BAM_FILES else temp("{sample}/annotation/coverage/{sample}_long_read.bam"),
         index=temp("{sample}/annotation/coverage/{sample}_long_read.bam.bai"),
         coverage="{sample}/annotation/coverage/{sample}_long_read_coverage.tsv"
     conda:

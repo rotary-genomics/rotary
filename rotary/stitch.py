@@ -4,16 +4,15 @@
 # Copyright Jackson M. Tsuji and Lee H. Bergstrand 2023
 
 import argparse
+import itertools
 import logging
 import os
 import subprocess
 import sys
-import itertools
 
 import pandas as pd
-from Bio import SeqIO
 
-from rotary.repair import check_dependency, run_pipeline_subcommand, rotate_contig_to_midpoint, set_write_mode
+from rotary.repair import check_dependency, run_pipeline_subcommand, set_write_mode
 
 # GLOBAL VARIABLES
 DEPENDENCY_NAMES = ['nucmer', 'show-coords']

@@ -4,7 +4,7 @@
 import os
 import itertools
 import pandas as pd
-from rotary.utils import symlink_or_compress
+from pungi.utils import symlink_or_compress
 
 CONTAMINATION_NCBI_ACCESSIONS = config.get("contamination_references_ncbi_accessions")
 CUSTOM_CONTAMINATION_FILEPATHS = config.get("contamination_references_custom_filepaths")
@@ -22,6 +22,11 @@ else:
 ZENODO_VERSION = "10087395"
 
 DB_DIR_PATH = config.get('db_dir')
+
+if str(config.get('keep_final_qc_read_files')).lower() == 'true':
+    KEEP_QC_READ_FILES = True
+else:
+    KEEP_QC_READ_FILES = False
 
 # SAMPLE_NAMES and POLISH_WITH_SHORT_READS are instantiated in rotary.smk
 
@@ -165,7 +170,7 @@ rule finalize_qc_long:
     input:
         "{sample}/qc/long/{sample}_nanopore_qc.fastq.gz"
     output:
-        temp("{sample}/qc/{sample}_qc_long.fastq.gz")
+        "{sample}/qc/{sample}_qc_long.fastq.gz" if KEEP_QC_READ_FILES else temp("{sample}/qc/{sample}_qc_long.fastq.gz")
     shell:
         """
         cp {input} {output}
@@ -339,8 +344,8 @@ rule finalize_qc_short:
         short_r1 = "{sample}/qc/short/{sample}_filter_R1.fastq.gz" if CONTAMINANT_REFERENCE_GENOMES == True else "{sample}/qc/short/{sample}_quality_trim_R1.fastq.gz",
         short_r2 = "{sample}/qc/short/{sample}_filter_R2.fastq.gz" if CONTAMINANT_REFERENCE_GENOMES == True else "{sample}/qc/short/{sample}_quality_trim_R2.fastq.gz"
     output:
-        short_final_r1=temp("{sample}/qc/{sample}_qc_R1.fastq.gz"),
-        short_final_r2=temp("{sample}/qc/{sample}_qc_R2.fastq.gz")
+        short_final_r1="{sample}/qc/{sample}_qc_R1.fastq.gz" if KEEP_QC_READ_FILES else temp("{sample}/qc/{sample}_qc_R1.fastq.gz"),
+        short_final_r2="{sample}/qc/{sample}_qc_R2.fastq.gz" if KEEP_QC_READ_FILES else temp("{sample}/qc/{sample}_qc_R2.fastq.gz")
     shell:
         """
         cp {input.short_r1} {output.short_final_r1}

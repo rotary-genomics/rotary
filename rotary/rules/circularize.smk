@@ -33,18 +33,15 @@ rule download_hmm:
 # Based on clustering tutorial at https://snakemake.readthedocs.io/en/stable/snakefiles/rules.html (accessed 2022.3.31)
 checkpoint split_circular_and_linear_contigs:
     input:
-        assembly_stats="{sample}/assembly/{sample}_circular_info.tsv",
-        filter_list="{sample}/polish/cov_filter/{sample}_filtered_contigs.list"
+        "{sample}/polish/{sample}_contig_info.tsv"
     output:
         directory("{sample}/circularize/filter/lists")
     run:
-        coverage_filtered_contigs = pd.read_csv(input.filter_list,header=None)[0]
+        contig_info = pd.read_csv(input[0], sep='\t')
+        contig_info_filtered = contig_info[contig_info['pass_coverage_filter'] == 'Y']
 
-        assembly_info = pd.read_csv(input.assembly_stats,sep='\t')
-        assembly_info_filtered = assembly_info[assembly_info['contig'].isin(coverage_filtered_contigs)]
-
-        circular_contigs = assembly_info_filtered[assembly_info_filtered['circular'] == 'Y']
-        linear_contigs = assembly_info_filtered[assembly_info_filtered['circular'] == 'N']
+        circular_contigs = contig_info_filtered[contig_info_filtered['circular'] == 'Y']
+        linear_contigs = contig_info_filtered[contig_info_filtered['circular'] == 'N']
 
         os.makedirs(output[0],exist_ok=True)
 

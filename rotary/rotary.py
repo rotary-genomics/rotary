@@ -8,10 +8,10 @@ Description: A command-line interface for the Rotary hybrid assembly workflow.
 import argparse
 import os
 
-from rotary.dataset import generate_dataset_from_fastq_directory, Dataset
-from rotary.run import setup_run_directory, run_snakemake_workflow, load_yaml_config, get_snakemake_args
-from rotary.sample import SequencingFile, LongReadSampleWithPairedPolishingShortReads
-from rotary.utils import get_cli_arg_path, get_cli_arg, check_for_files
+from pungi.dataset import generate_dataset_from_fastq_directory, Dataset
+from pungi.run import setup_run_directory, run_snakemake_workflow, load_yaml_config, get_snakemake_args
+from pungi.sample import SequencingFile, LongReadSampleWithPairedPolishingShortReads
+from pungi.utils import get_cli_arg_path, get_cli_arg, check_for_files
 
 rotary_config_name = 'config.yaml'
 run_files = [rotary_config_name, 'samples.tsv']

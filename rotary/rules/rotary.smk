@@ -3,8 +3,8 @@
 
 from snakemake.utils import min_version
 
-from rotary.dataset import generate_dataset_from_sample_tsv
-from rotary.utils import symlink_or_compress
+from pungi.dataset import generate_dataset_from_sample_tsv
+from pungi.utils import symlink_or_compress
 
 SAMPLE_TSV_PATH = 'samples.tsv'
 SAMPLES = generate_dataset_from_sample_tsv(SAMPLE_TSV_PATH)
