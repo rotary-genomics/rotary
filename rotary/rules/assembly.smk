@@ -62,10 +62,11 @@ rule assembly_end_repair:
         ref_end=config.get("circlator_merge_ref_end"),
         reassemble_end=config.get("circlator_merge_reassemble_end"),
         keep_going="--keep_going_with_failed_contigs" if config.get("keep_unrepaired_contigs") == "True" else "",
+        mem_per_thread=int(config.get("memory") /config.get("threads",1))
     threads:
         config.get("threads",1)
     resources:
-        mem=int(config.get("memory") / config.get("threads",1))
+        mem=config.get("memory")
     shell:
         """
         rotary-repair --long_read_filepath {input.qc_long_reads} \
@@ -79,7 +80,7 @@ rule assembly_end_repair:
           --circlator_ref_end {params.ref_end} \
           --circlator_reassemble_end {params.reassemble_end} \
           --threads {threads} \
-          --threads_mem {resources.mem} \
+          --threads_mem {params.mem_per_thread} \
           --overwrite \
           {params.keep_going} \
           > {log} 2>&1

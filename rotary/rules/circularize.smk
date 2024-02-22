@@ -245,7 +245,7 @@ rule prepare_polypolish_circularize_input:
     input:
         "{sample}/circularize/circlator/{sample}_rotated.fasta"
     output:
-        "{sample}/circularize/polypolish/input/{sample}_input.fasta"
+        temp("{sample}/circularize/polypolish/input/{sample}_input.fasta")
     run:
         source_relpath = os.path.relpath(str(input),os.path.dirname(str(output)))
         os.symlink(source_relpath,str(output))

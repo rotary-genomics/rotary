@@ -3,5 +3,4 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  - masurca=4.0.8
-  - bwa-mem2=2.2.1
+  - pypolca=0.3.1
