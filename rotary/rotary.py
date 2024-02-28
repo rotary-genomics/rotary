@@ -125,7 +125,7 @@ def init(args):
 
     input_path = get_cli_arg_path(args, 'input_dir')
 
-    dataset = generate_dataset_from_fastq_directory(input_path)
+    dataset = generate_dataset_from_fastq_directory(input_path, expected_files_per_sample=3)
 
     dataset.create_sample_tsv(output_dir_path, header = sample_tsv_header_fields)
 
