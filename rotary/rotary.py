@@ -114,8 +114,12 @@ def init(args):
     """
     output_dir_path = get_cli_arg_path(args, 'output_dir')
 
+    config_path = get_cli_arg_path(args, 'config')
+    if not config_path:  # If no config is specified via CLI grab the default config.yaml.
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
+
     # Checks for existing run files and sets up the run directory.
-    setup_run_directory(args, output_dir_path, run_files)
+    setup_run_directory(args, output_dir_path, run_files, config_path)
 
     input_path = get_cli_arg_path(args, 'input_dir')
 
