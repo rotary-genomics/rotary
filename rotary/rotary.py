@@ -65,12 +65,10 @@ def run(args):
         config_path = os.path.join(output_dir_path, 'config.yaml')
 
     config = load_yaml_config(config_path)
-
-    conda_env_directory = os.path.join(config['db_dir'], 'rotary_conda_env')
-    os.makedirs(conda_env_directory, exist_ok=True)
+    conda_env_dir = os.path.join(config['db_dir'], 'rotary_conda_envs')
 
     run_snakemake_workflow(config_path=config_path, snake_file_path=snake_file_path, output_dir_path=output_dir_path,
-                           jobs=jobs, conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
+                           jobs=jobs, conda_env_dir_path=conda_env_dir, snakemake_custom_args=snakemake_args)
 
 
 def run_one(args):
@@ -82,7 +80,7 @@ def run_one(args):
     output_dir_path = get_cli_arg_path(args, 'output_dir')
 
     # Checks for existing run files and sets up the run directory.
-    conda_env_directory, config_path = setup_run_directory(args, output_dir_path, run_files)
+    config_path = setup_run_directory(args, output_dir_path, run_files)
 
     jobs = get_cli_arg(args, 'jobs')
     snakemake_args = get_snakemake_args(args)
@@ -101,9 +99,11 @@ def run_one(args):
 
     dataset.create_sample_tsv(output_dir_path, header=sample_tsv_header_fields)
 
+    config = load_yaml_config(config_path)
+    conda_env_dir = os.path.join(config['db_dir'], 'rotary_conda_envs')
+
     run_snakemake_workflow(config_path=config_path, snake_file_path=snake_file_path, output_dir_path=output_dir_path,
-                           jobs=jobs,
-                           conda_env_directory=conda_env_directory, snakemake_custom_args=snakemake_args)
+                           jobs=jobs, conda_env_dir_path=conda_env_dir, snakemake_custom_args=snakemake_args)
 
 
 def init(args):
