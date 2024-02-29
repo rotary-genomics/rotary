@@ -11,14 +11,15 @@ import os
 from pungi.dataset import generate_dataset_from_fastq_directory, Dataset
 from pungi.run import setup_run_directory, run_snakemake_workflow, load_yaml_config, get_snakemake_args
 from pungi.sample import SequencingFile, LongReadSampleWithPairedPolishingShortReads
-from pungi.utils import get_cli_arg_path, get_cli_arg, check_for_files
+from pungi.utils import get_cli_arg_path, get_cli_arg, check_for_files, get_config_path
 
 rotary_config_name = 'config.yaml'
 run_files = [rotary_config_name, 'samples.tsv']
 
 snake_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rules', 'rotary.smk')
-
+provided_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
 sample_tsv_header_fields = ['sample_id', 'long-read', 'short-read_R1', 'short-read_R2']
+
 
 def main():
     """
@@ -60,9 +61,7 @@ def run(args):
     jobs = get_cli_arg(args, 'jobs')
     snakemake_args = get_snakemake_args(args)
 
-    config_path = get_cli_arg_path(args, 'config')
-    if not config_path:
-        config_path = os.path.join(output_dir_path, 'config.yaml')
+    config_path = get_config_path(args, default_config_path=os.path.join(output_dir_path, 'config.yaml'))
 
     config = load_yaml_config(config_path)
     conda_env_dir = os.path.join(config['db_dir'], 'rotary_conda_envs')
@@ -77,13 +76,9 @@ def run_one(args):
 
     :param args: The command-line arguments.
     """
-    output_dir_path = get_cli_arg_path(args, 'output_dir')
-
-    config_path = get_cli_arg_path(args, 'config')
-    if not config_path:  # If no config is specified via CLI grab the default config.yaml.
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
-
+    config_path = get_config_path(args, default_config_path=provided_config_path)
     config = load_yaml_config(config_path)
+    output_dir_path = get_cli_arg_path(args, 'output_dir')
 
     # Checks for existing run files and sets up the run directory.
     setup_run_directory(args, output_dir_path, run_files, config)
@@ -98,8 +93,10 @@ def run_one(args):
     sample = LongReadSampleWithPairedPolishingShortReads(long_file=sequencing_files[0],
                                                          short_file_left=sequencing_files[1],
                                                          short_file_right=sequencing_files[2],
-                                                         identifier_check=False, # Don't do integrity check on user-specified files.
-                                                         integrity_check=False)  # Don't do an identifier check on user-specified files.
+                                                         # Don't do an identifier check on user-specified files.
+                                                         identifier_check=False,
+                                                         # Don't do integrity check on user-specified files.
+                                                         integrity_check=False)
 
     dataset = Dataset(sample)
 
@@ -117,13 +114,8 @@ def init(args):
 
     :param args: The command-line arguments.
     """
+    config = load_yaml_config(get_config_path(args, default_config_path=provided_config_path))
     output_dir_path = get_cli_arg_path(args, 'output_dir')
-
-    config_path = get_cli_arg_path(args, 'config')
-    if not config_path:  # If no config is specified via CLI grab the default config.yaml.
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.yaml')
-
-    config = load_yaml_config(config_path)
 
     # Checks for existing run files and sets up the run directory.
     setup_run_directory(args, output_dir_path, run_files, config)
@@ -132,7 +124,7 @@ def init(args):
 
     dataset = generate_dataset_from_fastq_directory(input_path, expected_files_per_sample=3)
 
-    dataset.create_sample_tsv(output_dir_path, header = sample_tsv_header_fields)
+    dataset.create_sample_tsv(output_dir_path, header=sample_tsv_header_fields)
 
 
 def parse_cli():
