@@ -104,9 +104,20 @@ rule finalize_assembly:
         os.symlink(source_relpath,str(output.info))
 
 
+rule add_circular_info_to_annotation_stats:
+    input:
+        "{sample}/assembly/{sample}_circular_info.tsv"
+    output:
+        "{sample}/annotation/stats/{sample}_circular_info.tsv"
+    shell:
+        """
+        cp {input} {output}
+        """
+
 rule assembly:
     input:
         expand("{sample}/assembly/{sample}_assembly.fasta",sample=SAMPLE_NAMES),
-        expand("{sample}/assembly/{sample}_circular_info.tsv", sample=SAMPLE_NAMES)
+        expand("{sample}/assembly/{sample}_circular_info.tsv", sample=SAMPLE_NAMES),
+        expand("{sample}/annotation/stats/{sample}_circular_info.tsv", sample=SAMPLE_NAMES)
     output:
         temp(touch("checkpoints/assembly"))
