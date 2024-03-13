@@ -98,7 +98,7 @@ We envision two possible ways that _rotary_ can be used:
 
 ### Install rotary
 ```bash
-git clone https://github.com/jmtsuji/rotary.git
+git clone https://github.com/rotary-genomics/rotary.git
 conda env create -n rotary --file=rotary/enviroment.yaml
 conda activate rotary
 cd rotary
