@@ -3,4 +3,5 @@ channels:
   - bioconda
   - defaults
 dependencies:
+  - biopython=1.78
   - dfast=1.2.18 # remember to update VERSION_DFAST at top of snakefile when updating
