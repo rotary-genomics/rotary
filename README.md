@@ -264,9 +264,9 @@ Some of the key output files that will be generated in the `ecoli` dir are:
 
 ## Citation
 
-_rotary_ is currently described in the methods of a bioRxiv pre-print. Please cite this pre-print if you use _rotary_:
-> Tsuji JM, Shaw NA, Nagashima S, Venkiteswaran JJ, Schiff SL, Watanabe T, Fukui M, Hanada S, Tank M, Neufeld JD (2023).
-> Anoxygenic phototrophic _Chloroflexota_ member uses a Type I reaction center. _bioRxiv_, DOI:10.1101/2020.07.07.190934
+_rotary_ is currently described in the Supplementary Methods the following publication. Please cite this paper if you use _rotary_:
+> Tsuji JM, Shaw NA, Nagashima S, Venkiteswaran JJ, Schiff SL, Watanabe T, Fukui M, Hanada S, Tank M, Neufeld JD. Anoxygenic 
+> phototroph of the Chloroflexota uses a type I reaction centre. Nature (2024). https://doi.org/10.1038/s41586-024-07180-y
 
 ## Final comments
 
