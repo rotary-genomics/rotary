@@ -4,7 +4,7 @@
 import os
 import itertools
 import pandas as pd
-from pungi.utils import symlink_or_compress
+from pungi.utils import symlink_or_compress, is_config_parameter_true
 
 CONTAMINATION_NCBI_ACCESSIONS = config.get("contamination_references_ncbi_accessions")
 CUSTOM_CONTAMINATION_FILEPATHS = config.get("contamination_references_custom_filepaths")
@@ -23,10 +23,7 @@ ZENODO_VERSION = "10087395"
 
 DB_DIR_PATH = config.get('db_dir')
 
-if str(config.get('keep_final_qc_read_files')).lower() == 'true':
-    KEEP_QC_READ_FILES = True
-else:
-    KEEP_QC_READ_FILES = False
+KEEP_QC_READ_FILES = is_config_parameter_true(config,'keep_final_qc_read_files')
 
 # SAMPLE_NAMES and POLISH_WITH_SHORT_READS are instantiated in rotary.smk
 

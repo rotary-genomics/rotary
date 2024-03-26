@@ -2,6 +2,7 @@
 # Copyright Jackson M. Tsuji and Lee H. Bergstrand, 2023
 
 import os
+from pungi.utils import is_config_parameter_true
 
 VERSION_DFAST="1.2.18"
 VERSION_EGGNOG="5.0.0" # See http://eggnog5.embl.de/#/app/downloads
@@ -11,10 +12,7 @@ VERSION_GTDB_MAIN=VERSION_GTDB_COMPLETE.split('.')[0] # Remove subversion
 
 DB_DIR_PATH = config.get('db_dir')
 
-if str(config.get('keep_final_coverage_bam_files')).lower() == 'true':
-    KEEP_BAM_FILES = True
-else:
-    KEEP_BAM_FILES = False
+KEEP_BAM_FILES = is_config_parameter_true(config,'keep_final_coverage_bam_files')
 
 # SAMPLE_NAMES, and POLISH_WITH_SHORT_READS are instantiated in rotary.smk
 

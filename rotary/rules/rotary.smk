@@ -4,7 +4,7 @@
 from snakemake.utils import min_version
 
 from pungi.dataset import generate_dataset_from_sample_tsv
-from pungi.utils import symlink_or_compress
+from pungi.utils import symlink_or_compress, is_config_parameter_true
 
 SAMPLE_TSV_PATH = 'samples.tsv'
 SAMPLES = generate_dataset_from_sample_tsv(SAMPLE_TSV_PATH)
@@ -17,10 +17,7 @@ min_version("7.0")
 shell.executable("/bin/bash")
 shell.prefix("set -o pipefail; ")
 
-if str(config.get('polish_with_short_reads')).lower() == 'true':
-    POLISH_WITH_SHORT_READS = True
-else:
-    POLISH_WITH_SHORT_READS = False
+POLISH_WITH_SHORT_READS = is_config_parameter_true(config,'polish_with_short_reads')
 
 rule all:
     input:
